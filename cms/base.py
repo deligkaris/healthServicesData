@@ -126,10 +126,10 @@ def getProviderName(baseDF, cmsProviderDF):
                       on = [F.col("ORGNPINM") == F.col("NPI")],
                       how = "inner")
 
-     # drop the NPI column that was just added
-     baseDF = baseDF.drop(F.col("NPI"))
+    # drop the NPI column that was just added
+    baseDF = baseDF.drop(F.col("NPI"))
 
-     return baseDF
+    return baseDF
 
 def getOsuClaim(baseDF):
 
