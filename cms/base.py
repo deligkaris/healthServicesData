@@ -56,8 +56,8 @@ def getThroughDates(baseDF):
                                  .when(F.col("THRU_DT_YEAR")==2021 ,366*2+365*4)
                                  .otherwise(365)) #otherwise 365
 
-     # assign a day number starting at day 1 of yearStart-1
-     baseDF = baseDF.withColumn( "THRU_DT_DAY", 
+    # assign a day number starting at day 1 of yearStart-1
+    baseDF = baseDF.withColumn( "THRU_DT_DAY", 
                                  # days in years prior to admission + days in year of admission = day nunber
                                  (F.col("THRU_DT_DAYSINYEARSPRIOR") + F.col("THRU_DT_DAYOFYEAR")).cast('int'))
 
