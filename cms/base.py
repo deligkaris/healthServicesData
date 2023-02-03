@@ -63,4 +63,21 @@ def getThroughDates(baseDF):
 
     return baseDF
 
+def getStrokes(baseDF):
+
+    # PRNCPAL_DGNS_CD: diagnosis, condition problem or other reason for the admission/encounter/visit to 
+    # be chiefly responsible for the services, redundantly stored as ICD_DGNS_CD1
+    # ADMTG_DGNS_CD: initial diagnosis at admission, may not be confirmed after evaluation, 
+    # may be different than the eventual diagnosis as in ICD_DGNS_CD1-25
+    # which suggests that the ICD_DGNS_CDs are after evaluation, therefore ICD_DGNS_CDs are definitely not rule-out 
+    # JB: well, you can never be certain that they are not rule-out, but the principal diagnostic code for stroke has been validated
+
+    baseDF = baseDF.withColumn("strokeClaim",
+                              # ^I63[\d]: beginning of string I63 matches 0 or more digit characters 0-9
+                              # I63 cerebral infraction
+                              F.when((F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I63[\d]*',0) !=''), 1)
+                               .otherwise(0)) 
+
+    return baseDF
+
 
