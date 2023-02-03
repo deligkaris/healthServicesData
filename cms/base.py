@@ -117,3 +117,87 @@ def getFirstClaim(baseDF):
     baseDF = baseDF.drop("firstClaimSum") #no longer needed
 
     return baseDF
+
+def getProviderName(baseDF, cmsProviderDF):
+
+    baseDF = baseDF.join(
+                      cmsProviderDF.select(
+                          F.col("NPI"),F.col("Provider Organization Name (Legal Business Name)").alias("ProviderName")),
+                      on = [F.col("ORGNPINM") == F.col("NPI")],
+                      how = "inner")
+
+     # drop the NPI column that was just added
+     baseDF = baseDF.drop(F.col("NPI"))
+
+     return baseDF
+
+def getOsuClaim(baseDF):
+
+    osuNpi = ["1447359997"]  # set the NPI(s) I will use for OSU
+
+    osuCondition = '(F.col("ORGNPINM").isin(osuNpi))' # do NOT forget the parenthesis!!
+
+    # add a column to indicate which claims were at OSU
+    baseDF = baseDF.withColumn("osuClaim", 
+                               F.when(eval(osuCondition) ,1) #set them to true
+                                .otherwise(0)) #otherwise false
+
+    return baseDF
+
+def getEvtClaim(baseDF):
+
+    # EVT takes place only in inpatient settings, EVT events are found on base claim file, not in the revenue center
+    evtDrgCodes=[23,24]
+    evtPrcdrCodes=["03CG3ZZ","03CH3ZZ","03CJ3ZZ","03CK3ZZ","03CL3ZZ","03CM3ZZ","03CN3ZZ","03CP3ZZ","03CQ3ZZ"]
+
+    evtDrgCondition = '(F.col("DRG_CD").isin(evtDrgCodes))'
+
+    evtPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(evtPrcdrCodes))' for x in range(1,26)) +')'
+
+    evtCondition = '(' + evtDrgCondition + '|' + evtPrcdrCondition + ')' # do NOT forget the parenthesis!!!
+
+    # add a column to indicate which patients with stroke had an EVT
+    baseDF = baseDF.withColumn("evtClaim", 
+                               F.when(eval(evtCondition) ,1) #set them to true
+                                .otherwise(0)) #otherwise false
+
+    return baseDF
+
+def getTpaClaim(baseDF):
+
+    # tPA can take place in either outpatient or inpatient setting
+    # however, in an efficient health care world, tPA would be administered at the outpatient setting
+    # perhaps with the help of telemedicine and the bigger hub's guidance, and then the patient would be transferred to the bigger hospital
+    # the diagnostic code from IP should be consistent with the procedure code from outpatient but check this
+    # after 2015, use ICD10 exclusively, no need to check for ICD9
+    # tpa can be found in DRG, DGNS and PRCDR codes
+
+    tpaDrgCodes = [61,62,63,65]
+    tpaDgnsCodes = ["Z9282"]
+    tpaPrcdrCodes = ["3E03317"]
+
+    tpaIpDrgCondition = '(F.col("DRG_CD").isin(tpaDrgCodes))'
+
+    tpaIpPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(tpaPrcdrCodes))' for x in range(1,26)) +')'
+
+    tpaIpDgnsCondition = '(' + '|'.join('(F.col(' + f'"ICD_DGNS_CD{x}"' + ').isin(tpaDgnsCodes))' for x in range(1,26)) +')'
+
+    # inpatient condition
+    tpaIpCondition = '(' + tpaIpDrgCondition + '|' + tpaIpPrcdrCondition + '|' + tpaIpDgnsCondition + ')'
+
+    baseDF = baseDF.withColumn("tpaIpClaim",
+                               F.when(eval(tpaIpCondition),1) # 1 if tpa was done during visit
+                                .otherwise(0))
+
+    return baseDF
+
+
+
+
+
+
+
+
+
+
+
