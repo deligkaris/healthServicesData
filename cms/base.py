@@ -80,4 +80,15 @@ def getStrokes(baseDF):
 
     return baseDF
 
+def getOhProviders(baseDF):
+
+    # ohio is code 36, SSA code, https://resdac.org/cms-data/variables/state-code-claim-ssa
+    ohProviderCondition = '(F.col("PRSTATE")==36)'
+
+    baseDF = baseDF.withColumn("ohProvider",
+                               F.when(eval(ohProviderCondition), 1)
+                                .otherwise(0))
+
+    return baseDF
+            
 
