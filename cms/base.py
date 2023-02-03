@@ -163,7 +163,7 @@ def getEvtClaim(baseDF):
 
     return baseDF
 
-def getTpaClaim(baseDF):
+def getTpaClaim(baseDF, inpatient=True):
 
     # tPA can take place in either outpatient or inpatient setting
     # however, in an efficient health care world, tPA would be administered at the outpatient setting
@@ -176,17 +176,19 @@ def getTpaClaim(baseDF):
     tpaDgnsCodes = ["Z9282"]
     tpaPrcdrCodes = ["3E03317"]
 
-    tpaIpDrgCondition = '(F.col("DRG_CD").isin(tpaDrgCodes))'
+    tpaDrgCondition = '(F.col("DRG_CD").isin(tpaDrgCodes))'
 
-    tpaIpPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(tpaPrcdrCodes))' for x in range(1,26)) +')'
+    tpaPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(tpaPrcdrCodes))' for x in range(1,26)) +')'
 
-    tpaIpDgnsCondition = '(' + '|'.join('(F.col(' + f'"ICD_DGNS_CD{x}"' + ').isin(tpaDgnsCodes))' for x in range(1,26)) +')'
+    tpaDgnsCondition = '(' + '|'.join('(F.col(' + f'"ICD_DGNS_CD{x}"' + ').isin(tpaDgnsCodes))' for x in range(1,26)) +')'
 
-    # inpatient condition
-    tpaIpCondition = '(' + tpaIpDrgCondition + '|' + tpaIpPrcdrCondition + '|' + tpaIpDgnsCondition + ')'
+    if (inpatient):
+        tpaCondition = '(' + tpaDrgCondition + '|' + tpaPrcdrCondition + '|' + tpaDgnsCondition + ')' # inpatient condition
+    else:
+        tpaCondition = tpaPrcdrCondition # outpatient condition
 
-    baseDF = baseDF.withColumn("tpaIpClaim",
-                               F.when(eval(tpaIpCondition),1) # 1 if tpa was done during visit
+    baseDF = baseDF.withColumn("tpaClaim",
+                               F.when(eval(tpaCondition),1) # 1 if tpa was done during visit
                                 .otherwise(0))
 
     return baseDF
