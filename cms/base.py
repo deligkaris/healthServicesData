@@ -82,6 +82,7 @@ def getStrokes(baseDF):
 
 def getOhProviders(baseDF):
 
+    # keep providers in OH (PRSTATE)
     # ohio is code 36, SSA code, https://resdac.org/cms-data/variables/state-code-claim-ssa
     ohProviderCondition = '(F.col("PRSTATE")==36)'
 
@@ -91,4 +92,28 @@ def getOhProviders(baseDF):
 
     return baseDF
             
+def getFirstClaim(baseDF):
 
+    # find the first claims for each beneficiary
+    # limitation: our data start on yearStart, so we cannot really know when all beneficiaries had their first claim
+
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+
+    #find day the first stroke occured
+    baseDF = baseDF.withColumn("firstADMSN_DT_DAY",
+                                F.min(F.col("ADMSN_DT_DAY")).over(eachDsysrtky))
+
+    #and mark it/them (could be more than 1)
+    baseDF = baseDF.withColumn("firstClaim",
+                                F.when(F.col("ADMSN_DT_DAY")==F.col("firstADMSN_DT_DAY"),1)
+                                 .otherwise(0))
+
+    #a fairly small portion will have more than 1 claim on the same day, keep only those that include exactly 1 claim on the first stroke
+    baseDF = (baseDF.withColumn("firstClaimSum",
+                               F.sum(F.col("firstClaim")).over(eachDsysrtky))
+                     .filter(
+                               F.col("firstClaimSum")<=1))
+
+    baseDF = baseDF.drop("firstClaimSum") #no longer needed
+
+    return baseDF
