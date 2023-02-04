@@ -193,8 +193,22 @@ def getTpaClaim(baseDF, inpatient=True):
 
     return baseDF
 
+def getBeneficiaryInfo(baseDF,mbsfDF):
 
+    # county codes can be an issue because MBSF includes a county code for mailing address and 12 county codes 
+    # for each month, need to decide at the beginning which county code to use for each patient
 
+    baseDF = baseDF.join( 
+                         mbsfDF
+                             .select(
+                                F.col("DSYSRTKY"),F.col("SEX"),F.col("RACE"),F.col("AGE"),
+                                F.concat(
+                                    F.col("STATE_CD").substr(1,2),
+                                    F.format_string("%03d",F.col("CNTY_CD"))).alias("STCNTY_CD")),
+                         on = ["DSYSRTKY"],
+                         how = "inner")
+
+    return baseDF
 
 
 
