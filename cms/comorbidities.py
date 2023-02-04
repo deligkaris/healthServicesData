@@ -128,7 +128,7 @@ def getCodesRegexp(codesDict):
     
     return codesRegexp
 
-def getConditionsFromBase(baseDF,inpatient=True,conditionsList,codesRegexp):
+def getConditionsFromBase(baseDF,conditionsList,codesRegexp,inpatient=True):
 
     maxCutoff = 0 if inpatient else 1
 
@@ -201,8 +201,8 @@ def getConditions(outpatientBaseDF,inpatientBaseDF,method="Glasheen2019"):
 
     codesRegexp = getCodesRegexp(codesDict)
  
-    conditionsInpatient = getConditionsFromBase(inpatientBaseDF,inpatient=True,conditionsList,codesRegexp)
-    conditionsOutpatient = getConditionsFromBase(outpatientBaseDF,inpatient=False,conditionsList,codesRegexp)
+    conditionsInpatient = getConditionsFromBase(inpatientBaseDF,conditionsList,codesRegexp,inpatient=True)
+    conditionsOutpatient = getConditionsFromBase(outpatientBaseDF,conditionsList,codesRegexp, inpatient=False)
 
     # combine comorbidities from all inpatient and outpatient claims
     conditions = conditionsOutpatient.union(conditionsInpatient)
