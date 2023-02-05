@@ -1,7 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-def getAdmissionDates(baseDF):
+def get_admission_dates(baseDF):
 
     baseDF = baseDF.withColumn( "ADMSN_DT_DAYOFYEAR", 
                                 F.date_format(
@@ -32,7 +32,7 @@ def getAdmissionDates(baseDF):
 
     return baseDF
 
-def getThroughDates(baseDF):
+def get_through_dates(baseDF):
 
     baseDF = baseDF.withColumn( "THRU_DT_DAYOFYEAR", 
                                 F.date_format(
@@ -63,7 +63,7 @@ def getThroughDates(baseDF):
 
     return baseDF
 
-def getStrokes(baseDF):
+def get_strokes(baseDF):
 
     # PRNCPAL_DGNS_CD: diagnosis, condition problem or other reason for the admission/encounter/visit to 
     # be chiefly responsible for the services, redundantly stored as ICD_DGNS_CD1
@@ -80,7 +80,7 @@ def getStrokes(baseDF):
 
     return baseDF
 
-def getOhProviders(baseDF):
+def get_oh_providers(baseDF):
 
     # keep providers in OH (PRSTATE)
     # ohio is code 36, SSA code, https://resdac.org/cms-data/variables/state-code-claim-ssa
@@ -92,7 +92,7 @@ def getOhProviders(baseDF):
 
     return baseDF
             
-def getFirstClaim(baseDF):
+def get_first_claim(baseDF):
 
     # find the first claims for each beneficiary
     # limitation: our data start on yearStart, so we cannot really know when all beneficiaries had their first claim
@@ -118,7 +118,7 @@ def getFirstClaim(baseDF):
 
     return baseDF
 
-def getProviderName(baseDF, cmsProviderDF):
+def get_provider_name(baseDF, cmsProviderDF):
 
     baseDF = baseDF.join(
                       cmsProviderDF.select(
@@ -131,7 +131,7 @@ def getProviderName(baseDF, cmsProviderDF):
 
     return baseDF
 
-def getOsuClaim(baseDF):
+def get_osu_claim(baseDF):
 
     osuNpi = ["1447359997"]  # set the NPI(s) I will use for OSU
 
@@ -144,7 +144,7 @@ def getOsuClaim(baseDF):
 
     return baseDF
 
-def getEvtClaim(baseDF):
+def get_evt_claim(baseDF):
 
     # EVT takes place only in inpatient settings, EVT events are found on base claim file, not in the revenue center
     evtDrgCodes=[23,24]
@@ -163,7 +163,7 @@ def getEvtClaim(baseDF):
 
     return baseDF
 
-def getTpaClaim(baseDF, inpatient=True):
+def get_tpa_claim(baseDF, inpatient=True):
 
     # tPA can take place in either outpatient or inpatient setting
     # however, in an efficient health care world, tPA would be administered at the outpatient setting
@@ -193,7 +193,7 @@ def getTpaClaim(baseDF, inpatient=True):
 
     return baseDF
 
-def getBeneficiaryInfo(baseDF,mbsfDF):
+def get_beneficiary_info(baseDF,mbsfDF):
 
     # county codes can be an issue because MBSF includes a county code for mailing address and 12 county codes 
     # for each month, need to decide at the beginning which county code to use for each patient

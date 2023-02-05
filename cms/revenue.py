@@ -1,7 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-def getEdClaims(revenueDF):
+def get_ed_claims(revenueDF):
 
     # https://resdac.org/articles/how-identify-hospital-claims-emergency-room-visits-medicare-claims-data
     # Claims in the Outpatient and Inpatient files are identified via Revenue Center Code 
@@ -35,7 +35,7 @@ def getEdClaims(revenueDF):
 
     return revenueDF
 
-def getMriClaims(revenueDF):
+def get_mri_claims(revenueDF):
 
     revenueDF = revenueDF.withColumn("mriClaim",
                                      F.when( (F.col("REV_CNTR")>= 610) & (F.col("REV_CNTR") <= 619) ,1)
@@ -57,7 +57,7 @@ def getMriClaims(revenueDF):
 
     return revenueDF
 
-def getCtClaims(revenueDF):
+def get_ct_claims(revenueDF):
 
     revenueDF = revenueDF.withColumn("ctClaim",
                                     F.when( (F.col("REV_CNTR")>= 350) & (F.col("REV_CNTR") <= 359) ,1)

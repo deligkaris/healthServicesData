@@ -1,7 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-def getCodes(method="Glasheen2019"):
+def get_codes(method="Glasheen2019"):
 
     #dictionary with conditions and their codes based on Glasheen2019 or Quan2005
     #codes with an X at the end: X can be any number (only initial part of code must match the claim code)
@@ -101,7 +101,7 @@ def getCodes(method="Glasheen2019"):
 
     return codesDict
 
-def getCodesRegexp(codesDict):
+def get_codes_regexp(codesDict):
 
     conditionsList = list(codesDict.keys()) # get the conditions
 
@@ -128,7 +128,7 @@ def getCodesRegexp(codesDict):
     
     return codesRegexp
 
-def getConditionsFromBase(baseDF,conditionsList,codesRegexp,inpatient=True):
+def get_conditions_from_base(baseDF,conditionsList,codesRegexp,inpatient=True):
 
     maxCutoff = 0 if inpatient else 1
 
@@ -193,7 +193,7 @@ def getConditionsFromBase(baseDF,conditionsList,codesRegexp,inpatient=True):
     return conditionsFromBase
 
 #note: method Quan2005 IS NOT fully implemented
-def getConditions(outpatientBaseDF,inpatientBaseDF,method="Glasheen2019"):
+def get_conditions(outpatientBaseDF,inpatientBaseDF,method="Glasheen2019"):
 
     codesDict = getCodes(method)
 

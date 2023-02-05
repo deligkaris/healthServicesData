@@ -1,7 +1,7 @@
 import pyspark.sql.functions as F
 
 # rename the census codes to something more understandable
-def renameColumns(censusDF): 
+def rename_columns(censusDF): 
 
     censusDF = (censusDF
                     .withColumnRenamed("DP03_0062E","medianHouseholdIncome")
@@ -15,7 +15,7 @@ def renameColumns(censusDF):
     return censusDF
 
 # find population density (in 1000 citizens per square mile of land)
-def getPopulationDensity(censusDF, gazetteerDF):
+def get_population_density(censusDF, gazetteerDF):
 
     # include the county land area in square miles
     censusDF = censusDF.join(
