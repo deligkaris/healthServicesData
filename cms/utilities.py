@@ -22,11 +22,11 @@ def get_filename_dicts(pathDenom, pathOut, pathIn, yearInitial, yearFinal):
 def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inClaimsFilenames, inRevenueFilenames):
 
     #assume the worst...that each type of file includes claims from different years
-    outClaimsYears = list(outClaimsFilenames.keys()).sort()
-    outRevenueYears = list(outRevenueFilenames.keys()).sort()
-    inClaimsYears = list(inClaimsFilenames.keys()).sort()
-    inRevenueYears = list(inRevenueFilenames.keys()).sort()
-    mbsfYears = list(mbsfFilenames.keys()).sort()
+    outClaimsYears = sorted(list(outClaimsFilenames.keys()))
+    outRevenueYears = sorted(list(outRevenueFilenames.keys()))
+    inClaimsYears = sorted(list(inClaimsFilenames.keys()))
+    inRevenueYears = sorted(list(inRevenueFilenames.keys()))
+    mbsfYears = sorted(list(mbsfFilenames.keys()))
 
     # PySpark defaults to reading and writing in the Parquet format
     # spark.read.parquet maps to spark.read.format('parquet').load()
