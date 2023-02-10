@@ -56,7 +56,7 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
         mbsfDict[f'{iYear}'] = spark.read.parquet(mbsfFilenames[f'{iYear}'])
     
     # merge all previous years in one dataframe
-    outClaims = outDict[outClaimsYears[0]] #initialize here
+    outClaims = outClaimsDict[outClaimsYears[0]] #initialize here
     outRevenue = outRevenueDict[outRevenueYears[0]]
     inClaims = inClaimsDict[inClaimsYears[0]]
     inRevenue = inRevenueDict[inRevenueYears[0]]
