@@ -19,7 +19,7 @@ def get_filename_dicts(pathDenom, pathOut, pathIn, yearInitial, yearFinal):
 
     return (mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inClaimsFilenames, inRevenueFilenames)
 
-def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inClaimsFilenames, inRevenueFilenames)
+def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inClaimsFilenames, inRevenueFilenames):
 
     #assume the worst...that each type of file includes claims from different years
     outClaimsYears = list(outClaimsFilenames.keys()).sort()
