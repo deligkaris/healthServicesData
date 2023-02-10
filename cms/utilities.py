@@ -72,12 +72,12 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
         for iYear in inClaimsYears[1:]: 
             inClaims = inClaims.union(inClaimsDict[f'{iYear}']) #and then do union with the rest
 
-     if (len(inRevenueYears) > 1):
-        for iYear in inRevenueYears[1:]:
-            inRevenue = inRevenue.union(inRevenueDict[f'{iYear}']) #and then do union with the rest
+    if (len(inRevenueYears) > 1):
+       for iYear in inRevenueYears[1:]:
+           inRevenue = inRevenue.union(inRevenueDict[f'{iYear}']) #and then do union with the rest
 
-     if (len(mbsfYears) > 1):
-        for iYear in mbsfYears[1:]:
-            mbsf = mbsf.union(mbsfDict[f'{iYear}']) #and then do union with the rest
+    if (len(mbsfYears) > 1):
+       for iYear in mbsfYears[1:]:
+           mbsf = mbsf.union(mbsfDict[f'{iYear}']) #and then do union with the rest
 
     return(mbsf, outClaims, outRevenue, inClaims, inRevenue)
