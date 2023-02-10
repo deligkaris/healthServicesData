@@ -9,13 +9,13 @@ def get_filename_dicts(pathDenom, pathOut, pathIn, yearInitial, yearFinal):
     inRevenueFilenames = {}
     mbsfFilenames = {}
 
-        #all filenames will include their absolute paths
-        for iYear in range(yearInitial,yearFinal+1): #remember range does not include the last point
-            outClaimsFilenames[f'{iYear}'] = pathOut + f"/out_claimsk_{iYear}.parquet"
-            outRevenueFilenames[f'{iYear}'] = pathOut + f"/out_revenuek_{iYear}.parquet"
-            inClaimsFilenames[f'{iYear}'] = pathIn + f"/inp_claimsk_{iYear}.parquet" 
-            inRevenueFilenames[f'{iYear}'] = pathIn + f"/inp_revenuek_{iYear}.parquet"
-            mbsfFilenames[f'{iYear}'] = pathDenom + f"/mbsf_{iYear}.parquet"       
+    #all filenames will include their absolute paths
+    for iYear in range(yearInitial,yearFinal+1): #remember range does not include the last point
+        outClaimsFilenames[f'{iYear}'] = pathOut + f"/out_claimsk_{iYear}.parquet"
+        outRevenueFilenames[f'{iYear}'] = pathOut + f"/out_revenuek_{iYear}.parquet"
+        inClaimsFilenames[f'{iYear}'] = pathIn + f"/inp_claimsk_{iYear}.parquet" 
+        inRevenueFilenames[f'{iYear}'] = pathIn + f"/inp_revenuek_{iYear}.parquet"
+        mbsfFilenames[f'{iYear}'] = pathDenom + f"/mbsf_{iYear}.parquet"       
 
     return (mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inClaimsFilenames, inRevenueFilenames)
 
