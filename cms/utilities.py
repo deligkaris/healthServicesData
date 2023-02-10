@@ -38,8 +38,7 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
     inRevenueDict={}
     mbsfDict={}
 
-    print(outClaimsYears, outClaimsFilenames.keys())
-
+    #read all data and put them in dictionary
     for iYear in outClaimsYears:
         outClaimsDict[f'{iYear}'] = spark.read.parquet(outClaimsFilenames[f'{iYear}'])
 
