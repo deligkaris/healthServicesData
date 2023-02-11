@@ -56,3 +56,10 @@ def read_data(spark,
                        .csv(censusGazetteer2020Filename, header=True))
 
      return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, census, gazetteer)
+
+def get_cbus_metro_ssa_counties(x):
+
+    # definition of columbus metro area counties according to US Census bureau 
+    # source: https://obamawhitehouse.archives.gov/sites/default/files/omb/bulletins/2013/b13-01.pdf (page 29)
+    # city of Columbus may have a different definition
+    return ["36250", "36210", "36230", "36460", "36500", "36660", "36810", "36650", "36600","36380"]

@@ -1,7 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-def get_admission_dates(baseDF):
+def add_admission_date_info(baseDF):
 
     baseDF = baseDF.withColumn( "ADMSN_DT_DAYOFYEAR", 
                                 F.date_format(
@@ -32,7 +32,7 @@ def get_admission_dates(baseDF):
 
     return baseDF
 
-def get_through_dates(baseDF):
+def add_through_date_info(baseDF):
 
     baseDF = baseDF.withColumn( "THRU_DT_DAYOFYEAR", 
                                 F.date_format(
@@ -63,7 +63,7 @@ def get_through_dates(baseDF):
 
     return baseDF
 
-def get_strokes(baseDF):
+def add_stroke(baseDF):
 
     # PRNCPAL_DGNS_CD: diagnosis, condition problem or other reason for the admission/encounter/visit to 
     # be chiefly responsible for the services, redundantly stored as ICD_DGNS_CD1
@@ -72,7 +72,7 @@ def get_strokes(baseDF):
     # which suggests that the ICD_DGNS_CDs are after evaluation, therefore ICD_DGNS_CDs are definitely not rule-out 
     # JB: well, you can never be certain that they are not rule-out, but the principal diagnostic code for stroke has been validated
 
-    baseDF = baseDF.withColumn("strokeClaim",
+    baseDF = baseDF.withColumn("stroke",
                               # ^I63[\d]: beginning of string I63 matches 0 or more digit characters 0-9
                               # I63 cerebral infraction
                               F.when((F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I63[\d]*',0) !=''), 1)
@@ -80,7 +80,7 @@ def get_strokes(baseDF):
 
     return baseDF
 
-def get_oh_providers(baseDF):
+def add_ohProvider(baseDF):
 
     # keep providers in OH (PRSTATE)
     # ohio is code 36, SSA code, https://resdac.org/cms-data/variables/state-code-claim-ssa
@@ -92,7 +92,7 @@ def get_oh_providers(baseDF):
 
     return baseDF
             
-def get_first_claim(baseDF):
+def add_firstClaim(baseDF):
 
     # find the first claims for each beneficiary
     # limitation: our data start on yearStart, so we cannot really know when all beneficiaries had their first claim
@@ -118,11 +118,11 @@ def get_first_claim(baseDF):
 
     return baseDF
 
-def get_provider_name(baseDF, cmsProviderDF):
+def add_providerName(baseDF, cmsProviderDF):
 
     baseDF = baseDF.join(
                       cmsProviderDF.select(
-                          F.col("NPI"),F.col("Provider Organization Name (Legal Business Name)").alias("ProviderName")),
+                          F.col("NPI"),F.col("Provider Organization Name (Legal Business Name)").alias("providerName")),
                       on = [F.col("ORGNPINM") == F.col("NPI")],
                       how = "inner")
 
@@ -131,20 +131,20 @@ def get_provider_name(baseDF, cmsProviderDF):
 
     return baseDF
 
-def get_osu_claim(baseDF):
+def add_osu(baseDF):
 
     osuNpi = ["1447359997"]  # set the NPI(s) I will use for OSU
 
     osuCondition = '(F.col("ORGNPINM").isin(osuNpi))' # do NOT forget the parenthesis!!
 
     # add a column to indicate which claims were at OSU
-    baseDF = baseDF.withColumn("osuClaim", 
+    baseDF = baseDF.withColumn("osu", 
                                F.when(eval(osuCondition) ,1) #set them to true
                                 .otherwise(0)) #otherwise false
 
     return baseDF
 
-def get_evt_claim(baseDF):
+def add_evt(baseDF):
 
     # EVT takes place only in inpatient settings, EVT events are found on base claim file, not in the revenue center
     evtDrgCodes=[23,24]
@@ -157,13 +157,17 @@ def get_evt_claim(baseDF):
     evtCondition = '(' + evtDrgCondition + '|' + evtPrcdrCondition + ')' # do NOT forget the parenthesis!!!
 
     # add a column to indicate which patients with stroke had an EVT
-    baseDF = baseDF.withColumn("evtClaim", 
+    baseDF = baseDF.withColumn("evt", 
                                F.when(eval(evtCondition) ,1) #set them to true
                                 .otherwise(0)) #otherwise false
 
     return baseDF
 
-def get_tpa_claim(baseDF, inpatient=True):
+def add_evtOsu(baseDF):
+
+     return baseDF.withColumn("evtOsu", F.col("osu")*F.col("evt"))
+
+def add_tpa(baseDF, inpatient=True):
 
     # tPA can take place in either outpatient or inpatient setting
     # however, in an efficient health care world, tPA would be administered at the outpatient setting
@@ -187,13 +191,17 @@ def get_tpa_claim(baseDF, inpatient=True):
     else:
         tpaCondition = tpaPrcdrCondition # outpatient condition
 
-    baseDF = baseDF.withColumn("tpaClaim",
+    baseDF = baseDF.withColumn("tpa",
                                F.when(eval(tpaCondition),1) # 1 if tpa was done during visit
                                 .otherwise(0))
 
     return baseDF
 
-def get_beneficiary_info(baseDF,mbsfDF):
+def add_tpaOsu(baseDF):
+
+    return baseDF.withColumn("tpaOsu", F.col("osu")*F.col("tpa"))
+
+def add_beneficiary_info(baseDF,mbsfDF):
 
     # county codes can be an issue because MBSF includes a county code for mailing address and 12 county codes 
     # for each month, need to decide at the beginning which county code to use for each patient

@@ -1,13 +1,13 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-def get_ed_claims(revenueDF):
+def add_ed(revenueDF):
 
     # https://resdac.org/articles/how-identify-hospital-claims-emergency-room-visits-medicare-claims-data
     # Claims in the Outpatient and Inpatient files are identified via Revenue Center Code 
     # values of 0450-0459 (Emergency room) or 0981 (Professional fees-Emergency room).
 
-    revenueDF = revenueDF.withColumn("edClaim",
+    revenueDF = revenueDF.withColumn("ed",
                                      F.when( 
                                         (F.col("REV_CNTR")>= 450) & (F.col("REV_CNTR") <= 459) ,1)
                                       .when( 
@@ -16,8 +16,8 @@ def get_ed_claims(revenueDF):
 
     eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
 
-    revenueDF = revenueDF.withColumn("edClaim",
-                                     F.max(F.col("edClaim")).over(eachDsysrtkyAndClaim))
+    revenueDF = revenueDF.withColumn("ed",
+                                     F.max(F.col("ed")).over(eachDsysrtkyAndClaim))
 
     # this is another approach where I summarize the records and then return a summary, for now I prefer to do the summary in the notebook as needed
     # here we collapse all revenue center records that are part of the same claim to a single revenue center 
@@ -35,16 +35,16 @@ def get_ed_claims(revenueDF):
 
     return revenueDF
 
-def get_mri_claims(revenueDF):
+def add_mri(revenueDF):
 
-    revenueDF = revenueDF.withColumn("mriClaim",
+    revenueDF = revenueDF.withColumn("mri",
                                      F.when( (F.col("REV_CNTR")>= 610) & (F.col("REV_CNTR") <= 619) ,1)
                                       .otherwise(0))
 
     eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
 
-    revenueDF = revenueDF.withColumn("mriClaim",
-                                     F.max(F.col("mriClaim")).over(eachDsysrtkyAndClaim))
+    revenueDF = revenueDF.withColumn("mri",
+                                     F.max(F.col("mri")).over(eachDsysrtkyAndClaim))
 
     #revenueSummaryDF = (revenueDF
     #                      .select(
@@ -57,15 +57,15 @@ def get_mri_claims(revenueDF):
 
     return revenueDF
 
-def get_ct_claims(revenueDF):
+def add_ct(revenueDF):
 
-    revenueDF = revenueDF.withColumn("ctClaim",
+    revenueDF = revenueDF.withColumn("ct",
                                     F.when( (F.col("REV_CNTR")>= 350) & (F.col("REV_CNTR") <= 359) ,1)
                                      .otherwise(0))
     eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
 
-    revenueDF = revenueDF.withColumn("ctClaim",
-                                     F.max(F.col("ctClaim")).over(eachDsysrtkyAndClaim))
+    revenueDF = revenueDF.withColumn("ct",
+                                     F.max(F.col("ct")).over(eachDsysrtkyAndClaim))
 
     #revenueSummaryDF = (revenueDF
     #                      .select(

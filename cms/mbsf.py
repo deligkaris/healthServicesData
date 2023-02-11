@@ -1,7 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-def getEnrollment(mbsfDF):
+def add_enrollment(mbsfDF):
 	
     buyInList = list(map(lambda x: f"BUYIN{x}",range(1,13))) # ['BUYIN1','BUYIN2',...'BUYIN12']
 
@@ -43,7 +43,7 @@ def getEnrollment(mbsfDF):
 
     return mbsfDF
 
-def keepContinuousCoverage(mbsfDF):
+def filter_continuous_coverage(mbsfDF):
 
     #for every beneficiary, order their year of FFS coverage
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
@@ -88,7 +88,7 @@ def keepContinuousCoverage(mbsfDF):
 
     return mbsfDF
 
-def getOhResidency(mbsfDF):
+def add_oh_residency(mbsfDF):
 
     # see if there was any month where beneficiary was in OH (STATE_CNTY_CD)
     # see if they were in OH based on mailing address, Ohio is code 36
