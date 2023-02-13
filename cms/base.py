@@ -232,9 +232,57 @@ def add_fipsCounty(baseDF, cbsaDF):
 
     return baseDF
 
+def add_regional_info(baseDF, censusDF):
 
+    baseDF = (baseDF.join(
+                           censusDF
+                               .select(
+                                   F.col("fipscounty"),
+                                   F.col("populationDensity"),
+                                   F.col("bsOrHigher"),
+                                   F.col("medianHouseholdIncome"),
+                                   F.col("unemploymentRate")),
+                           on=["fipscounty"],
+                           how="left"))
 
+    return baseDF
 
+def add_regional_info_from_ers(baseDF,ersPeopleDF, ersJobsDF, ersIncomeDF):
 
+     #if you want to use usda ers data for the regional factors
 
+     baseDF = (baseDF.join(
+                           ersPeopleDF
+                               .select(
+                                   F.col("FIPS"),
+                                   F.col("PopDensity2010"),F.col("Ed5CollegePlusPct")),
+                            on=[F.col("FIPS")==F.col("fipscounty")],
+                            how="left"))
+
+     #drop the duplicate column
+     baseDF = baseDF.drop(F.col("FIPS"))
+
+     baseDF = (baseDF.join(
+                           ersJobsDF
+                               .select(
+                                   F.col("FIPS"),
+                                   F.col("UnempRate2019")),
+                            on=[F.col("FIPS")==F.col("fipscounty")],
+                            how="left"))
+
+     #drop the duplicate column
+     baseDF = baseDF.drop(F.col("FIPS"))
+
+     baseDF = (baseDF.join(
+                           ersIncomeDF
+                               .select(
+                                   F.col("FIPS"),
+                                   F.col("Median_HH_Inc_ACS")),
+                           on=[F.col("FIPS")==F.col("fipscounty")],
+                           how="left"))
+
+     #drop the duplicate column
+     baseDF = baseDF.drop(F.col("FIPS"))
+
+     return baseDF
 
