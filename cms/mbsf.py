@@ -1,8 +1,8 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-def add_enrollment(mbsfDF):
-	
+def add_allPartBEligible(mbsfDF):
+
     buyInList = list(map(lambda x: f"BUYIN{x}",range(1,13))) # ['BUYIN1','BUYIN2',...'BUYIN12']
 
     # if patients were enrolled in any of these, then they did not have Part B during the entire year
@@ -17,14 +17,18 @@ def add_enrollment(mbsfDF):
     buyInCondition = '(' + '|'.join('F.col(' + f'"{x}"' + ').isin(notPartBList)' for x in buyInList) +')'
 
     # add a column to indicate who had Part B and who did not at any time during the year
-    mbsfDF=mbsfDF.withColumn("allPartBEligible", 
+    mbsfDF=mbsfDF.withColumn("allPartBEligible",
                                   F.when(eval(buyInCondition),0)
                                    .otherwise(1))
 
     # this is doing exactly what the previous is doing
     #mbsf = mbsf.withColumn("allPartBEligibleTEST", 
-    #                			F.when(F.col("B_MO_CNT")==12,1)
-    #                			 .otherwise(0))
+    #                                   F.when(F.col("B_MO_CNT")==12,1)
+    #                                    .otherwise(0))
+
+    return mbsfDF
+
+def add_noHMO(mbsfDF):
 
     # enrollment summaries, *allows unpacking the list
     hmoIndList = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
@@ -40,6 +44,20 @@ def add_enrollment(mbsfDF):
     mbsfDF = mbsfDF.withColumn("noHMO", 
                                 F.when(eval(hmoIndCondition),0) #set them to false, as CMS definitely did not process their claims
                                  .otherwise(1)) #otherwise True
+
+    return mbsfDF
+
+def add_enrollment_info(mbsfDF):
+        
+    mbsfDF = add_allPartBEligible(mbsfDF)
+    mbsfDF = add_noHMO(mbsfDF)
+
+    return mbsfDF
+
+def filter_FFS(mbsfDF):
+
+    mbsfDF = add_enrollment_info(mbsfDF)
+    mbsfDF = mbsfDF.filter(F.col("noHMO")==1).filter(F.col("allPartBEligible")==1)
 
     return mbsfDF
 
@@ -88,7 +106,7 @@ def filter_continuous_coverage(mbsfDF):
 
     return mbsfDF
 
-def add_oh_residency(mbsfDF):
+def add_ohResident(mbsfDF):
 
     # see if there was any month where beneficiary was in OH (STATE_CNTY_CD)
     # see if they were in OH based on mailing address, Ohio is code 36
