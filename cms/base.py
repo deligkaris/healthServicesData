@@ -223,7 +223,7 @@ def add_fipsCounty(baseDF, cbsaDF):
     baseDF = baseDF.join(
                          cbsaDF
                             .select(
-                                F.col("ssaCounty"),F.col("fipsCounty"))
+                                F.col("ssaCounty"),F.col("fipsCounty")),
                          on=[F.col("ssaCounty")==F.col("STCNTY_CD")],
                          how="inner")
 
