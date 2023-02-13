@@ -83,17 +83,4 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
 
     return(mbsf, outClaims, outRevenue, inClaims, inRevenue)
 
-def add_fipsCounty_from_ssa(baseDF, cbsaDF):
-
-    baseDF = baseDF.join(
-                         cbsaDF
-                            .select(
-                                F.col("ssacounty"),F.col("fipscounty").alias("fipsCounty),
-                         on=[F.col("ssacounty")==F.col("STCNTY_CD")],
-                         how="inner")
-
-    #drop the duplicate ssacounty
-    baseDF = baseDF.drop(F.col("ssacounty"))
-
-    return baseDF
 
