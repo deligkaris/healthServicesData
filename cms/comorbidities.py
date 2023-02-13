@@ -195,14 +195,14 @@ def get_conditions_from_base(baseDF,conditionsList,codesRegexp,inpatient=True):
 #note: method Quan2005 IS NOT fully implemented
 def get_conditions(outpatientBaseDF,inpatientBaseDF,method="Glasheen2019"):
 
-    codesDict = getCodes(method)
+    codesDict = get_codes(method)
 
     conditionsList = list(codesDict.keys()) #get the conditions 
 
-    codesRegexp = getCodesRegexp(codesDict)
+    codesRegexp = get_codes_regexp(codesDict)
  
-    conditionsInpatient = getConditionsFromBase(inpatientBaseDF,conditionsList,codesRegexp,inpatient=True)
-    conditionsOutpatient = getConditionsFromBase(outpatientBaseDF,conditionsList,codesRegexp, inpatient=False)
+    conditionsInpatient = get_conditions_from_base(inpatientBaseDF,conditionsList,codesRegexp,inpatient=True)
+    conditionsOutpatient = get_conditions_from_base(outpatientBaseDF,conditionsList,codesRegexp, inpatient=False)
 
     # combine comorbidities from all inpatient and outpatient claims
     conditions = conditionsOutpatient.union(conditionsInpatient)
