@@ -15,7 +15,7 @@ def rename_columns(censusDF):
     return censusDF
 
 # find population density (in 1000 citizens per square mile of land)
-def add_population_density(censusDF, gazetteerDF):
+def add_populationDensity(censusDF, gazetteerDF):
 
     # include the county land area in square miles
     censusDF = censusDF.join(

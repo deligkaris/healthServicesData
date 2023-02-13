@@ -57,7 +57,7 @@ def read_data(spark,
 
      return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, census, gazetteer)
 
-def get_cbus_metro_ssa_counties(x):
+def get_cbus_metro_ssa_counties():
 
     # definition of columbus metro area counties according to US Census bureau 
     # source: https://obamawhitehouse.archives.gov/sites/default/files/omb/bulletins/2013/b13-01.pdf (page 29)
