@@ -218,6 +218,19 @@ def add_beneficiary_info(baseDF,mbsfDF):
 
     return baseDF
 
+def add_fipsCounty(baseDF, cbsaDF):
+
+    baseDF = baseDF.join(
+                         cbsaDF
+                            .select(
+                                F.col("ssaCounty"),F.col("fipsCounty"),
+                         on=[F.col("ssaCounty")==F.col("STCNTY_CD")],
+                         how="inner")
+
+    #drop the duplicate ssacounty
+    baseDF = baseDF.drop(F.col("ssaCounty"))
+
+    return baseDF
 
 
 
