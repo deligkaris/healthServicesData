@@ -308,6 +308,7 @@ def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD"): #aggWhat must b
                                        100.*F.col(i+"InUnit") / F.col("total"),1))
         returnWhat = returnWhat + f'{i}InUnitPerCent'
 
+    print(*returnWhat)
     aggregateSummary = baseDF.select(*returnWhat).distinct()
 
     aggregateSummary.persist() #since a loop was involved in calculating this make it persist in memory
