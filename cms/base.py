@@ -295,17 +295,20 @@ def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD"): #aggWhat must b
 
     baseDF = baseDF.withColumn("total", #find need to find total in unit
                                F.count(F.col(aggBy)).over(eachUnit))
+    returnWhat = ("total")
 
     for i in aggWhat:
         baseDF = baseDF.withColumn(i+"InUnit", #add unit counts
                                    F.sum(
                                        F.col(i)).over(eachUnit))
+        returnWhat = returnWhat + f'{i}InUnit'
 
         baseDF = baseDF.withColumn(i+"InUnitPerCent", #add unit percentage
                                    F.round(
                                        100.*F.col(i+"InUnit") / F.col("total"),1))
+        returnWhat = returnWhat + f'{i}InUnitPerCent'
 
-    aggregateSummary = baseDF.select(*aggWhat).distinct()
+    aggregateSummary = baseDF.select(*returnWhat).distinct()
 
     aggregateSummary.persist() #since a loop was involved in calculating this make it persist in memory
     aggregateSummary.count()
