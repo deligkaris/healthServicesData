@@ -286,3 +286,29 @@ def add_regional_info_from_ers(baseDF,ersPeopleDF, ersJobsDF, ersIncomeDF):
 
      return baseDF
 
+def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD") #aggWhat must be an iterable of strings-column names
+
+    baseDF.persist() #since I will use this in a loop make it persist in memory
+    baseDF.count()
+
+    eachUnit = Window.partitionBy(aggBy)
+
+    baseDF = baseDF.withColumn("total", #find need to find total in unit
+                               F.count(F.col(aggBy)).over(eachUnit))
+
+    for i in aggWhat:
+        baseDF = baseDF.withColumn(i+"InUnit", #add unit counts
+                                   F.sum(
+                                       F.col(i)).over(eachUnit))
+
+        baseDF = baseDF.withColumn(i+"InUnitPerCent", #add unit percentage
+                                   F.round(
+                                       100.*F.col(i+"InUnit") / F.col("total"),1))
+
+    aggregateSummary = baseDF.select(*aggWhat).distinct()
+
+    aggregateSummary.persist() #since a loop was involved in calculating this make it persist in memory
+    aggregateSummary.count()
+
+    return aggregateSummary
+
