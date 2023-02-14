@@ -3,6 +3,8 @@ from pyspark.sql.window import Window
 
 def add_admission_date_info(baseDF):
 
+    #leapYears=[2016,2020,2024,2028]
+
     baseDF = baseDF.withColumn( "ADMSN_DT_DAYOFYEAR", 
                                 F.date_format(
                                      #ADMSN_DT was read as bigint, need to convert it to string that can be understood by date_format
@@ -18,7 +20,7 @@ def add_admission_date_info(baseDF):
                                 #some admissions have started in yearStart-1
                                 F.when(F.col("ADMSN_DT_YEAR")==2015 ,0)  #this should be yearStart-1
                                  .when(F.col("ADMSN_DT_YEAR")==2016 ,365) 
-                                 .when(F.col("ADMSN_DT_YEAR")==2017 ,366+366) #set them to 366 for leap years
+                                 .when(F.col("ADMSN_DT_YEAR")==2017 ,366+365) #set them to 366 for leap years
                                  .when(F.col("ADMSN_DT_YEAR")==2018 ,366+365*2)
                                  .when(F.col("ADMSN_DT_YEAR")==2019 ,366+365*3)
                                  .when(F.col("ADMSN_DT_YEAR")==2020 ,366+365*4)
@@ -49,7 +51,7 @@ def add_through_date_info(baseDF):
                                 #some admissions have started in yearStart-1
                                 F.when(F.col("THRU_DT_YEAR")==2015 ,0)  #this should be yearStart-1
                                  .when(F.col("THRU_DT_YEAR")==2016 ,365) 
-                                 .when(F.col("THRU_DT_YEAR")==2017 ,366+366) #set them to 366 for leap years
+                                 .when(F.col("THRU_DT_YEAR")==2017 ,366+365) #set them to 366 for leap years
                                  .when(F.col("THRU_DT_YEAR")==2018 ,366+365*2)
                                  .when(F.col("THRU_DT_YEAR")==2019 ,366+365*3)
                                  .when(F.col("THRU_DT_YEAR")==2020 ,366+365*4)
