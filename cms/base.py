@@ -286,7 +286,7 @@ def add_regional_info_from_ers(baseDF,ersPeopleDF, ersJobsDF, ersIncomeDF):
 
      return baseDF
 
-def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD") #aggWhat must be an iterable of strings-column names
+def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD"): #aggWhat must be an iterable of strings-column names
 
     baseDF.persist() #since I will use this in a loop make it persist in memory
     baseDF.count()
