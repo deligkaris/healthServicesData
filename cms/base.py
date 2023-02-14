@@ -232,6 +232,18 @@ def add_fipsCounty(baseDF, cbsaDF):
 
     return baseDF
 
+def add_countyName(baseDF,cbsaDF):
+
+    baseDF = baseDF.join(
+                         cbsaDF
+                            .select(F.col("countyName"),F.col("ssaCounty")),
+                         on = [F.col("ssaCounty")==F.col("STCNTY_CD")],
+                         how = "inner")
+
+    baseDF = baseDF.drop(F.col("ssaCounty"))
+
+    return(baseDF)
+
 def add_regional_info(baseDF, censusDF):
 
     baseDF = (baseDF.join(
