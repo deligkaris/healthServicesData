@@ -301,12 +301,12 @@ def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD"): #aggWhat must b
         baseDF = baseDF.withColumn(i+"InUnit", #add unit counts
                                    F.sum(
                                        F.col(i)).over(eachUnit))
-        returnWhat = returnWhat + f'{i}InUnit'
+        returnWhat = returnWhat + (f'{i}InUnit')
 
         baseDF = baseDF.withColumn(i+"InUnitPerCent", #add unit percentage
                                    F.round(
                                        100.*F.col(i+"InUnit") / F.col("total"),1))
-        returnWhat = returnWhat + f'{i}InUnitPerCent'
+        returnWhat = returnWhat + (f'{i}InUnitPerCent')
 
     print(*returnWhat)
     aggregateSummary = baseDF.select(*returnWhat).distinct()
