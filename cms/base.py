@@ -295,7 +295,7 @@ def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD"): #aggWhat must b
 
     baseDF = baseDF.withColumn("total", #find need to find total in unit
                                F.count(F.col(aggBy)).over(eachUnit))
-    returnWhat = ["total"]
+    returnWhat = [aggBy, "total"]
 
     for i in aggWhat:
         baseDF = baseDF.withColumn(i+"InUnit", #add unit counts
@@ -308,7 +308,7 @@ def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD"): #aggWhat must b
                                        100.*F.col(i+"InUnit") / F.col("total"),1))
         returnWhat = returnWhat + [f'{i}InUnitPerCent']
 
-    aggregateSummary = baseDF.select(returnWhat).distinct()
+    aggregateSummary = baseDF.select(returnWhat).distinct() #returnWhat cannot be tuple, list works
 
     aggregateSummary.persist() #since a loop was involved in calculating this make it persist in memory
     aggregateSummary.count()
