@@ -130,6 +130,11 @@ def get_codes_regexp(codesDict):
 
 def get_conditions_from_base(baseDF,conditionsList,codesRegexp,inpatient=True):
 
+    if inpatient:
+        print("Now processing the inpatient claims...")
+    else:
+        print("Now processing the outpatient claims...")
+
     maxCutoff = 0 if inpatient else 1
 
     dgnsColumnList = [f"ICD_DGNS_CD{x}" for x in range(1,26)] #all 25 DGNS columns
@@ -146,8 +151,8 @@ def get_conditions_from_base(baseDF,conditionsList,codesRegexp,inpatient=True):
     #for every condition, search the array of dgns codes and keep only the codes found in comorbidities,
     #then count their frequencies and keep the max frequency for that condition, if the max is 2 or more,
     #assign that comorbidity condition to the beneficiary
-    for iCondition in conditionsList:
-        print(iCondition)
+    for i, iCondition in enumerate(conditionsList, start=1):
+        print("Condition: ", iCondition, "...",i,"/",len(conditionsList))
     
         #some column names
         codeColumn = iCondition+"Codes"
