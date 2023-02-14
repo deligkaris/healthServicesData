@@ -118,15 +118,34 @@ def add_firstClaim(baseDF):
 
     return baseDF
 
-def add_providerName(baseDF, cmsProviderDF):
+def add_providerName(baseDF, npiProviderDF):
 
     baseDF = baseDF.join(
-                      cmsProviderDF.select(
+                      npiProviderDF.select(
                           F.col("NPI"),F.col("Provider Organization Name (Legal Business Name)").alias("providerName")),
                       on = [F.col("ORGNPINM") == F.col("NPI")],
                       how = "inner")
 
     # drop the NPI column that was just added
+    baseDF = baseDF.drop(F.col("NPI"))
+
+    return baseDF
+
+def add_providerAddress(baseDF, npiProviderDF):
+
+    baseDF = baseDF.join(
+                         npiProviderDF.select(
+                                          F.col("NPI"),
+                                          F.concat_ws(",",
+                                              F.col("Provider First Line Business Practice Location Address"),
+                                              F.col("Provider Second Line Business Practice Location Address"),
+                                              F.col("Provider Business Practice Location Address City Name"),
+                                              F.col("Provider Business Practice Location Address State Name"),
+                                              F.col("Provider Business Practice Location Address Postal Code").substr(1,5))
+                                              .alias("ProviderAddress")),
+                         on = [F.col("ORGNPINM")==F.col("NPI")],
+                         how = "inner")
+
     baseDF = baseDF.drop(F.col("NPI"))
 
     return baseDF
