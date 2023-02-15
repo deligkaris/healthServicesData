@@ -106,7 +106,7 @@ def filter_continuous_coverage(mbsfDF):
 
     return mbsfDF
 
-def add_ohResident(mbsfDF):
+def add_ohResident(mbsfDF): #also used in base.py
 
     # see if there was any month where beneficiary was in OH (STATE_CNTY_CD)
     # see if they were in OH based on mailing address, Ohio is code 36

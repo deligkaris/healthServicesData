@@ -152,7 +152,7 @@ def get_conditions_from_base(baseDF,conditionsList,codesRegexp,inpatient=True):
     #then count their frequencies and keep the max frequency for that condition, if the max is 2 or more,
     #assign that comorbidity condition to the beneficiary
     for i, iCondition in enumerate(conditionsList, start=1):
-        print("Condition: ", iCondition, "...",i,"/",len(conditionsList))
+        #print("Condition: ", iCondition, "...",i,"/",len(conditionsList)) #now this goes fast so no need to print
     
         #some column names
         codeColumn = iCondition+"Codes"
