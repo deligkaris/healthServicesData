@@ -236,8 +236,8 @@ def add_beneficiary_info(baseDF,mbsfDF):
                                 F.concat(
                                     F.col("STATE_CD").substr(1,2),
                                     F.format_string("%03d",F.col("CNTY_CD"))).alias("STCNTY_CD")),
-                         on = [F.col("baseDF.DSYSRTKY")==F.col("mbsfDF.DSYSRTKY"),
-                               F.col("ADMSN_DT_YEAR")==F.col("RFRNC_YR")],
+                         on = [ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
+                                F.col("ADMSN_DT_YEAR")==F.col("RFRNC_YR")],
                          how = "inner")
 
     return baseDF
