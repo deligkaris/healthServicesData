@@ -232,13 +232,15 @@ def add_beneficiary_info(baseDF,mbsfDF):
     baseDF = baseDF.join( 
                          mbsfDF
                              .select(
-                                F.col("DSYSRTKY"),F.col("SEX"),F.col("RACE"),F.col("AGE"),
+                                F.col("DSYSRTKY"),F.col("SEX"),F.col("RACE"),F.col("AGE"),F.col("RFRNC_YR"),
                                 F.concat(
                                     F.col("STATE_CD").substr(1,2),
                                     F.format_string("%03d",F.col("CNTY_CD"))).alias("STCNTY_CD")),
                          on = [ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
                                 F.col("ADMSN_DT_YEAR")==F.col("RFRNC_YR")],
                          how = "inner")
+
+    baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
 
     return baseDF
 
