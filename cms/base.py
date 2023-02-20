@@ -225,6 +225,7 @@ def add_tpaOsu(baseDF):
 
 def add_beneficiary_info(baseDF,mbsfDF):
 
+    # assumes baseDF includes columns from add_admission_date_info and add_through_date_info
     # county codes can be an issue because MBSF includes a county code for mailing address and 12 county codes 
     # for each month, need to decide at the beginning which county code to use for each patient
 
@@ -235,7 +236,8 @@ def add_beneficiary_info(baseDF,mbsfDF):
                                 F.concat(
                                     F.col("STATE_CD").substr(1,2),
                                     F.format_string("%03d",F.col("CNTY_CD"))).alias("STCNTY_CD")),
-                         on = ["DSYSRTKY"],
+                         on = [F.col("DSYSRTKY")==F.col("DSYSRTKY"),
+                               F.col("ADMSN_DT_YEAR")==F.col("RFRNC_YR")],
                          how = "inner")
 
     return baseDF
