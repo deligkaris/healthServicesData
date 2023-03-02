@@ -353,3 +353,26 @@ def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD"): #aggWhat must b
 
     return aggregateSummary
 
+def test_get_aggregate_summary(summaryDF):
+
+    summaryColumns = summaryDF.colRegex("`.+InUnit$`")
+
+    # check for any unreasonable results
+    for col in summaryColumns:
+        if (summaryDF.filter( F.col(col) > F.col("total") ).count() != 0):
+            print(f'F.col({col}) > F.col("total") failed')
+
+        if (summaryDF.filter( 
+                            (F.col(col).contains('None')) |
+                            (F.col(col).contains('NULL')) |
+                            (F.col(col) == '' ) |
+                            (F.col(col).isNull()) |
+                            (F.isnan(col)) ).count() != 0 ):
+            print(f'{col} includes meaningless entries')
+
+        if (summaryDF.filter( 
+                            (F.col(col) < 0 )).count() != 0 ):
+            print(f'{col} includes negative entries')
+
+
+
