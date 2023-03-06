@@ -357,11 +357,12 @@ def test_get_aggregate_summary(summaryDF):
 
     #summaryColumns = summaryDF.colRegex("`.+InUnit$`") #not working, not a list
     summaryColumns = [column for column in summaryDF.columns if column.endswith("InUnit")]
-
+    allWell = 1
     # check for any unreasonable results
     for col in summaryColumns:
         if (summaryDF.filter( F.col(col) > F.col("total") ).count() != 0):
             print(f'F.col({col}) > F.col("total") failed')
+            allWell = 0
 
         if (summaryDF.filter( 
                             (F.col(col).contains('None')) |
@@ -370,10 +371,13 @@ def test_get_aggregate_summary(summaryDF):
                             (F.col(col).isNull()) |
                             (F.isnan(col)) ).count() != 0 ):
             print(f'{col} includes meaningless entries')
+            allWell = 0
 
         if (summaryDF.filter( 
                             (F.col(col) < 0 )).count() != 0 ):
             print(f'{col} includes negative entries')
+            allWell = 0
 
-
+    if (allWell==1):
+        print("No issues found.")
 
