@@ -356,7 +356,7 @@ def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD"): #aggWhat must b
 def test_get_aggregate_summary(summaryDF):
 
     summaryColumns = summaryDF.colRegex("`.+InUnit$`")
-
+    print(summaryColumns)
     # check for any unreasonable results
     for col in summaryColumns:
         if (summaryDF.filter( F.col(col) > F.col("total") ).count() != 0):

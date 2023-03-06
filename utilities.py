@@ -24,9 +24,15 @@ def get_filename_dicts(pathToData):
 
     # US Census data
     # This is how I got the data: https://www.youtube.com/watch?v=I6r-y_GQLfo
-    # https://www.census.gov/data/developers/data-sets/acs-1year.html
+    # https://www.census.gov/data/developers/data-sets/acs-1year.html   #no I used the 5 year estimate see below
     # Exact query: 
-    # https://api.census.gov/data/2021/acs/acs1/profile?get=NAME,DP03_0062E,DP03_0009PE,DP02_0068PE,DP05_0001E&for=county:*&in=state:39
+    # https://api.census.gov/data/2021/acs/acs5/profile?get=NAME,DP03_0062E,DP03_0009PE,DP02_0068PE,DP05_0001E&for=county:*&in=state:39
+    # I think you are only seeing partial data due to the type of estimate you are viewing. The American Community Survey (ACS) has 
+    # 1-Year Estimates and 5-Year Estimates. Each type of estimate has their own table. To be included in a 1-Year Estimate Table, the geography 
+    # must have 65,000 or more people. So, to see each county in Ohio, you should view the ACS 5-Year Estimates.
+    # for examples: https://api.census.gov/data/2021/acs/acs1/profile/examples.html
+    # for the codes: https://api.census.gov/data/2021/acs/acs1/profile/variables.html
+    # https://api.census.gov/data/2021/acs/acs1/profile.html
     census2021Filename = pathToData + "/CENSUS/census-2021-oh.csv"
 
     # to calculate population density I need to use the Gazetteer file:
