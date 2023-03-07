@@ -7,7 +7,7 @@ def cast_dates_as_int(baseDF): #date fields in the dataset must be interpreted a
     columns = ["ADMSN_DT","THRU_DT"] #for now I am leaving DSCHRGDT out
 
     for iColumns in columns:
-        baseDF = baseDF.withColumn( iColumns, F.col(iColumn).cast('int'))
+        baseDF = baseDF.withColumn( iColumns, F.col(iColumns).cast('int'))
 
     return baseDF
 
