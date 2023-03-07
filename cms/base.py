@@ -2,6 +2,15 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 
+def cast_dates_as_int(baseDF): #date fields in the dataset must be interpreted as integers (and not as floats)
+
+    columns = ["ADMSN_DT","THRU_DT"] #for now I am leaving DSCHRGDT out
+
+    for iColumns in columns:
+        baseDF = baseDF.withColumn( iColumns, F.col(iColumn).cast('int'))
+
+    return baseDF
+
 def add_admission_date_info(baseDF):
 
     #leapYears=[2016,2020,2024,2028]
