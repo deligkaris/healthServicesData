@@ -38,15 +38,35 @@ def get_filename_dicts(pathToData):
     # to calculate population density I need to use the Gazetteer file:
     #  https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.2020.html
     censusGazetteer2020Filename = pathToData + "/CENSUS/2020_Gaz_counties_national.csv" #the .txt file does not work
+
+    # these data were obtained from CMS, for now just use the latest data available
+    # https://www.cms.gov/Research-Statistics-Data-and-Systems/Downloadable-Public-Use-Files/Cost-Reports/Hospital-2010-form
+    # https://data.cms.gov/provider-compliance/cost-report/hospital-provider-cost-report
+    # https://data.cms.gov/resources/hospital-provider-cost-report-data-dictionary
+    hospGme2021Filename = pathToData + '/HOSP10-REPORTS/IME_GME/IME_GME2021.CSV'
+    hospCost2018Filename = pathToData + '/HOSP10-REPORTS/COST-REPORTS/2018_CSV_2.csv'
+
+    # a CSV file that JB scraped from the CBI website: https://www.communitybenefitinsight.org
+    # has hospital identifiers + hospital size + rural/urban + location + a couple other useful variables…
+    # mostly, though, it has a bunch of financial details that aren’t terribly relevant to us. 
+    # We could link in census data to get a sense of the socioeconomic region for hospitals as well...
+    cbiHospitalsFilename = pathToData + '/COMMUNITY-BENEFIT-INSIGHT/cbiHospitals.csv' # retrieved September 30, 2022 from webpage
+    cbiDetailsFilename = pathToData + '/COMMUNITY-BENEFIT-INSIGHT/allHospitalsWithDetails.csv' # obtained from JB September 2022
  
+    # https://www.nber.org/research/data/national-provider-identifier-npi-medicare-ccn-crosswalk
+    npiMedicareXwFilename = pathMyData + "/npi_medicarexw.csv"
+
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
-            usdaErsIncomeFilename, census2021Filename, censusGazetteer2020Filename)
+            usdaErsIncomeFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
+            hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename)
 
 def read_data(spark, 
               npiFilename, 
               cbsaFilename, 
               usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, 
-              census2021Filename, censusGazetteer2020Filename):
+              census2021Filename, censusGazetteer2020Filename,
+              cbiHospitalsFilename, cbiDetailsFilename,
+              hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename):
 
      npiProviders = spark.read.csv(npiFilename, header="True") # read CMS provider information
      cbsa = spark.read.csv(cbsaFilename, header="True") # read CBSA information
@@ -61,7 +81,15 @@ def read_data(spark,
                        .option("inferSchema", "true")
                        .csv(censusGazetteer2020Filename, header=True))
 
-     return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, census, gazetteer)
+     npiMedicareXw = spark.read.csv(npiMedicareXwFilename,header="True")
+
+     hospGme2021 = spark.read.csv(hospGme2021Filename,header="True") # read HOSP cost report data
+     hospCost2018 =spark.read.csv(hospCost2018Filename,header="True")
+
+     cbiHospitals =spark.read.csv(cbiHospitalsFilename, header="True") # read CBI information
+     cbiDetails = spark.read.csv(cbiDetailsFilename, header="True") # read CBI information
+
+     return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, census, gazetteer, cbiHospitals, cbiDetails, hospGme2021, hospCost2018, npiMedicareXw)
 
 def get_cbus_metro_ssa_counties():
 
