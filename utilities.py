@@ -54,7 +54,7 @@ def get_filename_dicts(pathToData):
     cbiDetailsFilename = pathToData + '/COMMUNITY-BENEFIT-INSIGHT/allHospitalsWithDetails.csv' # obtained from JB September 2022
  
     # https://www.nber.org/research/data/national-provider-identifier-npi-medicare-ccn-crosswalk
-    npiMedicareXwFilename = pathMyData + "/npi_medicarexw.csv"
+    npiMedicareXwFilename = pathToData + "/npi_medicarexw.csv"
 
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
             usdaErsIncomeFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
