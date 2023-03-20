@@ -14,3 +14,4 @@ To do:
 - organize the two functions in cms utilities with dictionaries and loops
 - consider moving the Hospital10 cost report and GME data from utilities to cms utilities
 - consider the ability to load Hospital10 data for more than 1 year (right now I am getting the latest year available)
+- update add date info functions to work ok for more years in the future, and implement a meaningful otherwise option

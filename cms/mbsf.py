@@ -135,7 +135,58 @@ def add_ohResident(mbsfDF): #also used in base.py
 
     return mbsfDF
 
+def cast_dates_as_int(mbsfDF): #date fields in the dataset must be interpreted as integers (and not as floats)
 
+    columns = ["DEATH_DT"] 
+
+    for iColumns in columns:
+        mbsfDF = mbsfDF.withColumn( iColumns, F.col(iColumns).cast('int'))
+
+    return mbsfDF
+
+def add_death_date_info(mbsfDF):
+
+    #leapYears=[2016,2020,2024,2028]
+
+    mbsfDF = mbsfDF.withColumn( "DEATH_DT_DAYOFYEAR", 
+                              F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date
+                                  F.date_format(
+                                     #ADMSN_DT was read as bigint, need to convert it to string that can be understood by date_format
+                                     F.concat_ws('-',F.col("DEATH_DT").substr(1,4),F.col("DEATH_DT").substr(5,2),F.col("DEATH_DT").substr(7,2)), 
+                                     "D" #get the day of the year
+                                  ).cast('int'))
+                               .otherwise())
+
+    # keep the year too
+    mbsfDF = mbsfDF.withColumn( "DEATH_DT_YEAR", 
+                                F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date                              
+                                    F.col("DEATH_DT").substr(1,4).cast('int'))
+                                 .otherwise())
+
+    # find number of days from yearStart-1 to year of death -1
+    mbsfDF = mbsfDF.withColumn( "DEATH_DT_DAYSINYEARSPRIOR", 
+                                F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date
+                                    #some admissions have started in yearStart-1
+                                    F.when(F.col("DEATH_DT_YEAR")==2015 ,0)  #this should be yearStart-1
+                                     .when(F.col("DEATH_DT_YEAR")==2016 ,365) 
+                                     .when(F.col("DEATH_DT_YEAR")==2017 ,366+365) #set them to 366 for leap years
+                                     .when(F.col("DEATH_DT_YEAR")==2018 ,366+365*2)
+                                     .when(F.col("DEATH_DT_YEAR")==2019 ,366+365*3)
+                                     .when(F.col("DEATH_DT_YEAR")==2020 ,366+365*4)
+                                     .when(F.col("DEATH_DT_YEAR")==2021 ,366*2+365*4)
+                                     .when(F.col("DEATH_DT_YEAR")==2022 ,366*2+365*5)
+                                     .when(F.col("DEATH_DT_YEAR")==2023 ,366*2+365*6)
+                                     .otherwise(365)) #otherwise 365
+                                 .otherwise())
+
+    # assign a day number starting at day 1 of yearStart-1
+    mbsfDF = mbsfDF.withColumn( "DEATH_DT_DAY",
+                                F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date 
+                                    # days in years prior to admission + days in year of admission = day nunber
+                                    (F.col("DEATH_DT_DAYSINYEARSPRIOR") + F.col("DEATH_DT_DAYOFYEAR")).cast('int'))
+                                 .otherwise())
+
+    return mbsfDF
 
 
 
