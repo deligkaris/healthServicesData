@@ -154,12 +154,34 @@ def add_firstClaim(baseDF):
                                  .otherwise(0))
 
     #a fairly small portion will have more than 1 claim on the same day, keep only those that include exactly 1 claim on the first stroke
-    baseDF = (baseDF.withColumn("firstClaimSum",
-                               F.sum(F.col("firstClaim")).over(eachDsysrtky))
-                     .filter(
-                               F.col("firstClaimSum")<=1))
+    #baseDF = (baseDF.withColumn("firstClaimSum",
+    #                           F.sum(F.col("firstClaim")).over(eachDsysrtky))
+    #                 .filter(
+    #                           F.col("firstClaimSum")<=1))
 
-    baseDF = baseDF.drop("firstClaimSum") #no longer needed
+    #baseDF = baseDF.drop("firstClaimSum") #no longer needed
+
+    return baseDF
+
+def add_sameStay(baseDF):
+
+    # claims with same beneficiary, organization, and admission date as defined as one hospitalization stay
+    eachStay = Window.partitionBy(["DSYSRTKY","ORGNPINM","ADMSN_DT"])
+
+    baseDF = baseDF.withColumn("sameStay",
+                                F.when(  F.count(F.col("DSYSRTKY")).over(eachStay) > 1, 1)
+                                 .otherwise(0))
+
+    return baseDF
+
+def add_inToInTransfer(baseDF):
+
+    #inpatient -> inpatient transfer is defined as the same beneficiary having claims from two different organizations on the same day
+    eachAdmissionDate = Window.partitionBy(["DSYSRTKY","ADMSN_DT"])
+
+    baseDF = baseDF.withColumn("inToInTransfer",
+                                F.when(  F.size(F.collect_set(F.col("ORGNPINM")).over(eachAdmissionDate)) > 1, 1)
+                                 .otherwise(0))
 
     return baseDF
 
