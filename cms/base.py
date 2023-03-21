@@ -2,9 +2,11 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 
-def cast_dates_as_int(baseDF): #date fields in the dataset must be interpreted as integers (and not as floats)
+def cast_dates_as_int(baseDF, inpatient=True): #date fields in the dataset must be interpreted as integers (and not as floats)
 
     columns = ["ADMSN_DT","THRU_DT"] #for now I am leaving DSCHRGDT out
+    if inpatient: #outpatient base does not have a discharge date
+        columns = columns + ["DSCHRGDT"]
 
     for iColumns in columns:
         baseDF = baseDF.withColumn( iColumns, F.col(iColumns).cast('int'))
@@ -451,5 +453,14 @@ def add_gach(baseDF, npiProvidersDF):
 
     # the join will keep NPI as it is a different name
     baseDF = baseDF.drop(F.col("NPI"))
+
+    return baseDF
+
+def add_hospital(baseDF):
+
+    baseDF = baseDF.withColumn( "hospital",
+                                F.when(
+                                    F.col("FAC_TYPE") == 1)
+                                 .otherwise(0))
 
     return baseDF
