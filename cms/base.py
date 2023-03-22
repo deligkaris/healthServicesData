@@ -504,7 +504,7 @@ def add_cbi_info(baseDF,cbiDF):
     #so researchers can try to link between facility name and address in the POS and the NPPES file.
 
     baseDF = baseDF.join(cbiDF.select(
-                                   F.col("hospital_bed_count"), F.col("urban_location_f"), F.col("medicare_provider_number"))
+                                   F.col("hospital_bed_count"), F.col("urban_location_f"), F.col("medicare_provider_number")),
                                    #F.col("street_address"), F.col("name")),
                          on=[ F.col("medicare_provider_number")==F.col("PROVIDER") ],
                          how="left_outer")
