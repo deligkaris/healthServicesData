@@ -489,19 +489,22 @@ def add_hospital(baseDF):
 
 def add_cbi_info(baseDF,cbiDF):
 
-    #correspondence with RESDAC on using Provider numbers
-    #My question: is the NPI to Medicare Provider Number correspondence 1-to-1? If yes, what is the best way to convert a NPI number to a Medicare Provider Number and vice versa?
-    #If not, what do you recommend in this case?
+    #note: in one test, adding cbi information resulted in about 20% of the rows having null values, so I estimate about 80% completeness of cbi data
+
+    #correspondence with RESDAC on using Provider numbers, and why I am not using ORGNPINM to do the join
+    #My question: is the NPI to Medicare Provider Number correspondence 1-to-1? If yes, what is the best way to convert a NPI 
+    #number to a Medicare Provider Number and vice versa? If not, what do you recommend in this case?
     #NPIs and CCN may not be 1:1 depending on what you are looking for.
     #NPIs can be organizational and individual. CCNs are typically only organizational and only seen in the institutional claims paid under Part A. 
     #They will not correspond to individual physicians/providers. https://www.cms.gov/Regulations-and-Guidance/Guidance/Transmittals/downloads/R29SOMA.pdf
     #Also, a single address/facility may have more than one CCN. CCN’s are 6 digits. The first 2 digits identify the State in which the provider is located. 
-    #The last 4 digits identify the type of facility. The CCN continues to serve a critical role in verifying that a provider has been Medicare certified and for what type of services.
+    #The last 4 digits identify the type of facility. The CCN continues to serve a critical role in verifying that a provider has been Medicare 
+    #certified and for what type of services.
     #Unfortunately, CMS did not create a crosswalk of NPI to CCN. Researchers have to do it themselves.
-    #The NPPES is the publicly available file of NPIs. Providers were able to list their CCN on the NPI application form but it is subject to whether the provider 
-    #filed out that part of the application so the NPPES is not a perfect resource.
-    #There is also the Provider of Service file which has a ‘Provider ID’ which is the CCN. The file does not include the NPI but has facility name and address 
-    #so researchers can try to link between facility name and address in the POS and the NPPES file.
+    #The NPPES is the publicly available file of NPIs. Providers were able to list their CCN on the NPI application form but it is subject to 
+    #whether the provider filed out that part of the application so the NPPES is not a perfect resource.
+    #There is also the Provider of Service file which has a ‘Provider ID’ which is the CCN. The file does not include the NPI but has facility 
+    #name and address so researchers can try to link between facility name and address in the POS and the NPPES file.
 
     baseDF = baseDF.join(cbiDF.select(
                                    F.col("hospital_bed_count"), F.col("urban_location_f"), F.col("medicare_provider_number")),
@@ -512,3 +515,21 @@ def add_cbi_info(baseDF,cbiDF):
     baseDF = baseDF.drop(F.col("medicare_provider_number"))
 
     return baseDF
+
+def add_cost_report_info(baseDF,costReportDF):
+
+    baseDF = baseDF.join(costReportDF
+                           .select(
+                               F.col("Provider CCN"),
+                               F.col("Rural Versus Urban").alias("RuralVersusUrban"),
+                               F.col("Number of Beds").alias("NumberOfBeds")),
+                         on=[F.col("Provider CCN")==F.col("Provider")], #see note on add_cbi_info on why I am not using ORGNPINM for the join
+                         how="left_outer")
+
+    baseDF = baseDF.drop("Provider CCN")
+
+    return baseDF
+
+
+
+
