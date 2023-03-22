@@ -54,6 +54,7 @@ def get_filename_dicts(pathToData):
     cbiDetailsFilename = pathToData + '/COMMUNITY-BENEFIT-INSIGHT/allHospitalsWithDetails.csv' # obtained from JB September 2022
 
     # CAUTION: the NPI to CCN and CCN to NPI correspondence is NOT 1-to-1!! (for 1 CCN you have several NPIs and for 1 NPIs you have several CCNs....) 
+    # I think that F.col("othpidty")=="6" will give the CCN number, in the description file below it is listed as Medicare OSCAR...
     # https://www.nber.org/research/data/national-provider-identifier-npi-medicare-ccn-crosswalk
     # https://data.nber.org/npi/desc/othpid/desc.txt for a description of what the variables in this file mean
     npiMedicareXwFilename = pathToData + "/npi_medicarexw.csv"

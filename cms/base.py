@@ -481,15 +481,18 @@ def add_gach(baseDF, npiProvidersDF):
 def add_hospital(baseDF):
 
     baseDF = baseDF.withColumn( "hospital",
-                                F.when(
-                                    F.col("FAC_TYPE") == 1)
+                                F.when( F.col("FAC_TYPE") == 1, 1)
                                  .otherwise(0))
 
     return baseDF
 
-def add_cbi_info(baseDF,cbiDF):
+#two ways of adding some useful hospital information (rural/urban, number of beds etc): from community benefits insight (CBI), from hospital cost report
+#right now I prefer cost report data because they seem to be about 99.5% complete, vs 80% complete for cbi
+#I have checked the address I get from both with the address that NPI providers file has and all seemed correct
+#but the number of beds in cbi and cost report are different quite often, and sometimes off by 50, 60%...
+#I have not figured out a way to validate those, for now I trust the CMS cost report data
 
-    #note: in one test, adding cbi information resulted in about 20% of the rows having null values, so I estimate about 80% completeness of cbi data
+def add_cbi_info(baseDF,cbiDF):
 
     #correspondence with RESDAC on using Provider numbers, and why I am not using ORGNPINM to do the join
     #My question: is the NPI to Medicare Provider Number correspondence 1-to-1? If yes, what is the best way to convert a NPI 
