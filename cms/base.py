@@ -4,9 +4,9 @@ from .mbsf import add_ohResident
 
 def cast_dates_as_int(baseDF, inpatient=True): #date fields in the dataset must be interpreted as integers (and not as floats)
 
-    columns = ["ADMSN_DT","THRU_DT"] #for now I am leaving DSCHRGDT out
+    columns = ["THRU_DT"] #for now I am leaving DSCHRGDT and "ADMSN_DT" out
     if inpatient: #outpatient base does not have a discharge date
-        columns = columns + ["DSCHRGDT"]
+        columns = columns + ["DSCHRGDT", "ADMSN_DT"]
 
     for iColumns in columns:
         baseDF = baseDF.withColumn( iColumns, F.col(iColumns).cast('int'))
