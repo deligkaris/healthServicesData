@@ -52,8 +52,10 @@ def get_filename_dicts(pathToData):
     # We could link in census data to get a sense of the socioeconomic region for hospitals as well...
     cbiHospitalsFilename = pathToData + '/COMMUNITY-BENEFIT-INSIGHT/cbiHospitals.csv' # retrieved September 30, 2022 from webpage
     cbiDetailsFilename = pathToData + '/COMMUNITY-BENEFIT-INSIGHT/allHospitalsWithDetails.csv' # obtained from JB September 2022
- 
+
+    # CAUTION: the NPI to CCN and CCN to NPI correspondence is NOT 1-to-1!! (for 1 CCN you have several NPIs and for 1 NPIs you have several CCNs....) 
     # https://www.nber.org/research/data/national-provider-identifier-npi-medicare-ccn-crosswalk
+    # https://data.nber.org/npi/desc/othpid/desc.txt for a description of what the variables in this file mean
     npiMedicareXwFilename = pathToData + "/npi_medicarexw.csv"
 
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
@@ -97,3 +99,5 @@ def get_cbus_metro_ssa_counties():
     # source: https://obamawhitehouse.archives.gov/sites/default/files/omb/bulletins/2013/b13-01.pdf (page 29)
     # city of Columbus may have a different definition
     return ["36250", "36210", "36230", "36460", "36500", "36660", "36810", "36650", "36600","36380"]
+
+
