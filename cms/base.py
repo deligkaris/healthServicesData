@@ -2,11 +2,14 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 
-def cast_dates_as_int(baseDF, inpatient=True): #date fields in the dataset must be interpreted as integers (and not as floats)
+def cast_dates_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
-    columns = ["THRU_DT"] #for now I am leaving DSCHRGDT and "ADMSN_DT" out
-    if inpatient: #outpatient base does not have a discharge date
-        columns = columns + ["DSCHRGDT", "ADMSN_DT"]
+    if claim == "outpatient":
+       columns = ["THRU_DT"]
+    elif claim == "inpatient":
+       columns = ["THRU_DT", "DSCHRGDT", "ADMSN_DT"]
+    elif claim == "snf":
+       columns = ["CLM_THRU_DT", "NCH_BENE_DSCHRG_DT", "CLM_ADMSN_DT"]
 
     for iColumns in columns:
         baseDF = baseDF.withColumn( iColumns, F.col(iColumns).cast('int'))
