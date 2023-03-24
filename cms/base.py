@@ -535,6 +535,12 @@ def add_cost_report_info(baseDF,costReportDF):
 
     return baseDF
 
+def add_transferToIn(baseDF):
 
+    baseDF = baseDF.withColumn( "transferToIn", #transfer implies that it was a different organization
+                                F.when( F.col("STUS_CD").isin([2,5]), 1) #visits that resulted in a discharge to short term hospital (code 2) or other IPT care (code 5)
+                                 .otherwise(0))
+
+    return baseDF
 
 
