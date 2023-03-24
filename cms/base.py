@@ -543,4 +543,38 @@ def add_transferToIn(baseDF):
 
     return baseDF
 
+def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
 
+    baseDF = baseDF.join( mbsfDF.filter(
+                                         F.col("V_DOD_SW")=="V")
+                                 .select(
+                                        F.col("DSYSRTKY"),
+                                        F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"), 
+                                        F.col("DEATH_DT_DAY"), F.col("DEATH_DT")),
+                           on=["DSYSRTKY"],
+                           how="left_outer") #uses null when the beneficiary does not have a valid death date in mbsfDF
+
+    return baseDF
+
+def add_daysDeadAfterVisit(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
+
+    baseDF = (baseDF.withColumn( "daysDeadAfterVisit",
+                                 F.col("DEATH_DT_DAY")-F.col("THRU_DT_DAY")))
+                                 
+    return baseDF
+            
+def add_90DaysDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfterVisit
+
+    baseDF = baseDF.withColumn( "90DaysDead",
+                                 F.when( F.col("daysDeadAfterVisit") <= 90, 1)
+                                  .otherwise(0))
+
+    return baseDF
+
+def add_365DaysDead(baseDF): #this is the 365 day mortality flag
+
+    baseDF = baseDF.withColumn( "365DaysDead",
+                                 F.when( F.col("daysDeadAfterVisit") <= 365, 1)
+                                  .otherwise(0))
+
+    return baseDF
