@@ -1,6 +1,10 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
+#I think for now I prefer not implementing any filters on revenue records because I am doing an inner join of base with revenue summaries
+#maybe I should rethink how to to do the base and revenue summary join
+#for now implement filters either on base or on claims
+
 def add_ed(revenueDF):
 
     # https://resdac.org/articles/how-identify-hospital-claims-emergency-room-visits-medicare-claims-data
