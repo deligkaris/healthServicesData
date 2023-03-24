@@ -190,7 +190,7 @@ def add_death_date_info(mbsfDF):
 
 def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
 
-    deadDF = mbsfDF.filter(
+    deadDF = (mbsfDF.filter(
                       F.col("V_DOD_SW")=="V")
                    .select(
                       F.col("DSYSRTKY"),F.col("DEATH_DT_DAY")))
