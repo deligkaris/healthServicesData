@@ -8,6 +8,7 @@ def cast_dates_as_int(baseDF, claim="outpatient"): #date fields in the dataset m
        columns = ["THRU_DT"]
     elif claim == "inpatient":
        columns = ["THRU_DT", "DSCHRGDT", "ADMSN_DT"]
+    # SNF: DSCHRG DT is either NULL (quite frequently) or the same as THRU_DT, so for SNF claims use the THRU_DT when you need DSCHRG_DT
     elif claim == "snf":
        columns = ["CLM_THRU_DT", "NCH_BENE_DSCHRG_DT", "CLM_ADMSN_DT"]
 
@@ -16,9 +17,14 @@ def cast_dates_as_int(baseDF, claim="outpatient"): #date fields in the dataset m
 
     return baseDF
 
-def add_admission_date_info(baseDF):
+def add_admission_date_info(baseDF, claim="outpatient"):
 
     #leapYears=[2016,2020,2024,2028]
+   
+    #unfortunately, SNF claims have a different column name for admission date
+    #admissionColName = "CLM_ADMSN_DT" if claim=="snf" else "ADMSN_DT"
+    if (claim=="snf"):
+        baseDF = baseDF.withColumn( "ADMSN_DT", F.col("CLM_ADMSN_DT"))
 
     baseDF = baseDF.withColumn( "ADMSN_DT_DAYOFYEAR", 
                                 F.date_format(
@@ -49,7 +55,11 @@ def add_admission_date_info(baseDF):
 
     return baseDF
 
-def add_through_date_info(baseDF):
+def add_through_date_info(baseDF, claim="outpatient"):
+
+    #unfortunately, SNF claims have a different column name for claim through date
+    if (claim=="snf"):
+        baseDF = baseDF.withColumn( "THRU_DT", F.col("CLM_THRU_DT"))
 
     baseDF = baseDF.withColumn( "THRU_DT_DAYOFYEAR", 
                                 F.date_format(
@@ -80,7 +90,11 @@ def add_through_date_info(baseDF):
 
     return baseDF
 
-def add_discharge_date_info(baseDF):
+def add_discharge_date_info(baseDF, claim="outpatient"):
+
+    #unfortunately, SNF claims have a different column name for discharge date
+    if (claim=="snf"):         
+        baseDF = baseDF.withColumn( "DSCHRGDT", F.col("NCH_BENE_DSCHRG_DT"))
 
     baseDF = baseDF.withColumn( "DSCHRGDT_DAYOFYEAR",
                                 F.date_format(
