@@ -595,3 +595,28 @@ def add_365DaysDead(baseDF): #this is the 365 day mortality flag
                                   .otherwise(0))
 
     return baseDF
+
+def add_los(baseDF): #length of stay = los, assumes add date infos
+
+    baseDF = baseDF.withColumn("los",
+                               F.col("THRU_DT_DAY")-F.col("ADMSN_DT_DAY"))
+
+    #replace 0 with 1 in length of stay, that is how RESDAC calculates LOS
+    baseDF = baseDF.replace(0,1,subset="los") 
+
+    return baseDF
+
+def add_losWithin90Days(baseDF, eventDay="ADMSN_DT_DAY"): #assumes add_los, add date infos
+
+    baseDF = baseDF.withColumn("losWithin90Days",
+                                F.when( F.col("THRU_DT_DAY")-F.col(eventDay)<=90, F.col("los") ) #if los was fully within the 90 day period
+                                 .otherwise( F.col(eventDay) + 90 - F.col("ADMSN_DT_DAY")))      #if los extended beyond the 90 day period
+
+    return baseDF
+
+
+
+
+
+
+
