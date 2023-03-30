@@ -608,9 +608,13 @@ def add_los(baseDF): #length of stay = los, assumes add date infos
 
 def add_losWithin90Days(baseDF, eventDay="ADMSN_DT_DAY"): #assumes add_los, add date infos
 
+    baseDF = baseDF.withColumn("losWithin90DaysEndDay",
+                                F.when( F.col("THRU_DT_DAY") <= F.col(eventDay)+90, F.col("THRU_DT_DAY") ) #if los was fully within the 90 day period
+                                 .otherwise( F.col(eventDay)+90 ))      #if los extended beyond the 90 day period
+
+
     baseDF = baseDF.withColumn("losWithin90Days",
-                                F.when( F.col("THRU_DT_DAY")-F.col(eventDay)<=90, F.col("los") ) #if los was fully within the 90 day period
-                                 .otherwise( F.col(eventDay) + 90 - F.col("ADMSN_DT_DAY")))      #if los extended beyond the 90 day period
+                               F.col("losWithin90DaysEndDay") - F.col("ADMSN_DT_DAY"))
 
     return baseDF
 
