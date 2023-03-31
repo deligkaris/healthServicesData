@@ -4,12 +4,12 @@ from .mbsf import add_ohResident
 
 def cast_dates_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
-    if claim == "outpatient":
+    if (claim=="outpatient"):
        columns = ["THRU_DT"]
-    elif claim == "inpatient":
+    elif (claim=="inpatient"):
        columns = ["THRU_DT", "DSCHRGDT", "ADMSN_DT"]
     # SNF: DSCHRG DT is either NULL (quite frequently) or the same as THRU_DT, so for SNF claims use the THRU_DT when you need DSCHRG_DT
-    elif claim == "snf":
+    elif ( (claim=="snf") | (claim=="hha") ):
        columns = ["CLM_THRU_DT", "NCH_BENE_DSCHRG_DT", "CLM_ADMSN_DT"]
 
     for iColumns in columns:
@@ -23,7 +23,7 @@ def add_admission_date_info(baseDF, claim="outpatient"):
    
     #unfortunately, SNF claims have a different column name for admission date
     #admissionColName = "CLM_ADMSN_DT" if claim=="snf" else "ADMSN_DT"
-    if (claim=="snf"):
+    if ( (claim=="snf") | (claim=="hha") ):
         baseDF = baseDF.withColumn( "ADMSN_DT", F.col("CLM_ADMSN_DT"))
 
     baseDF = baseDF.withColumn( "ADMSN_DT_DAYOFYEAR", 
@@ -58,7 +58,7 @@ def add_admission_date_info(baseDF, claim="outpatient"):
 def add_through_date_info(baseDF, claim="outpatient"):
 
     #unfortunately, SNF claims have a different column name for claim through date
-    if (claim=="snf"):
+    if ( (claim=="snf") | (claim=="hha") ):
         baseDF = baseDF.withColumn( "THRU_DT", F.col("CLM_THRU_DT"))
 
     baseDF = baseDF.withColumn( "THRU_DT_DAYOFYEAR", 
