@@ -22,7 +22,7 @@ def get_filename_dicts(pathToData):
     usdaErsJobsFilename = pathToData + "/USDA-ERS/Jobs.csv"
     usdaErsIncomeFilename = pathToData + "/USDA-ERS/Income.csv"
     # https://www.ers.usda.gov/data-products/rural-urban-continuum-codes.aspx
-    usdaErsRuca = pathToData + "/USDA-ERS/ruralurbancodes2013.xls"
+    usdaErsRuca = pathToData + "/USDA-ERS/ruralurbancodes2013.csv"
 
     # US Census data
     # This is how I got the data: https://www.youtube.com/watch?v=I6r-y_GQLfo
