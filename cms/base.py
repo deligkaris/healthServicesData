@@ -125,6 +125,12 @@ def add_discharge_date_info(baseDF, claim="outpatient"):
 
     return baseDF
 
+def add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90):
+    
+    baseDF = baseDF.withColumn(f"{X}DaysFrom{YDAY}", F.col(YDAY)+X )
+    
+    return baseDF
+
 def add_stroke(baseDF):
 
     # PRNCPAL_DGNS_CD: diagnosis, condition problem or other reason for the admission/encounter/visit to 
@@ -612,25 +618,6 @@ def add_losDays(baseDF): #adds an array of all days of the claim's duration
     
     baseDF = baseDF.withColumn("losDays",
                               F.sequence( F.col("ADMSN_DT_DAY"),F.col("THRU_DT_DAY") ))
-    
-    return baseDF
-
-
-def add_losWithin90Days(baseDF, eventDay="ADMSN_DT_DAY"): #assumes add_los, add date infos
-
-    baseDF = baseDF.withColumn("losWithin90DaysEndDay",
-                                F.when( F.col("THRU_DT_DAY") <= F.col(eventDay)+90, F.col("THRU_DT_DAY") ) #if los was fully within the 90 day period
-                                 .otherwise( F.col(eventDay)+90 ))      #if los extended beyond the 90 day period
-
-
-    baseDF = baseDF.withColumn("losWithin90Days",
-                               F.col("losWithin90DaysEndDay") - F.col("ADMSN_DT_DAY"))
-
-    return baseDF
-
-def add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90):
-    
-    baseDF = baseDF.withColumn(f"{X}DaysFrom{YDAY}", F.col(YDAY)+X )
     
     return baseDF
 
