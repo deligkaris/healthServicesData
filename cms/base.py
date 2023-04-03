@@ -11,6 +11,8 @@ def cast_dates_as_int(baseDF, claim="outpatient"): #date fields in the dataset m
     # SNF: DSCHRG DT is either NULL (quite frequently) or the same as THRU_DT, so for SNF claims use the THRU_DT when you need DSCHRG_DT
     elif ( (claim=="snf") | (claim=="hha") ):
        columns = ["CLM_THRU_DT", "NCH_BENE_DSCHRG_DT", "CLM_ADMSN_DT"]
+    elif ( (claim=="hosp") ):
+       columns = ["CLM_THRU_DT", "CLM_HOSPC_START_DT_ID"]
 
     for iColumns in columns:
         baseDF = baseDF.withColumn( iColumns, F.col(iColumns).cast('int'))
@@ -25,6 +27,8 @@ def add_admission_date_info(baseDF, claim="outpatient"):
     #admissionColName = "CLM_ADMSN_DT" if claim=="snf" else "ADMSN_DT"
     if ( (claim=="snf") | (claim=="hha") ):
         baseDF = baseDF.withColumn( "ADMSN_DT", F.col("CLM_ADMSN_DT"))
+    elif ( (claim=="hosp") ):
+        baseDF = baseDF.withColumn( "ADMSN_DT", F.col("CLM_HOSPC_START_DT_ID") )
 
     baseDF = baseDF.withColumn( "ADMSN_DT_DAYOFYEAR", 
                                 F.date_format(
