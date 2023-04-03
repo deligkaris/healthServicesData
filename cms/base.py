@@ -632,7 +632,39 @@ def add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90):
     
     return baseDF
 
+def add_losDaysOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
+    
+    #add a sequence of days that represents length of stay
+    baseDF = add_losDays(baseDF)
+    
+    #everything here will be done using this X as a partition
+    eachX = Window.partitionBy(X)
 
+    #find the set of all length of stay days for each X
+    baseDF = baseDF.withColumn(f"losDaysOver{X}",
+                               F.array_distinct(
+                                    F.flatten(
+                                        F.collect_set(F.col("losDays")).over(eachX))))
+    
+    #now filter that set for all days prior to Y
+    baseDF = baseDF.withColumn(f"losDaysOver{X}Until{Y}",
+                              F.expr("filter(losDaysOverX, x -> x < Y)"))
+    
+    return baseDF
+
+def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY")
+
+    #add a sequence of days that represents length of stay
+    baseDF = add_losDays(baseDF)
+    
+    #find the sequence of los days over X until Y
+    baseDF = add_losDaysOverXUntilY(baseDF,X=X,Y=Y)
+    
+    #length of stay is then the number of those days
+    baseDF = baseDF.withColumn(f"losOver{X}Until{Y}",
+                              F.size(F.col(f"losDaysOver{X}Until{Y}")))
+    
+    return baseDF
 
 
 
