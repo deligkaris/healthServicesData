@@ -652,7 +652,7 @@ def add_losDaysOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
     
     return baseDF
 
-def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY")
+def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
 
     #add a sequence of days that represents length of stay
     baseDF = add_losDays(baseDF)
