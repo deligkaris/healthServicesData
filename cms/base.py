@@ -598,15 +598,17 @@ def add_365DaysDead(baseDF): #this is the 365 day mortality flag
 
 def add_los(baseDF): #length of stay = los, assumes add date infos
 
+    #https://resdac.org/cms-data/variables/day-count-length-stay
     baseDF = baseDF.withColumn("los",
-                               F.col("THRU_DT_DAY")-F.col("ADMSN_DT_DAY"))
+                               F.col("THRU_DT_DAY")-F.col("ADMSN_DT_DAY")+1)
 
     #replace 0 with 1 in length of stay, that is how RESDAC calculates LOS
-    baseDF = baseDF.replace(0,1,subset="los") 
+    #not needed any more, since I added the +1 above according to the definition on the resdac link
+    #baseDF = baseDF.replace(0,1,subset="los") 
 
     return baseDF
 
-def add_losDays(baseDF):
+def add_losDays(baseDF): #adds an array of all days of the claim's duration
     
     baseDF = baseDF.withColumn("losDays",
                               F.sequence( F.col("ADMSN_DT_DAY"),F.col("THRU_DT_DAY") ))
