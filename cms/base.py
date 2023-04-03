@@ -606,6 +606,14 @@ def add_los(baseDF): #length of stay = los, assumes add date infos
 
     return baseDF
 
+def add_losDays(baseDF):
+    
+    baseDF = baseDF.withColumn("losDays",
+                              F.sequence( F.col("ADMSN_DT_DAY"),F.col("THRU_DT_DAY") ))
+    
+    return baseDF
+
+
 def add_losWithin90Days(baseDF, eventDay="ADMSN_DT_DAY"): #assumes add_los, add date infos
 
     baseDF = baseDF.withColumn("losWithin90DaysEndDay",
@@ -618,7 +626,11 @@ def add_losWithin90Days(baseDF, eventDay="ADMSN_DT_DAY"): #assumes add_los, add 
 
     return baseDF
 
-
+def add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90):
+    
+    baseDF = baseDF.withColumn(f"{X}DaysFrom{YDAY}", F.col(YDAY)+X )
+    
+    return baseDF
 
 
 

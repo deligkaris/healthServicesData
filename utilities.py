@@ -21,6 +21,8 @@ def get_filename_dicts(pathToData):
     usdaErsPeopleFilename = pathToData + "/USDA-ERS/People.csv"
     usdaErsJobsFilename = pathToData + "/USDA-ERS/Jobs.csv"
     usdaErsIncomeFilename = pathToData + "/USDA-ERS/Income.csv"
+    # https://www.ers.usda.gov/data-products/rural-urban-continuum-codes.aspx
+    usdaErsRuca = pathToData + "/USDA-ERS/ruralurbancodes2013.xls"
 
     # US Census data
     # This is how I got the data: https://www.youtube.com/watch?v=I6r-y_GQLfo
@@ -60,7 +62,7 @@ def get_filename_dicts(pathToData):
     npiMedicareXwFilename = pathToData + "/npi_medicarexw.csv"
 
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
-            usdaErsIncomeFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
+            usdaErsIncomeFilename, usdaErsRuca, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
             hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename)
 
 def read_data(spark, 
