@@ -68,7 +68,7 @@ def get_filename_dicts(pathToData):
 def read_data(spark, 
               npiFilename, 
               cbsaFilename, 
-              usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, 
+              usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRucaFilename,
               census2021Filename, censusGazetteer2020Filename,
               cbiHospitalsFilename, cbiDetailsFilename,
               hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename):
@@ -79,6 +79,7 @@ def read_data(spark,
      ersPeople = spark.read.csv(usdaErsPeopleFilename, header="True")
      ersJobs = spark.read.csv(usdaErsJobsFilename, header="True")
      ersIncome = spark.read.csv(usdaErsIncomeFilename, header="True")
+     ersRuca = spark.read.csv(usdaErsRucaFilename, header="True")
 
      census = spark.read.csv(census2021Filename,header=True)
      gazetteer = (spark.read
@@ -94,7 +95,7 @@ def read_data(spark,
      cbiHospitals =spark.read.csv(cbiHospitalsFilename, header="True") # read CBI information
      cbiDetails = spark.read.csv(cbiDetailsFilename, header="True") # read CBI information
 
-     return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, census, gazetteer, cbiHospitals, cbiDetails, hospGme2021, hospCost2018, npiMedicareXw)
+     return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRuca, census, gazetteer, cbiHospitals, cbiDetails, hospGme2021, hospCost2018, npiMedicareXw)
 
 def get_cbus_metro_ssa_counties():
 
