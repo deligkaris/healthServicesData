@@ -323,7 +323,7 @@ def add_beneficiary_info(baseDF,mbsfDF): #assumes add_ssaCounty
     baseDF = baseDF.join( 
                          mbsfDF
                              .select(
-                                F.col("DSYSRTKY"),F.col("SEX"),F.col("RACE"),F.col("AGE"),F.col("RFRNC_YR"),F.col("ssaCounty"))
+                                F.col("DSYSRTKY"),F.col("SEX"),F.col("RACE"),F.col("AGE"),F.col("RFRNC_YR"),F.col("ssaCounty")),
                          on = [ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
                                 F.col("ADMSN_DT_YEAR")==F.col("RFRNC_YR")],
                          how = "inner")
