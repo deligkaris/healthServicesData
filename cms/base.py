@@ -236,7 +236,7 @@ def add_providerAddress(baseDF, npiProviderDF):
                                               F.col("Provider Business Practice Location Address City Name"),
                                               F.col("Provider Business Practice Location Address State Name"),
                                               F.col("Provider Business Practice Location Address Postal Code").substr(1,5))
-                                              .alias("ProviderAddress")),
+                                              .alias("providerAddress")),
                          on = [F.col("ORGNPINM")==F.col("NPI")],
                          how = "inner")
 
@@ -314,7 +314,7 @@ def add_tpaOsu(baseDF):
 
     return baseDF.withColumn("tpaOsu", F.col("osu")*F.col("tpa"))
 
-def add_beneficiary_info(baseDF,mbsfDF):
+def add_beneficiary_info(baseDF,mbsfDF): #assumes add_ssaCounty
 
     # assumes baseDF includes columns from add_admission_date_info and add_through_date_info
     # county codes can be an issue because MBSF includes a county code for mailing address and 12 county codes 
@@ -323,15 +323,21 @@ def add_beneficiary_info(baseDF,mbsfDF):
     baseDF = baseDF.join( 
                          mbsfDF
                              .select(
-                                F.col("DSYSRTKY"),F.col("SEX"),F.col("RACE"),F.col("AGE"),F.col("RFRNC_YR"),
-                                F.concat(
-                                    F.col("STATE_CD").substr(1,2),
-                                    F.format_string("%03d",F.col("CNTY_CD"))).alias("STCNTY_CD")),
+                                F.col("DSYSRTKY"),F.col("SEX"),F.col("RACE"),F.col("AGE"),F.col("RFRNC_YR"),F.col("ssaCounty"))
                          on = [ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
                                 F.col("ADMSN_DT_YEAR")==F.col("RFRNC_YR")],
                          how = "inner")
 
     baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
+
+    return baseDF
+
+def add_ssaCounty(baseDF):
+
+    baseDF = baseDF.withColumn("ssaCounty",
+                               F.concat(
+                                    F.col("STATE_CD").substr(1,2),
+                                    F.format_string("%03d",F.col("CNTY_CD"))))
 
     return baseDF
 
@@ -341,11 +347,11 @@ def add_fipsCounty(baseDF, cbsaDF):
                          cbsaDF
                             .select(
                                 F.col("ssaCounty"),F.col("fipsCounty")),
-                         on=[F.col("ssaCounty")==F.col("STCNTY_CD")],
+                         on=["ssaCounty"],
                          how="inner")
 
-    #drop the duplicate ssacounty
-    baseDF = baseDF.drop(F.col("ssaCounty"))
+    #drop the duplicate ssacounty, no longer needed
+    #baseDF = baseDF.drop(F.col("ssaCounty"))
 
     return baseDF
 
@@ -354,10 +360,10 @@ def add_countyName(baseDF,cbsaDF):
     baseDF = baseDF.join(
                          cbsaDF
                             .select(F.col("countyName"),F.col("ssaCounty")),
-                         on = [F.col("ssaCounty")==F.col("STCNTY_CD")],
+                         on = ["ssaCounty"],
                          how = "inner")
 
-    baseDF = baseDF.drop(F.col("ssaCounty"))
+    #baseDF = baseDF.drop(F.col("ssaCounty"))
 
     return(baseDF)
 
@@ -366,12 +372,12 @@ def add_regional_info(baseDF, censusDF):
     baseDF = (baseDF.join(
                            censusDF
                                .select(
-                                   F.col("fipscounty"),
+                                   F.col("fipsCounty"),
                                    F.col("populationDensity"),
                                    F.col("bsOrHigher"),
                                    F.col("medianHouseholdIncome"),
                                    F.col("unemploymentRate")),
-                           on=["fipscounty"],
+                           on=["fipsCounty"],
                            how="left"))
 
     return baseDF
@@ -385,7 +391,7 @@ def add_regional_info_from_ers(baseDF,ersPeopleDF, ersJobsDF, ersIncomeDF):
                                .select(
                                    F.col("FIPS"),
                                    F.col("PopDensity2010"),F.col("Ed5CollegePlusPct")),
-                            on=[F.col("FIPS")==F.col("fipscounty")],
+                            on=[F.col("FIPS")==F.col("fipsCounty")],
                             how="left"))
 
      #drop the duplicate column
@@ -396,7 +402,7 @@ def add_regional_info_from_ers(baseDF,ersPeopleDF, ersJobsDF, ersIncomeDF):
                                .select(
                                    F.col("FIPS"),
                                    F.col("UnempRate2019")),
-                            on=[F.col("FIPS")==F.col("fipscounty")],
+                            on=[F.col("FIPS")==F.col("fipsCounty")],
                             how="left"))
 
      #drop the duplicate column
@@ -407,7 +413,7 @@ def add_regional_info_from_ers(baseDF,ersPeopleDF, ersJobsDF, ersIncomeDF):
                                .select(
                                    F.col("FIPS"),
                                    F.col("Median_HH_Inc_ACS")),
-                           on=[F.col("FIPS")==F.col("fipscounty")],
+                           on=[F.col("FIPS")==F.col("fipsCounty")],
                            how="left"))
 
      #drop the duplicate column
@@ -415,7 +421,7 @@ def add_regional_info_from_ers(baseDF,ersPeopleDF, ersJobsDF, ersIncomeDF):
 
      return baseDF
 
-def get_aggregate_summary(baseDF, aggWhat, aggBy = "STCNTY_CD"): #aggWhat must be an iterable of strings-column names
+def get_aggregate_summary(baseDF, aggWhat, aggBy = "ssaCounty"): #aggWhat must be an iterable of strings-column names
 
     baseDF.persist() #since I will use this in a loop make it persist in memory
     baseDF.count()
