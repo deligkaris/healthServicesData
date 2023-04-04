@@ -511,6 +511,33 @@ def add_gach(baseDF, npiProvidersDF):
 
     return baseDF
 
+def add_rehabilitation(baseDF, npiProvidersDF):
+
+    # https://taxonomy.nucc.org/
+    #https://taxonomy.nucc.org/?searchTerm=283X00000X
+
+    rehabTaxonomyCodes = ["283X00000X"] #my definition of rehabilitation hospitals
+
+    gachTaxonomyCondition = \
+         '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(rehabTaxonomyCodes))' \
+                   for x in range(1,16)) +')'
+
+    npiProvidersDF = npiProvidersDF.withColumn("rehabilitation",
+                                               F.when(eval(rehabTaxonomyCondition), 1)
+                                                .otherwise(0))
+
+    # join with rehabilitation flag
+    baseDF = baseDF.join(npiProvidersDF.select(
+                                            F.col("NPI"), F.col("rehabilitation")),
+                         on = [baseDF["ORGNPINM"] == npiProvidersDF["NPI"]],
+                         how = "inner")
+
+    # the join will keep NPI as it is a different name
+    baseDF = baseDF.drop(F.col("NPI"))
+
+    return baseDF
+
+
 def add_hospital(baseDF):
 
     baseDF = baseDF.withColumn( "hospital",
