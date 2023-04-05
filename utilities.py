@@ -22,7 +22,7 @@ def get_filename_dicts(pathToData):
     usdaErsJobsFilename = pathToData + "/USDA-ERS/Jobs.csv"
     usdaErsIncomeFilename = pathToData + "/USDA-ERS/Income.csv"
     # https://www.ers.usda.gov/data-products/rural-urban-continuum-codes.aspx
-    usdaErsRuca = pathToData + "/USDA-ERS/ruralurbancodes2013.csv"
+    usdaErsRucaFilename = pathToData + "/USDA-ERS/ruralurbancodes2013.csv"
 
     # US Census data
     # This is how I got the data: https://www.youtube.com/watch?v=I6r-y_GQLfo
@@ -61,9 +61,27 @@ def get_filename_dicts(pathToData):
     # https://data.nber.org/npi/desc/othpid/desc.txt for a description of what the variables in this file mean
     npiMedicareXwFilename = pathToData + "/npi_medicarexw.csv"
 
+    #https://www.huduser.gov/portal/datasets/usps_crosswalk.html#data
+    #zip codes split between counties are listed more than once and their ratios are shown
+    zipToCountyFilename = pathToData + "/HUD/ZIP_COUNTY_122021.csv"
+
+
+    pathMA = pathToData +'/MEDICARE-ADVANTAGE' 
+
+    # https://resdac.org/articles/public-use-sources-managed-care-enrollment-and-penetration-rates
+    # https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/MCRAdvPartDEnrolData/MA-State-County-Penetration
+    # Rates are posted for all 12 months of the year, I chose July, because it is outside Medicare and MA enrollment periods and at the middle
+    # of the non-enrollment periods
+    #because there are several MA penetration rate files, put them in a dictionary
+    maPenetrationFilenames = {}
+
+    #all filenames will include their absolute paths
+    for iYear in range(yearInitial,yearFinal+1): #remember range does not include the last point
+        maPenetrationFilenames[f'{iYear}'] = pathMA + f"/State_County_Penetration_MA_{iYear}_07/State_County_Penetration_MA_{iYear}_07_withYear.csv"
+
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
-            usdaErsIncomeFilename, usdaErsRuca, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
-            hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename)
+            usdaErsIncomeFilename, usdaErsRucaFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
+            hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames)
 
 def read_data(spark, 
               npiFilename, 
@@ -71,7 +89,7 @@ def read_data(spark,
               usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRucaFilename,
               census2021Filename, censusGazetteer2020Filename,
               cbiHospitalsFilename, cbiDetailsFilename,
-              hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename):
+              hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames):
 
      npiProviders = spark.read.csv(npiFilename, header="True") # read CMS provider information
      cbsa = spark.read.csv(cbsaFilename, header="True") # read CBSA information
@@ -95,7 +113,27 @@ def read_data(spark,
      cbiHospitals =spark.read.csv(cbiHospitalsFilename, header="True") # read CBI information
      cbiDetails = spark.read.csv(cbiDetailsFilename, header="True") # read CBI information
 
-     return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRuca, census, gazetteer, cbiHospitals, cbiDetails, hospGme2021, hospCost2018, npiMedicareXw)
+     zipToCounty = spark.read.csv(zipToCountyFilename, header="True")
+
+     #assume the worst...that each type of file includes claims from different years
+     maPenetrationYears = sorted(list(maPenetrationFilenames.keys()))
+
+     #one dictionary for each type of file
+     maPenetrationDict={}
+
+     #read all data and put them in dictionary
+     for iYear in maPenetrationYears:
+         maPenetrationDict[f'{iYear}'] = spark.read.parquet(maPenetrationFilenames[f'{iYear}'])
+
+     # merge all previous years in one dataframe
+     maPenetration = maPenetrationDict[maPenetrationYears[0]] #initialize here
+
+     if (len(maPenetrationYears) > 1):
+        for iYear in maPenetrationYears[1:]:
+            maPenetration = maPenetration.union(maPenetrationDict[f'{iYear}']) #and then do union with the rest     
+
+     return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRuca, census, gazetteer, cbiHospitals, cbiDetails, 
+             hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration)
 
 def get_cbus_metro_ssa_counties():
 
