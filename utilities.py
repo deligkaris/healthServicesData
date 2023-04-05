@@ -123,7 +123,7 @@ def read_data(spark,
 
      #read all data and put them in dictionary
      for iYear in maPenetrationYears:
-         maPenetrationDict[f'{iYear}'] = spark.read.parquet(maPenetrationFilenames[f'{iYear}'])
+         maPenetrationDict[f'{iYear}'] = spark.read.csv(maPenetrationFilenames[f'{iYear}'])
 
      # merge all previous years in one dataframe
      maPenetration = maPenetrationDict[maPenetrationYears[0]] #initialize here
