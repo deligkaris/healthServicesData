@@ -86,7 +86,7 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
             usdaErsIncomeFilename, usdaErsRucaFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
             hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-            medicareHospitalInformationFilename)
+            medicareHospitalInfoFilename)
 
 
 def read_data(spark, 
