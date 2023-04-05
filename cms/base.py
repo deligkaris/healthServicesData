@@ -692,5 +692,14 @@ def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
     
     return baseDF
 
+def add_maPenetration(baseDF, maPenetrationDF):
 
+    baseDF = baseDF.join(maPenetrationDF
+                          .select(F.col("SSA"),F.col("Penetration")),
+                         on=[F.col("SSA")==F.col("providerSSA")],
+                         how="left_outer")
+
+    baseDF = baseDF.drop("SSA")
+
+    return baseDF
 

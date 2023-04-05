@@ -79,9 +79,15 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
     for iYear in range(yearInitial,yearFinal+1): #remember range does not include the last point
         maPenetrationFilenames[f'{iYear}'] = pathMA + f"/State_County_Penetration_MA_{iYear}_07/State_County_Penetration_MA_{iYear}_07_withYear.csv"
 
+    #this set is for Medicare-registered hospitals only, the hospital ID is CCN (I checked) but the documentation does not state that
+    #https://data.cms.gov/provider-data/dataset/xubh-q36u
+    medicareHospitalInfoFilename = pathToData + "/Hospital_General_Information.csv"
+
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
             usdaErsIncomeFilename, usdaErsRucaFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
-            hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames)
+            hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
+            medicareHospitalInformationFilename)
+
 
 def read_data(spark, 
               npiFilename, 
@@ -89,7 +95,8 @@ def read_data(spark,
               usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRucaFilename,
               census2021Filename, censusGazetteer2020Filename,
               cbiHospitalsFilename, cbiDetailsFilename,
-              hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames):
+              hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
+              medicareHospitalInfoFilename):
 
      npiProviders = spark.read.csv(npiFilename, header="True") # read CMS provider information
      cbsa = spark.read.csv(cbsaFilename, header="True") # read CBSA information
@@ -132,8 +139,10 @@ def read_data(spark,
         for iYear in maPenetrationYears[1:]:
             maPenetration = maPenetration.union(maPenetrationDict[f'{iYear}']) #and then do union with the rest     
 
+     medicareHospitalInfo = spark.read.csv(medicareHospitalInfoFilename, header="True")
+
      return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRuca, census, gazetteer, cbiHospitals, cbiDetails, 
-             hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration)
+             hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo)
 
 def get_cbus_metro_ssa_counties():
 
