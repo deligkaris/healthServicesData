@@ -1,5 +1,5 @@
 
-def get_filename_dicts(pathToData):
+def get_filename_dicts(pathToData, yearInitial, yearFinal):
 
     # NPI numbers and other provider information obtained from CMS: https://download.cms.gov/nppes/NPI_Files.html
     npiFilename = pathToData + '/npidata_pfile_20050523-20220807.csv'
