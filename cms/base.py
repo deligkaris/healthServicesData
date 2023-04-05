@@ -518,7 +518,7 @@ def add_rehabilitation(baseDF, npiProvidersDF):
 
     rehabTaxonomyCodes = ["283X00000X"] #my definition of rehabilitation hospitals
 
-    gachTaxonomyCondition = \
+    rehabTaxonomyCondition = \
          '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(rehabTaxonomyCodes))' \
                    for x in range(1,16)) +')'
 
