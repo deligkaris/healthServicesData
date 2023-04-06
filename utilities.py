@@ -81,6 +81,8 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
 
     #this set is for Medicare-registered hospitals only, the hospital ID is CCN (I checked) but the documentation does not state that
     #https://data.cms.gov/provider-data/dataset/xubh-q36u
+    #in a quick test with inpatient stroke claims, this set was about 98.5% complete, using county names,
+    #but for outpatient claims, this set was about 81% complete
     medicareHospitalInfoFilename = pathToData + "/Hospital_General_Information.csv"
 
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,

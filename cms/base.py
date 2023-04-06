@@ -244,6 +244,19 @@ def add_providerAddress(baseDF, npiProviderDF):
 
     return baseDF
 
+def add_providerZip(baseDF,npiProviderDF):
+
+    baseDF = baseDF.join(
+                         npiProviderDF.select(
+                                          F.col("NPI"),
+                                          F.col("Provider Business Practice Location Address Postal Code").substr(1,5).alias("providerZip")),
+                         on = [F.col("ORGNPINM")==F.col("NPI")],
+                         how = "inner")
+
+    baseDF = baseDF.drop(F.col("NPI"))
+
+    return baseDF
+
 def add_osu(baseDF):
 
     osuNpi = ["1447359997"]  # set the NPI(s) I will use for OSU
