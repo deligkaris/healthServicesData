@@ -771,8 +771,9 @@ def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
 
 def add_maPenetration(baseDF, maPenetrationDF):
 
+    #from one test with stroke inpatient claims, this was about 90% complete
     baseDF = baseDF.join(maPenetrationDF
-                          .select(F.col("FIPS"),F.col("Penetration")),
+                          .select(F.col("FIPS"),F.col("Penetration").alias("maPenetration")),
                          on=[F.col("FIPS")==F.col("providerFIPS")],
                          how="left_outer")
 
@@ -783,11 +784,19 @@ def add_maPenetration(baseDF, maPenetrationDF):
 def add_rucc(baseDF, ersRuccDF):
 
     baseDF = baseDF.join(ersRuccDF
-                             .select(F.col("FIPS"),F.col("RUCC_2013")),
+                             .select(F.col("FIPS"),F.col("RUCC_2013").alias("rucc")),
                           on=[F.col("FIPS")==F.col("providerFIPS")],
                           how="left_outer")
 
     baseDF = baseDF.drop("FIPS")
 
     return baseDF
-        
+     
+def cast_Penetration_as_int(maPenetrationDF):
+
+    maPenetrationDF = maPenetrationDF.withColumn("Penetration", F.split( F.col("Penetration"), '.' ).getItem(0) )
+
+    return maPenetrationDF
+
+
+   
