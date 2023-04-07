@@ -287,18 +287,26 @@ def add_providerCounty(baseDF,medicareHospitalInfoDF):
 
     return baseDF
 
-def add_providerFIPS(baseDF,cbsaDF,zipToCountyDF): #assumes add_providerCounty
+def add_providerFIPS(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
 
-    baseDF = baseDF.join(cbsaDF
-                             .select(
-                                F.lower(F.trim(F.col("countyname"))).alias("countyname"),
-                                F.upper(F.trim(F.col("state"))).alias("state"),
-                                F.col("fipscounty").alias("providerFips")),
-                         on=[ (F.col("countyname")==F.col("providerCounty")) & (F.col("state")==F.col("providerState")) ],
-                         #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
+    #I found that CBSA will duplicate some of my baseDF rows, I did not look into why because I found that posDF can be used as well
+    #baseDF = baseDF.join(cbsaDF
+    #                         .select(
+    #                            F.lower(F.trim(F.col("countyname"))).alias("countyname"),
+    #                            F.upper(F.trim(F.col("state"))).alias("state"),
+    #                            F.col("fipscounty").alias("providerFips")),
+    #                     on=[ (F.col("countyname")==F.col("providerCounty")) & (F.col("state")==F.col("providerState")) ],
+    #                     #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
+    #                     how="left_outer")
+
+    #baseDF = baseDF.drop("countyname","state")
+
+    baseDF = baseDF.join(posDF
+                             .select( F.col("PRVDR_NUM"),F.col("providerFIPS")),
+                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
                          how="left_outer")
 
-    baseDF = baseDF.drop("countyname","state")
+    baseDF = baseDF.drop("PRVDR_NUM")
 
     eachZip = Window.partitionBy("zip")
 
