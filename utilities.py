@@ -1,3 +1,4 @@
+import pyspark.sql.functions as F
 
 def get_filename_dicts(pathToData, yearInitial, yearFinal):
 
