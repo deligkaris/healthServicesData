@@ -272,6 +272,8 @@ def add_providerState(baseDF,npiProviderDF):
 
 def add_providerCounty(baseDF,medicareHospitalInfoDF):
 
+    #medicareHospitalInfo works well for inpatient claims, but is less complete for outpatient claims
+    #that is why in finding providerFIPS below I also use the zipToCounty dataframe
     baseDF = baseDF.join(medicareHospitalInfoDF
                               .select(
                                      F.col("Facility ID"),  
@@ -281,7 +283,7 @@ def add_providerCounty(baseDF,medicareHospitalInfoDF):
 
     return baseDF
 
-def add_providerFIPS(baseDF,cbsaDF): #assumes add_providerCounty
+def add_providerFIPS(baseDF,cbsaDF,zipToCountyDF): #assumes add_providerCounty
 
     baseDF = baseDF.join(cbsaDF
                              .select(
@@ -291,6 +293,24 @@ def add_providerFIPS(baseDF,cbsaDF): #assumes add_providerCounty
                          on=[ (F.col("countyname")==F.col("providerCounty")) & (F.col("state")==F.col("providerState")) ],
                          #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
                          how="left_outer")
+
+    eachZip = Window.partitionBy("zip")
+
+    baseDF = baseDF.join(zipToCountyDF
+                                   .withColumn("maxBusRatio",
+                                                F.max(F.col("bus_ratio")).over(eachZip))
+                                   #find the row of zipToCounty with the FIPS code of the county with the biggest ratio of business
+                                   #I assume that is where it is more likely to find the provider
+                                   .filter(F.col("bus_ratio")==F.col("maxBusRatio")) 
+                                   .select(F.col("zip"),F.col("county").alias("providerFIPSzipToCounty")),
+              on= [  (zipToCountyDF["zip"]==baseDF["providerZip"]) ],
+              how="left_outer")
+
+    baseDF = baseDF.withColumn("providerFIPS",
+                               F.when( F.col("providerFIPS").isNull(), F.col("providerFIPSzipToCounty"))
+                                .otherwise( F.col("providerFIPS") ))
+
+    baseDF = baseDF.drop("providerFIPSzipToCounty")
 
     return baseDF
 
