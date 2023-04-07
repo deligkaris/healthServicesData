@@ -157,7 +157,7 @@ def get_cbus_metro_ssa_counties():
 
 def cast_Penetration_as_int(maPenetrationDF):
 
-    maPenetrationDF = maPenetrationDF.withColumn("Penetration", F.split( F.col("Penetration"), '.' ).getItem(0).cast('int') )
+    maPenetrationDF = maPenetrationDF.withColumn("Penetration", F.split( F.trim(F.col("Penetration")), '\.' ).getItem(0).cast('int') )
 
     return maPenetrationDF
 
