@@ -281,6 +281,8 @@ def add_providerCounty(baseDF,medicareHospitalInfoDF):
                          on=[ F.col("Facility ID")==F.col("PROVIDER") ],
                          how="left_outer")
 
+    baseDF = baseDF.drop("Facility ID")
+
     return baseDF
 
 def add_providerFIPS(baseDF,cbsaDF,zipToCountyDF): #assumes add_providerCounty
@@ -294,6 +296,8 @@ def add_providerFIPS(baseDF,cbsaDF,zipToCountyDF): #assumes add_providerCounty
                          #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
                          how="left_outer")
 
+    baseDF = baseDF.drop("countyname","state")
+
     eachZip = Window.partitionBy("zip")
 
     baseDF = baseDF.join(zipToCountyDF
@@ -305,6 +309,8 @@ def add_providerFIPS(baseDF,cbsaDF,zipToCountyDF): #assumes add_providerCounty
                                    .select(F.col("zip"),F.col("county").alias("providerFIPSzipToCounty")),
               on= [  (zipToCountyDF["zip"]==baseDF["providerZip"]) ],
               how="left_outer")
+
+    baseDF = baseDF.drop("bus_ratio","maxBusRatio","zip")
 
     baseDF = baseDF.withColumn("providerFIPS",
                                F.when( F.col("providerFIPS").isNull(), F.col("providerFIPSzipToCounty"))
@@ -766,11 +772,22 @@ def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
 def add_maPenetration(baseDF, maPenetrationDF):
 
     baseDF = baseDF.join(maPenetrationDF
-                          .select(F.col("SSA"),F.col("Penetration")),
-                         on=[F.col("SSA")==F.col("providerSSA")],
+                          .select(F.col("FIPS"),F.col("Penetration")),
+                         on=[F.col("FIPS")==F.col("providerFIPS")],
                          how="left_outer")
 
-    baseDF = baseDF.drop("SSA")
+    baseDF = baseDF.drop("FIPS")
 
     return baseDF
 
+def add_rucc(baseDF, ersRuccDF):
+
+    baseDF = baseDF.join(ersRuccDF
+                             .select(F.col("FIPS"),F.col("RUCC_2013")),
+                          on=[F.col("FIPS")==F.col("providerFIPS")],
+                          how="left_outer")
+
+    baseDF = baseDF.drop("FIPS")
+
+    return baseDF
+        

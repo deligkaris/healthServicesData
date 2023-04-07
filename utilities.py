@@ -22,7 +22,7 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
     usdaErsJobsFilename = pathToData + "/USDA-ERS/Jobs.csv"
     usdaErsIncomeFilename = pathToData + "/USDA-ERS/Income.csv"
     # https://www.ers.usda.gov/data-products/rural-urban-continuum-codes.aspx
-    usdaErsRucaFilename = pathToData + "/USDA-ERS/ruralurbancodes2013.csv"
+    usdaErsRuccFilename = pathToData + "/USDA-ERS/ruralurbancodes2013.csv"
 
     # US Census data
     # This is how I got the data: https://www.youtube.com/watch?v=I6r-y_GQLfo
@@ -87,7 +87,7 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
     medicareHospitalInfoFilename = pathToData + "/Hospital_General_Information.csv"
 
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
-            usdaErsIncomeFilename, usdaErsRucaFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
+            usdaErsIncomeFilename, usdaErsRuccFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
             hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
             medicareHospitalInfoFilename)
 
@@ -95,7 +95,7 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
 def read_data(spark, 
               npiFilename, 
               cbsaFilename, 
-              usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRucaFilename,
+              usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
               census2021Filename, censusGazetteer2020Filename,
               cbiHospitalsFilename, cbiDetailsFilename,
               hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
@@ -107,7 +107,7 @@ def read_data(spark,
      ersPeople = spark.read.csv(usdaErsPeopleFilename, header="True")
      ersJobs = spark.read.csv(usdaErsJobsFilename, header="True")
      ersIncome = spark.read.csv(usdaErsIncomeFilename, header="True")
-     ersRuca = spark.read.csv(usdaErsRucaFilename, header="True")
+     ersRucc = spark.read.csv(usdaErsRuccFilename, header="True")
 
      census = spark.read.csv(census2021Filename,header=True)
      gazetteer = (spark.read
@@ -144,7 +144,7 @@ def read_data(spark,
 
      medicareHospitalInfo = spark.read.csv(medicareHospitalInfoFilename, header="True")
 
-     return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRuca, census, gazetteer, cbiHospitals, cbiDetails, 
+     return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails, 
              hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo)
 
 def get_cbus_metro_ssa_counties():
