@@ -257,6 +257,19 @@ def add_providerZip(baseDF,npiProviderDF):
 
     return baseDF
 
+def add_providerState(baseDF,npiProviderDF):
+
+    baseDF = baseDF.join(
+                         npiProviderDF.select(
+                                          F.col("NPI"),
+                                          F.col("Provider Business Practice Location Address State Name").alias("providerState")),
+                         on = [F.col("ORGNPINM")==F.col("NPI")],
+                         how = "inner")
+
+    baseDF = baseDF.drop(F.col("NPI"))
+
+    return baseDF
+
 def add_providerCounty(baseDF,medicareHospitalInfoDF):
 
     baseDF = baseDF.join(medicareHospitalInfoDF
@@ -274,7 +287,7 @@ def add_providerFIPS(baseDF,cbsaDF): #assumes add_providerCounty
                              .select(
                                 F.lower(F.trim(F.col("countyname"))).alias("countyname"),
                                 F.col("fipscounty").alias("providerFips")),
-                         on=[ F.col("countyname")==F.col("providerCounty") ],
+                         on=[ (F.col("countyname")==F.col("providerCounty")) & (F.col("state")==F.col("providerState")) ],
                          #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
                          how="left_outer")
 
