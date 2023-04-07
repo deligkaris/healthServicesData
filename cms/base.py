@@ -286,6 +286,7 @@ def add_providerFIPS(baseDF,cbsaDF): #assumes add_providerCounty
     baseDF = baseDF.join(cbsaDF
                              .select(
                                 F.lower(F.trim(F.col("countyname"))).alias("countyname"),
+                                F.lower(F.trim(F.col("state"))).alias("state"),
                                 F.col("fipscounty").alias("providerFips")),
                          on=[ (F.col("countyname")==F.col("providerCounty")) & (F.col("state")==F.col("providerState")) ],
                          #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
