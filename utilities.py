@@ -87,10 +87,13 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
     #but for outpatient claims, this set was about 81% complete
     medicareHospitalInfoFilename = pathToData + "/Hospital_General_Information.csv"
 
+    #https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/provider-of-services-file-hospital-non-hospital-facilities
+    posFilename = pathToData + "/PROVIDER-OF-SERVICES/POS_OTHER_DEC22.csv"
+
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
             usdaErsIncomeFilename, usdaErsRuccFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
             hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-            medicareHospitalInfoFilename)
+            medicareHospitalInfoFilename, posFilename)
 
 
 def read_data(spark, 
@@ -100,7 +103,7 @@ def read_data(spark,
               census2021Filename, censusGazetteer2020Filename,
               cbiHospitalsFilename, cbiDetailsFilename,
               hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-              medicareHospitalInfoFilename):
+              medicareHospitalInfoFilename, posFilename):
 
      npiProviders = spark.read.csv(npiFilename, header="True") # read CMS provider information
      cbsa = spark.read.csv(cbsaFilename, header="True") # read CBSA information
@@ -145,8 +148,10 @@ def read_data(spark,
 
      medicareHospitalInfo = spark.read.csv(medicareHospitalInfoFilename, header="True")
 
+     pos = spark.read.csv(posFilename, header="True")
+
      return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails, 
-             hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo)
+             hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos)
 
 def get_cbus_metro_ssa_counties():
 

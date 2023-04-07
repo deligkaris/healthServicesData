@@ -272,6 +272,8 @@ def add_providerState(baseDF,npiProviderDF):
 
 def add_providerCounty(baseDF,medicareHospitalInfoDF):
 
+    #if ever run into problems, eg a lot of nulls, the CMS hospital cost report (hospCost2018) also have the county of providers
+
     #medicareHospitalInfo works well for inpatient claims, but is less complete for outpatient claims
     #that is why in finding providerFIPS below I also use the zipToCounty dataframe
     baseDF = baseDF.join(medicareHospitalInfoDF
