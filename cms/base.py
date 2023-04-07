@@ -257,6 +257,30 @@ def add_providerZip(baseDF,npiProviderDF):
 
     return baseDF
 
+def add_providerCounty(baseDF,medicareHospitalInfoDF):
+
+    baseDF = baseDF.join(medicareHospitalInfoDF
+                              .select(
+                                     F.col("Facility ID"),  
+                                     F.lower(F.trim(F.col("County Name"))).alias("providerCounty")),
+                         on=[ F.col("Facility ID")==F.col("PROVIDER") ],
+                         how="left_outer")
+
+    return baseDF
+
+def add_providerFIPS(baseDF,cbsaDF): #assumes add_providerCounty
+
+    baseDF = baseDF.join(cbsaDF
+                             .select(
+                                F.lower(F.trim(F.col("countyname"))).alias("countyname"),
+                                F.col("fipscounty").alias("providerFips")),
+                         on=[ F.col("countyname")==F.col("providerCounty") ],
+                         #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
+                         how="left_outer")
+
+    return baseDF
+
+
 def add_osu(baseDF):
 
     osuNpi = ["1447359997"]  # set the NPI(s) I will use for OSU

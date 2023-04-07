@@ -62,6 +62,7 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
     npiMedicareXwFilename = pathToData + "/npi_medicarexw.csv"
 
     #https://www.huduser.gov/portal/datasets/usps_crosswalk.html#data
+    #county column: 5 digit unique 2000 or 2010 Census county GEOID consisting of state FIPS + county FIPS.
     #zip codes split between counties are listed more than once and their ratios are shown
     zipToCountyFilename = pathToData + "/HUD/ZIP_COUNTY_122021.csv"
 
