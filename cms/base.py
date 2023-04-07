@@ -792,11 +792,6 @@ def add_rucc(baseDF, ersRuccDF):
 
     return baseDF
      
-def cast_Penetration_as_int(maPenetrationDF):
-
-    maPenetrationDF = maPenetrationDF.withColumn("Penetration", F.split( F.col("Penetration"), '.' ).getItem(0) )
-
-    return maPenetrationDF
 
 
    

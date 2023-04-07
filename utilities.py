@@ -154,4 +154,9 @@ def get_cbus_metro_ssa_counties():
     # city of Columbus may have a different definition
     return ["36250", "36210", "36230", "36460", "36500", "36660", "36810", "36650", "36600","36380"]
 
+def cast_Penetration_as_int(maPenetrationDF):
+
+    maPenetrationDF = maPenetrationDF.withColumn("Penetration", F.split( F.col("Penetration"), '.' ).getItem(0).cast('int') )
+
+    return maPenetrationDF
 
