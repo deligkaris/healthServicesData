@@ -669,10 +669,14 @@ def add_cbi_info(baseDF,cbiDF):
 def add_cost_report_info(baseDF,costReportDF):
 
     baseDF = baseDF.join(costReportDF
+                           .withColumn("teaching",
+                                       F.when( F.col("Number of Interns and Residents (FTE)").cast('int') > 0, 1)
+                                        .otherwise(0))
                            .select(
                                F.col("Provider CCN"),
                                F.col("Rural Versus Urban").alias("RuralVersusUrban"),
-                               F.col("Number of Beds").alias("NumberOfBeds")),
+                               F.col("Number of Beds").alias("NumberOfBeds"),
+                               F.col("teaching")),
                          #see note on add_cbi_info on why I am not using ORGNPINM for the join
                          #hospital cost report files include only the CMS Certification Number (Provider ID, CCN), they do not include NPI
                          on=[F.col("Provider CCN")==F.col("Provider")],
