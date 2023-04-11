@@ -153,6 +153,54 @@ def read_data(spark,
      return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails, 
              hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos)
 
+def get_data(pathToData, yearInitial, yearFinal, spark):
+
+    (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, 
+    usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
+    census2021Filename, censusGazetteer2020Filename, 
+    cbiHospitalsFilename, cbiDetailsFilename,
+    hospGme2021Filename, hospCost2018Filename, 
+    npiMedicareXwFilename, 
+    zipToCountyFilename, 
+    maPenetrationFilenames,
+    medicareHospitalInfoFilename,
+    posFilename) = get_filename_dicts(pathToData, yearInitial, yearFinal)
+
+    (npiProviders, cbsa, 
+    ersPeople, ersJobs, ersIncome, ersRucc, 
+    census, gazetteer,
+    cbiHospitals, cbiDetails, 
+    hospGme2021, hospCost2018, 
+    npiMedicareXw, 
+    zipToCounty, 
+    maPenetration,
+    medicareHospitalInfo, 
+    pos) = read_data(spark, npiFilename, cbsaFilename, 
+                          usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
+                          census2021Filename, censusGazetteer2020Filename,
+                          cbiHospitalsFilename, cbiDetailsFilename,
+                          hospGme2021Filename, hospCost2018Filename, 
+                          npiMedicareXwFilename, 
+                          zipToCountyFilename,
+                          maPenetrationFilenames,
+                          medicareHospitalInfoFilename,
+                          posFilename)
+
+    with urlopen(geojsonCountyFilename) as response:
+        counties = json.load(response)
+
+    return (npiProviders, cbsa, counties,
+            ersPeople, ersJobs, ersIncome, ersRucc, 
+            census, gazetteer,
+            cbiHospitals, cbiDetails, 
+            hospGme2021, hospCost2018, 
+            npiMedicareXw, 
+            zipToCounty, 
+            maPenetration,
+            medicareHospitalInfo, 
+            pos)
+
+
 def get_cbus_metro_ssa_counties():
 
     # definition of columbus metro area counties according to US Census bureau 
