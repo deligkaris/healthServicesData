@@ -210,7 +210,7 @@ def get_cbus_metro_ssa_counties():
     # city of Columbus may have a different definition
     return ["36250", "36210", "36230", "36460", "36500", "36660", "36810", "36650", "36600","36380"]
 
-def cast_numbers_as_int(maPenetrationDF):
+def prep_maPenetrationDF(maPenetrationDF):
 
     maPenetrationDF = (maPenetrationDF.withColumn("Penetration", 
                                                  F.split( F.trim(F.col("Penetration")), '\.' ).getItem(0).cast('int') )
@@ -218,4 +218,25 @@ def cast_numbers_as_int(maPenetrationDF):
                                                   F.col("Year").cast('int')))
 
     return maPenetrationDF
+
+def prep_hospCostDF(hospCostDF):
+
+    eachCCN = Window.partitionBy("Provider CCN")
+
+    hospCostDF = (hospCostDF.withColumn("maxTotalBedDaysAvailable",
+                                       F.max(F.col("Total Bed Days Available").cast('int')).over(eachCCN))
+                            .filter(F.col("maxTotalBedDaysAvailable")==(F.col("Total Bed Days Available").cast('int')))
+                            .drop("maxTotalBedDaysAvailable"))
+
+    return hospCostDF
+
+def prep_posDF(posDF):
+
+    posDF = posDF.withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
+
+    return posDF
+
+
+
+
 
