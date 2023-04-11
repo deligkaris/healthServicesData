@@ -165,4 +165,18 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
 
     return(mbsf, outClaims, outRevenue, inClaims, inRevenue, snfClaims, snfRevenue, hhaClaims, hhaRevenue, hospClaims, hospRevenue)
 
+def get_data(pathCMS, yearInitial, yearFinal, spark):
 
+    (mbsfFilenames, outBaseFilenames, outRevenueFilenames, inBaseFilenames, inRevenueFilenames,
+    snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, 
+    hospBaseFilenames, hospRevenueFilenames) = get_filename_dicts(pathCMS, yearInitial, yearFinal)
+
+    (mbsf, outBase, outRevenue, inBase, inRevenue, 
+    snfBase, snfRevenue, 
+    hhaBase, hhaRevenue, 
+    hospBase, hospRevenue) = cmsUtilitiesF.read_data(spark, mbsfFilenames, outBaseFilenames, outRevenueFilenames, inBaseFilenames, inRevenueFilenames,
+                                                     snfBaseFilenames, snfRevenueFilenames, 
+                                                     hhaBaseFilenames, hhaRevenueFilenames, 
+                                                     hospBaseFilenames, hospRevenueFilenames) 
+
+    return (mbsf, outBase, outRevenue, inBase, inRevenue, snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue) 
