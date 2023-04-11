@@ -784,7 +784,7 @@ def add_maPenetration(baseDF, maPenetrationDF):
     #from one test with stroke inpatient claims, this was about 90% complete
     baseDF = baseDF.join(maPenetrationDF
                           .select(F.col("FIPS"),F.col("Penetration").alias("maPenetration"),F.col("Year")),
-                         on=[ (F.col("FIPS")==F.col("providerFIPS")) & (F.col("Year")==F.col("ADMSN_DT_YEAR")) ],
+                         on=[ (F.col("FIPS")==F.col("providerFIPS")) & (F.col("Year")==F.col("THRU_DT_YEAR")) ],
                          how="left_outer")
 
     baseDF = baseDF.drop("FIPS")
