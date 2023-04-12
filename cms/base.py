@@ -624,6 +624,18 @@ def add_rehabilitation(baseDF, npiProvidersDF):
 
     return baseDF
 
+def add_rehabilitation2(baseDF):
+
+    #https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r29soma.pdf
+    #this function is using CCN numbers to flag rehabilitation hospitals and rehabilitation units within hospitals
+    baseDF = baseDF.withColumn("rehabilitation2",
+                               F.when(
+                                   ((F.substring(F.col("PROVIDER"),3,4).cast('int') >= 3025) & (F.substring(F.col("PROVIDER"),3,4).cast('int') <= 3099)) |
+                                    (F.substring(F.col("PROVIDER"),3,1)=="T"), 1)
+                                .otherwise(0))
+
+    return baseDF 
+
 
 def add_hospital(baseDF):
 
