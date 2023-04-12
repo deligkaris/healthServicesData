@@ -603,7 +603,7 @@ def add_rehabilitation(baseDF, npiProvidersDF):
     # https://taxonomy.nucc.org/
     #https://taxonomy.nucc.org/?searchTerm=283X00000X
 
-    rehabTaxonomyCodes = ["283X00000X"] #my definition of rehabilitation hospitals
+    rehabTaxonomyCodes = ["283X00000X", "273Y00000X"] #my definition of rehabilitation hospitals
 
     rehabTaxonomyCondition = \
          '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(rehabTaxonomyCodes))' \
