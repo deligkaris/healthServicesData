@@ -848,7 +848,18 @@ def add_nihss(baseDF):
 
     return baseDF
 
+def add_cothMember(baseDF, teachingHospitalsDF):
 
+    baseDF = baseDF.join(teachingHospitalsDF
+                            .select(
+                                F.col("FY22 COTH Member").alias("cothMember"),
+                                F.col("Medicare ID")),
+                         on = [F.col("Medicare ID")==F.col("PROVIDER")],
+                         how = "left_outer")
+
+    baseDF = baseDF.drop("Medicare ID")
+
+    return baseDF
 
 
 
