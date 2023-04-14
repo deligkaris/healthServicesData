@@ -842,7 +842,7 @@ def add_nihss(baseDF):
                                F.expr(f'filter(dgnsList, x -> x rlike "R297[0-9][0-9]?")'))
                    .withColumn("nihss",
                                F.when(
-                                   F.size(F.col("nihssList")) == 1, F.substr(F.col("nihssList")[0],5,2))
+                                   F.size(F.col("nihssList")) == 1, F.substring(F.col("nihssList")[0],5,2))
                                 .otherwise(""))
                    .withColumn("nihssInts", F.col("nihss").cast('int')))
                    #.drop("dgnsList","nihssList"))
