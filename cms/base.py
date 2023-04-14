@@ -602,6 +602,7 @@ def add_rehabilitation(baseDF, npiProvidersDF):
 
     # https://taxonomy.nucc.org/
     #https://taxonomy.nucc.org/?searchTerm=283X00000X
+    # https://data.cms.gov/provider-data/dataset/7t8x-u3ir
 
     rehabTaxonomyCodes = ["283X00000X", "273Y00000X"] #my definition of rehabilitation hospitals
 
@@ -628,6 +629,7 @@ def add_rehabilitation2(baseDF):
 
     #https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r29soma.pdf
     #this function is using CCN numbers to flag rehabilitation hospitals and rehabilitation units within hospitals
+    # an example: https://pubmed.ncbi.nlm.nih.gov/18996234/
     baseDF = baseDF.withColumn("rehabilitation2",
                                F.when(
                                    ((F.substring(F.col("PROVIDER"),3,4).cast('int') >= 3025) & (F.substring(F.col("PROVIDER"),3,4).cast('int') <= 3099)) |
@@ -818,6 +820,35 @@ def add_rucc(baseDF, ersRuccDF):
 
     return baseDF
      
+def add_nihss(baseDF):
+
+    #https://www.ahajournals.org/doi/10.1161/CIRCOUTCOMES.122.009215
+
+    dgnsColumnList = [f"ICD_DGNS_CD{x}" for x in range(1,26)] #all 25 DGNS columns
+
+    baseDF = (baseDF.withColumn("dgnsList", #add an array of all dgns codes found in their claims
+                               F.array(dgnsColumnList))
+                   .withColumn("nihssList", #keeps codes that match the regexp pattern
+                               F.expr(f'filter(dgnsList, x -> x rlike "R297[0-9][0-9]?")'))
+                   .withColumn("nihss",
+                               F.when(
+                                   F.size(F.col("nihssList")) == 1, F.col("nihssList")[0])
+                                .otherwise("").cast('int'))
+                   .drop("dgnsList","nihssList"))
+
+    return baseDF
+
+
+
+
+
+
+
+
+
+
+
+
 
 
    
