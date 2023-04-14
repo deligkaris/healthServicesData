@@ -844,8 +844,8 @@ def add_nihss(baseDF):
                                F.when(
                                    F.size(F.col("nihssList")) == 1, F.substring(F.col("nihssList")[0],5,2))
                                 .otherwise(""))
-                   .withColumn("nihssInts", F.col("nihss").cast('int')))
-                   #.drop("dgnsList","nihssList"))
+                   .withColumn("nihss", F.col("nihss").cast('int')))
+                   .drop("dgnsList","nihssList"))
 
     return baseDF
 
