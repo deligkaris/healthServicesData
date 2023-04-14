@@ -330,6 +330,16 @@ def add_providerFIPS(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
 
     return baseDF
 
+def add_provider_info(baseDF, npiProvidersDF, medicareHospitalInfoDF, posDF, zipToCountyDF):
+
+    baseDF = add_providerName(baseDF,npiProvidersDF)
+    baseDF = add_providerAddress(baseDF,npiProvidersDF)
+    baseDF = add_providerZip(baseDF,npiProvidersDF)
+    baseDF = add_providerState(baseDF,npiProvidersDF)
+    baseDF = add_providerCounty(baseDF, medicareHospitalInfoDF)
+    baseDF = add_providerFIPS(baseDF, posDF, zipToCountyDF)
+
+    return baseDF
 
 def add_osu(baseDF):
 
