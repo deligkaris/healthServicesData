@@ -863,9 +863,12 @@ def add_cothMember(baseDF, teachingHospitalsDF):
 
 def add_rbr(baseDF, teachingHospitalsDF): # resident to bed ratio
 
+    #I tried using hospGme2021 data to find the RBR but that ended up being much more incomplete than the AAMC data
+    #so I am now using AAMC data
+
     baseDF = baseDF.join(teachingHospitalsDF
                             .select(
-                                F.col("FY20 IRB").alias("rbr"),
+                                F.col("FY20 IRB").cast('double').alias("rbr"),
                                 F.col("Medicare ID")),
                          on = [F.col("Medicare ID")==F.col("PROVIDER")],
                          how = "left_outer")
@@ -874,9 +877,21 @@ def add_rbr(baseDF, teachingHospitalsDF): # resident to bed ratio
 
     return baseDF
 
+def add_teachingHospital(baseDF,teachingHospitalsDF):
 
+    #definition of a teaching hospital:  https://hcup-us.ahrq.gov/db/vars/hosp_bedsize/nisnote.jsp
 
+    baseDF = add_rbr(baseDF,teachingHospitalsDF)
+    baseDF = add_cothMember(baseDF, teachingHospitalsDF)
 
+    baseDF = baseDF.withColumn("teachingHospital",
+                                F.when( 
+                                    (F.col("cothMember") == "Y") |
+                                    (F.col("rbr") >= 0.25), 1)
+                                 .otherwise(0))
+
+    return baseDF
+  
 
 
 
