@@ -861,7 +861,18 @@ def add_cothMember(baseDF, teachingHospitalsDF):
 
     return baseDF
 
+def add_rbr(baseDF, teachingHospitalsDF): # resident to bed ratio
 
+    baseDF = baseDF.join(teachingHospitalsDF
+                            .select(
+                                F.col("FY20 IRB").alias("rbr"),
+                                F.col("Medicare ID")),
+                         on = [F.col("Medicare ID")==F.col("PROVIDER")],
+                         how = "left_outer")
+
+    baseDF = baseDF.drop("Medicare ID")
+
+    return baseDF
 
 
 
