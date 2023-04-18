@@ -255,7 +255,26 @@ def prep_posDF(posDF):
 
     return posDF
 
+def add_primaryTaxonomy(npiProvidersDF):
 
+    #starting with spark 3.4, you can use F.array_compact to not allow nulls to enter the array
+    codeAndSwitchCols = 'F.array(' + \
+                        ','.join(\
+                            f'F.array(F.col("Healthcare Provider Taxonomy Code_{x}"),F.col("Healthcare Provider Primary Taxonomy Switch_{x}"))' \
+                            for x in range(1,16)) +')'
+
+    npiProvidersDF = npiProvidersDF.withColumn("codeAndSwitch",
+                                               eval(codeAndSwitchCols))
+
+    npiProvidersDF = npiProvidersDF.withColumn("codeAndSwitchPrimary",
+                                               F.expr('filter(codeAndSwitch, x -> x[1]=="Y")'))
+
+    npiProvidersDF = npiProvidersDF.withColumn("primaryTaxonomy",
+                                               F.flatten(F.col("codeAndSwitchPrimary"))[0])
+
+    npiProvidersDF = npiProvidersDF.drop("codeAndSwitch","codeAndSwitchPrimary")
+
+    return npiProvidersDF
 
 
 

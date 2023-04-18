@@ -1,6 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
+from ../utilities import add_primaryTaxonomy
 
 def cast_dates_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
@@ -608,7 +609,7 @@ def add_gach(baseDF, npiProvidersDF):
 
     return baseDF
 
-def add_rehabilitation(baseDF, npiProvidersDF):
+def add_rehabilitation(baseDF, npiProvidersDF, primary=True):
 
     # https://taxonomy.nucc.org/
     #https://taxonomy.nucc.org/?searchTerm=283X00000X
@@ -616,13 +617,19 @@ def add_rehabilitation(baseDF, npiProvidersDF):
 
     rehabTaxonomyCodes = ["283X00000X", "273Y00000X"] #my definition of rehabilitation hospitals
 
-    rehabTaxonomyCondition = \
-         '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(rehabTaxonomyCodes))' \
-                   for x in range(1,16)) +')'
+    if (primary):
+
+        npiProvidersDF = add_primaryTaxonomy(npiProvidersDF)
+        rehabTaxonomyCondition = 'F.col("primaryTaxonomy").isin(rehabTaxonomyCodes)'         
+
+    else: 
+        rehabTaxonomyCondition = \
+             '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(rehabTaxonomyCodes))' \
+                       for x in range(1,16)) +')'
 
     npiProvidersDF = npiProvidersDF.withColumn("rehabilitation",
-                                               F.when(eval(rehabTaxonomyCondition), 1)
-                                                .otherwise(0))
+                                                F.when(eval(rehabTaxonomyCondition), 1)
+                                                 .otherwise(0))
 
     # join with rehabilitation flag
     baseDF = baseDF.join(npiProvidersDF.select(
@@ -734,7 +741,7 @@ def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has be
 def add_daysDeadAfterVisit(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
 
     baseDF = (baseDF.withColumn( "daysDeadAfterVisit",
-                                 F.col("DEATH_DT_DAY")-F.col("THRU_DT_DAY")))
+                                 F.col("DEATH_DT_DAY")-F.col("ADMSN_DT_DAY")))
                                  
     return baseDF
             
