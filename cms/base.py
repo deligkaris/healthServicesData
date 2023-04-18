@@ -609,7 +609,7 @@ def add_gach(baseDF, npiProvidersDF):
 
     return baseDF
 
-def add_rehabilitation(baseDF, npiProvidersDF, primary=True):
+def add_rehabilitationFromTaxonomy(baseDF, npiProvidersDF, primary=True):
 
     # https://taxonomy.nucc.org/
     #https://taxonomy.nucc.org/?searchTerm=283X00000X
@@ -633,7 +633,7 @@ def add_rehabilitation(baseDF, npiProvidersDF, primary=True):
 
     # join with rehabilitation flag
     baseDF = baseDF.join(npiProvidersDF.select(
-                                            F.col("NPI"), F.col("rehabilitation")),
+                                            F.col("NPI"), F.col("rehabilitation").alias("rehabilitationFromTaxonomy")),
                          on = [baseDF["ORGNPINM"] == npiProvidersDF["NPI"]],
                          how = "inner")
 
@@ -642,19 +642,18 @@ def add_rehabilitation(baseDF, npiProvidersDF, primary=True):
 
     return baseDF
 
-def add_rehabilitation2(baseDF):
+def add_rehabilitationFromCCN(baseDF):
 
     #https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r29soma.pdf
     #this function is using CCN numbers to flag rehabilitation hospitals and rehabilitation units within hospitals
     # an example: https://pubmed.ncbi.nlm.nih.gov/18996234/
-    baseDF = baseDF.withColumn("rehabilitation2",
+    baseDF = baseDF.withColumn("rehabilitationFromCCN",
                                F.when(
                                    ((F.substring(F.col("PROVIDER"),3,4).cast('int') >= 3025) & (F.substring(F.col("PROVIDER"),3,4).cast('int') <= 3099)) |
                                     (F.substring(F.col("PROVIDER"),3,1)=="T"), 1)
                                 .otherwise(0))
 
     return baseDF 
-
 
 def add_hospital(baseDF):
 
