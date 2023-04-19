@@ -226,6 +226,19 @@ def add_providerName(baseDF, npiProviderDF):
 
     return baseDF
 
+def add_providerOtherName(baseDF, npiProviderDF):
+
+    baseDF = baseDF.join(
+                      npiProviderDF.select(
+                          F.col("NPI"),F.col("Provider Other Organization Name").alias("providerOtherName")),
+                      on = [F.col("ORGNPINM") == F.col("NPI")],
+                      how = "inner")
+
+    # drop the NPI column that was just added
+    baseDF = baseDF.drop(F.col("NPI"))
+
+    return baseDF
+
 def add_providerAddress(baseDF, npiProviderDF):
 
     baseDF = baseDF.join(
@@ -334,6 +347,7 @@ def add_providerFIPS(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
 def add_provider_info(baseDF, npiProvidersDF, medicareHospitalInfoDF, posDF, zipToCountyDF):
 
     baseDF = add_providerName(baseDF,npiProvidersDF)
+    baseDF = add_providerOtherName(baseDF,npiProvidersDF)
     baseDF = add_providerAddress(baseDF,npiProvidersDF)
     baseDF = add_providerZip(baseDF,npiProvidersDF)
     baseDF = add_providerState(baseDF,npiProvidersDF)
