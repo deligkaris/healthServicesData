@@ -740,7 +740,7 @@ def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has be
 def add_daysDeadAfterVisit(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
 
     baseDF = (baseDF.withColumn( "daysDeadAfterVisit",
-                                 F.col("DEATH_DT_DAY")-F.col("ADMSN_DT_DAY")))
+                                 F.col("DEATH_DT_DAY")-F.col("THRU_DT_DAY")))
                                  
     return baseDF
             
