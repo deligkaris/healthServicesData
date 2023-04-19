@@ -97,12 +97,15 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
     adiFilename = pathToData + "/ATLAS-DISCRIMINATION-INDEX/US_2020_ADI_CensusBlockGroup_v3.2.csv"
 
     #have permission from AAMC to use this dataset for a single project only
-    teachingHospitalsFilename = pathToData + "/AAMC/teachingHospitalRequest-modifiedHeaders.csv"
+    aamcHospitalsFilename = pathToData + "/AAMC/teachingHospitalRequest-modifiedHeaders.csv"
+
+    #https://apps.acgme.org/ads/Public, I submitted a request to the data retrieval system and I got the data in an email
+    acgmeSitesFilename = pathToData + "/ParticipatingSiteListingAY20212022.csv"
 
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
             usdaErsIncomeFilename, usdaErsRuccFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
             hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-            medicareHospitalInfoFilename, posFilename, adiFilename, teachingHospitalsFilename)
+            medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename)
 
 
 def read_data(spark, 
@@ -112,7 +115,7 @@ def read_data(spark,
               census2021Filename, censusGazetteer2020Filename,
               cbiHospitalsFilename, cbiDetailsFilename,
               hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-              medicareHospitalInfoFilename, posFilename, adiFilename, teachingHospitalsFilename):
+              medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename):
 
      npiProviders = spark.read.csv(npiFilename, header="True") # read CMS provider information
      cbsa = spark.read.csv(cbsaFilename, header="True") # read CBSA information
@@ -161,10 +164,13 @@ def read_data(spark,
 
      adi = spark.read.csv(adiFilename, header="True")
 
-     teachingHospitals = spark.read.csv(teachingHospitalsFilename, header="True")
+     aamcHospitals = spark.read.csv(aamcHospitalsFilename, header="True")
+
+     acgmeSites = spark.read.csv(acgmeSitesFilename, header="True")
 
      return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails, 
-             hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos, adi, teachingHospitals)
+             hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos, adi, aamcHospitals,
+             acgmeSites)
 
 def get_data(pathToData, yearInitial, yearFinal, spark):
 
@@ -179,7 +185,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
     medicareHospitalInfoFilename,
     posFilename,
     adiFilename,
-    teachingHospitalsFilename) = get_filename_dicts(pathToData, yearInitial, yearFinal)
+    aamcHospitalsFilename,
+    acgmeSitesFilename) = get_filename_dicts(pathToData, yearInitial, yearFinal)
 
     (npiProviders, cbsa, 
     ersPeople, ersJobs, ersIncome, ersRucc, 
@@ -192,7 +199,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
     medicareHospitalInfo, 
     pos,
     adi,
-    teachingHospitals) = read_data(spark, npiFilename, cbsaFilename, 
+    aamcHospitals,
+    acgmeSites) = read_data(spark, npiFilename, cbsaFilename, 
                           usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
                           census2021Filename, censusGazetteer2020Filename,
                           cbiHospitalsFilename, cbiDetailsFilename,
@@ -203,7 +211,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
                           medicareHospitalInfoFilename,
                           posFilename,
                           adiFilename, 
-                          teachingHospitalsFilename)
+                          aamcHospitalsFilename,
+                          acgmeSitesFilename)
 
     with urlopen(geojsonCountyFilename) as response:
         counties = json.load(response)
@@ -219,8 +228,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
             medicareHospitalInfo, 
             pos,
             adi,
-            teachingHospitals)
-
+            aamcHospitals,
+            acgmeSites)
 
 def get_cbus_metro_ssa_counties():
 
