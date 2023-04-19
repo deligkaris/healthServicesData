@@ -100,7 +100,7 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
     aamcHospitalsFilename = pathToData + "/AAMC/teachingHospitalRequest-modifiedHeaders.csv"
 
     #https://apps.acgme.org/ads/Public, I submitted a request to the data retrieval system and I got the data in an email
-    acgmeSitesFilename = pathToData + "/ParticipatingSiteListingAY20212022.csv"
+    acgmeSitesFilename = pathToData + "/ACGME/ParticipatingSiteListingAY20212022.csv"
 
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
             usdaErsIncomeFilename, usdaErsRuccFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
