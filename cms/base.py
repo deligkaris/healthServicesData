@@ -869,6 +869,22 @@ def add_nihss(baseDF):
 
     return baseDF
 
+def add_processed_name(baseDF,colToProcess="providerName"):
+
+    processedCol = colToProcess + "Processed"
+
+    baseDF = (baseDF.withColumn(processedCol, 
+                                F.regexp_replace( 
+                                    F.trim( F.lower(F.col(colToProcess)) ), "\'s|\&|\.|\,| llc| inc| ltd| lp| lc|\(|\)", "") ) #replace things with nothing
+                    .withColumn(processedCol, 
+                                F.regexp_replace( 
+                                    F.col(processedCol) , "-| at | of | for | and ", " ") )  #replace things with space
+                    .withColumn(processedCol, 
+                                 F.regexp_replace( 
+                                     F.col(processedCol) , " {2,}", " ") )) #replace more than 2 spaces with one space 
+
+    return baseDF
+
 def add_cothMember(baseDF, teachingHospitalsDF):
 
     baseDF = baseDF.join(teachingHospitalsDF
@@ -895,6 +911,45 @@ def add_rbr(baseDF, teachingHospitalsDF): # resident to bed ratio
                          how = "left_outer")
 
     baseDF = baseDF.drop("Medicare ID")
+
+    return baseDF
+
+def add_acgmeSite(baseDF,acgmeSitesDF):
+
+    acgmeSitesDF = acgmeSitesDF.withColumn("institutionZip", 
+                                           F.substring(F.trim(F.col("Institution Postal Code")),1,5))
+
+    acgmeSitesDF = add_processed_name(acgmeSitesDF,colToProcess="Institution Name").withColumnRenamed("Institution NameProcessed","institutionNameProcessed")
+
+    eachZip = Window.partitionBy("institutionZip")
+
+    acgmeSitesDF = acgmeSitesDF.withColumn("acgmeSitesInZip",
+                                           F.collect_set( F.col("institutionNameProcessed")).over(eachZip)) 
+
+    baseDF = add_processed_name(baseDF,colToProcess="providerName")
+    baseDF = add_processed_name(baseDF,colToProcess="providerOtherName")
+
+    baseDF = baseDF.join(acgmeSitesDF
+                             .select(
+                                 F.col("acgmeSitesInZip"), F.col("institutionZip"))
+                             .distinct(),
+                         on=[ F.col("providerZip")==F.col("institutionZip") ],
+                         how="left_outer")
+
+    baseDF = (baseDF.withColumn("nameDistance", 
+                                F.expr( "transform( acgmeSitesInZip, x -> levenshtein(x,providerNameProcessed))"))
+                    .withColumn("otherNameDistance", 
+                                F.expr( "transform( acgmeSitesInZip, x -> levenshtein(x,providerOtherNameProcessed))"))
+                    .withColumn("minNameDistance", 
+                                F.array_min(F.col("nameDistance")))
+                    .withColumn("minOtherNameDistance", 
+                                F.array_min(F.col("otherNameDistance")))
+                    .withColumn("minDistance", 
+                                F.least( F.col("minNameDistance"), F.col("minOtherNameDistance")) ))
+    
+    baseDF = baseDF.withColumn("acgmeSite",
+                               F.when( F.col("minDistance") < 7, 1)
+                                .otherwise(0))
 
     return baseDF
 
