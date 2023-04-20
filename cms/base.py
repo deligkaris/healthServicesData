@@ -948,7 +948,7 @@ def add_acgmeSite(baseDF,acgmeSitesDF):
                                 F.least( F.col("minNameDistance"), F.col("minOtherNameDistance")) ))
     
     baseDF = baseDF.withColumn("acgmeSite",
-                               F.when( F.col("minDistance") < 7, 1)
+                               F.when( F.col("minDistance") < 4, 1)
                                 .otherwise(0))
 
     return baseDF
