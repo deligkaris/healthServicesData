@@ -294,6 +294,26 @@ def add_acgmeSitesInZip(acgmeSitesDF):
 
     return acgmeSitesDF
 
+def add_acgmeProgramsInZip(acgmeProgramsDF):
+
+    eachZip = Window.partitionBy("programZip")
+    acgmeProgramsDF = acgmeProgramsDF.withColumn("acgmeProgramsInZip",
+                                           F.collect_set( F.col("programNameProcessed")).over(eachZip)) 
+
+    return acgmeProgramsDF
+
+def add_accredited(acgmeProgramsDF):
+
+    acgmeProgramsDF = acgmeProgramsDF.withColumn("accredited",
+                                                 F.when( 
+                                                     F.col("Program Accreditation Name").isin(["Continued Accreditation",
+                                                                                               "Continued Accreditation with Warning",
+                                                                                               "Initial Accreditation",
+                                                                                               "Probationary Accreditation",
+                                                                                               "Continued Accreditation without Outcomes",
+                                                                                               "Initial Accreditation with Warning"]), 1)
+                                                  .otherwise(0))
+    return acgmeProgramsDF
 
 def add_primaryTaxonomy(npiProvidersDF):
 

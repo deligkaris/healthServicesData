@@ -875,10 +875,10 @@ def add_processed_name(baseDF,colToProcess="providerName"):
 
     baseDF = (baseDF.withColumn(processedCol, 
                                 F.regexp_replace( 
-                                    F.trim( F.lower(F.col(colToProcess)) ), "\'s|\&|\.|\,| llc| inc| ltd| lp| lc|\(|\)", "") ) #replace things with nothing
+                                    F.trim( F.lower(F.col(colToProcess)) ), "\'s|\&|\.|\,| llc| inc| ltd| lp| lc|\(|\)| program", "") ) #replace with nothing
                     .withColumn(processedCol, 
                                 F.regexp_replace( 
-                                    F.col(processedCol) , "-| at | of | for | and ", " ") )  #replace things with space
+                                    F.col(processedCol) , "-| at | of | for | and ", " ") )  #replace with space
                     .withColumn(processedCol, 
                                  F.regexp_replace( 
                                      F.col(processedCol) , " {2,}", " ") )) #replace more than 2 spaces with one space 
@@ -949,6 +949,34 @@ def add_acgmeSite(baseDF,acgmeSitesDF):
 
 def add_acgmeProgram(baseDF,acgmeProgramsDF):
 
+    acgmeProgramsDF = add_processed_name(acgmeProgramsDF,colToProcess="Program Name").withColumnRenamed("Program NameProcessed","programNameProcessed")
+ 
+    acgmeProgramsDF = add_acgmeProgramsInZip(acgmeProgramsDF)
+
+    baseDF = add_processed_name(baseDF,colToProcess="providerName")
+    baseDF = add_processed_name(baseDF,colToProcess="providerOtherName")
+
+    baseDF = baseDF.join(acgmeProgramsDF
+                             .select(
+                                 F.col("acgmeProgramsInZip"), F.col("programZip"))
+                             .distinct(),
+                         on=[ F.col("providerZip")==F.col("programZip") ],
+                         how="left_outer")
+
+    baseDF = (baseDF.withColumn("nameDistance", 
+                                F.expr( "transform( acgmeProgramsInZip, x -> levenshtein(x,providerNameProcessed))"))
+                    .withColumn("otherNameDistance", 
+                                F.expr( "transform( acgmeProgramsInZip, x -> levenshtein(x,providerOtherNameProcessed))"))
+                    .withColumn("minNameDistance", 
+                                F.array_min(F.col("nameDistance")))
+                    .withColumn("minOtherNameDistance", 
+                                F.array_min(F.col("otherNameDistance")))
+                    .withColumn("minDistance", 
+                                F.least( F.col("minNameDistance"), F.col("minOtherNameDistance")) ))
+    
+    baseDF = baseDF.withColumn("acgmeProgram",
+                               F.when( F.col("minDistance") < 4, 1) #could use either an absolute or relative cutoff
+                                .otherwise(0))
 
     return baseDF
 
