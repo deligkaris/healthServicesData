@@ -279,6 +279,13 @@ def prep_acgmeSitesDF(acgmeSitesDF):
 
     return acgmeSitesDF
 
+def prep_acgmeProgramsDF(acgmeProgramsDF):
+
+    acgmeProgramsDF = acgmeProgramsDF.withColumn("programZip",
+                                           F.substring(F.trim(F.col("Program Postal Code")),1,5))
+
+    return acgmeProgramsDF
+
 def add_acgmeSitesInZip(acgmeSitesDF):
 
     eachZip = Window.partitionBy("institutionZip")
