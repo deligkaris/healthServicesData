@@ -272,10 +272,31 @@ def prep_posDF(posDF):
 
     return posDF
 
+def add_processed_name(DF,colToProcess="providerName"):
+
+    processedCol = colToProcess + "Processed"
+
+    DF = (DF.withColumn(processedCol, 
+                             F.regexp_replace(
+                                 F.trim( F.lower(F.col(colToProcess)) ), "\'s|\&|\.|\,| llc| inc| ltd| lp| lc|\(|\)| program", "") ) #replace with nothing
+            .withColumn(processedCol,
+                             F.regexp_replace( 
+                                 F.col(processedCol) , "-| at | of | for | and ", " ") )  #replace with space
+            .withColumn(processedCol,
+                             F.regexp_replace(
+                                 F.col(processedCol) , " {2,}", " ") )) #replace more than 2 spaces with one space 
+                                 
+    return DF   
+
 def prep_acgmeSitesDF(acgmeSitesDF):
 
-    acgmeSitesDF = acgmeSitesDF.withColumn("institutionZip", 
+    acgmeSitesDF = acgmeSitesDF.withColumn("siteZip", 
                                            F.substring(F.trim(F.col("Institution Postal Code")),1,5))
+
+    acgmeSitesDF = acgmeSitesDF.withColumn("siteName", F.col("Institution Name"))
+
+    #acgmeSites do not include any id I can use for linking, so make site name ready for probabilistic matching
+    acgmeSitesDF = add_processed_name(acgmeSitesDF, colToProcess="siteName") 
 
     return acgmeSitesDF
 
@@ -283,6 +304,13 @@ def prep_acgmeProgramsDF(acgmeProgramsDF):
 
     acgmeProgramsDF = acgmeProgramsDF.withColumn("programZip",
                                            F.substring(F.trim(F.col("Program Postal Code")),1,5))
+
+    acgmeProgramsDF = acgmeProgramsDF.withColumn("programName", 
+                                                 F.regexp_replace( 
+                                                     F.trim( F.lower(F.col("Program Name")) ), " Program", "") )
+
+    #acgmePrograms do not include any id I can use for linking, so make program name ready for probabilistic matching
+    acgmeProgramsDF = add_processed_name(acgmeProgramsDF, colToProcess="programName") 
 
     return acgmeProgramsDF
 
