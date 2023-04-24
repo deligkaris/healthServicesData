@@ -102,10 +102,12 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
     #https://apps.acgme.org/ads/Public, I submitted a request to the data retrieval system and I got the data in an email
     acgmeSitesFilename = pathToData + "/ACGME/ParticipatingSiteListingAY20212022.csv"
 
+    acgmeProgramsFilename = pathToData + "/ACGME/ProgramListingAY20212022.csv"
+
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
             usdaErsIncomeFilename, usdaErsRuccFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
             hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-            medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename)
+            medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename, acgmeProgramsFilename)
 
 
 def read_data(spark, 
@@ -115,7 +117,7 @@ def read_data(spark,
               census2021Filename, censusGazetteer2020Filename,
               cbiHospitalsFilename, cbiDetailsFilename,
               hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-              medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename):
+              medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename, acgmeProgramsFilename):
 
      npiProviders = spark.read.csv(npiFilename, header="True") # read CMS provider information
      cbsa = spark.read.csv(cbsaFilename, header="True") # read CBSA information
@@ -168,9 +170,11 @@ def read_data(spark,
 
      acgmeSites = spark.read.csv(acgmeSitesFilename, header="True")
 
+     acgmePrograms = spark.read.csv(acgmeProgramsFilename, header="True")
+
      return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails, 
              hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos, adi, aamcHospitals,
-             acgmeSites)
+             acgmeSites, acgmePrograms)
 
 def get_data(pathToData, yearInitial, yearFinal, spark):
 
@@ -186,7 +190,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
     posFilename,
     adiFilename,
     aamcHospitalsFilename,
-    acgmeSitesFilename) = get_filename_dicts(pathToData, yearInitial, yearFinal)
+    acgmeSitesFilename,
+    acgmeProgramsFilename) = get_filename_dicts(pathToData, yearInitial, yearFinal)
 
     (npiProviders, cbsa, 
     ersPeople, ersJobs, ersIncome, ersRucc, 
@@ -200,7 +205,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
     pos,
     adi,
     aamcHospitals,
-    acgmeSites) = read_data(spark, npiFilename, cbsaFilename, 
+    acgmeSites,
+    acgmePrograms) = read_data(spark, npiFilename, cbsaFilename, 
                           usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
                           census2021Filename, censusGazetteer2020Filename,
                           cbiHospitalsFilename, cbiDetailsFilename,
@@ -212,7 +218,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
                           posFilename,
                           adiFilename, 
                           aamcHospitalsFilename,
-                          acgmeSitesFilename)
+                          acgmeSitesFilename,
+                          acgmeProgramsFilename)
 
     with urlopen(geojsonCountyFilename) as response:
         counties = json.load(response)
@@ -229,7 +236,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
             pos,
             adi,
             aamcHospitals,
-            acgmeSites)
+            acgmeSites,
+            acgmePrograms)
 
 def get_cbus_metro_ssa_counties():
 
@@ -263,6 +271,22 @@ def prep_posDF(posDF):
     posDF = posDF.withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
 
     return posDF
+
+def prep_acgmeSitesDF(acgmeSitesDF):
+
+    acgmeSitesDF = acgmeSitesDF.withColumn("institutionZip", 
+                                           F.substring(F.trim(F.col("Institution Postal Code")),1,5))
+
+    return acgmeSitesDF
+
+def add_acgmeSitesInZip(acgmeSitesDF):
+
+    eachZip = Window.partitionBy("institutionZip")
+    acgmeSitesDF = acgmeSitesDF.withColumn("acgmeSitesInZip",
+                                           F.collect_set( F.col("institutionNameProcessed")).over(eachZip)) 
+
+    return acgmeSitesDF
+
 
 def add_primaryTaxonomy(npiProvidersDF):
 

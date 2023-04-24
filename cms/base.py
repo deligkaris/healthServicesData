@@ -1,7 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
-from utilities import add_primaryTaxonomy
+from utilities import add_primaryTaxonomy, add_acgmeSitesInZip
 
 def cast_dates_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
@@ -916,15 +916,9 @@ def add_rbr(baseDF, teachingHospitalsDF): # resident to bed ratio
 
 def add_acgmeSite(baseDF,acgmeSitesDF):
 
-    acgmeSitesDF = acgmeSitesDF.withColumn("institutionZip", 
-                                           F.substring(F.trim(F.col("Institution Postal Code")),1,5))
-
     acgmeSitesDF = add_processed_name(acgmeSitesDF,colToProcess="Institution Name").withColumnRenamed("Institution NameProcessed","institutionNameProcessed")
 
-    eachZip = Window.partitionBy("institutionZip")
-
-    acgmeSitesDF = acgmeSitesDF.withColumn("acgmeSitesInZip",
-                                           F.collect_set( F.col("institutionNameProcessed")).over(eachZip)) 
+    acgmeSitesDF = add_acgmeSitesInZip(acgmeSitesDF)
 
     baseDF = add_processed_name(baseDF,colToProcess="providerName")
     baseDF = add_processed_name(baseDF,colToProcess="providerOtherName")
@@ -948,8 +942,13 @@ def add_acgmeSite(baseDF,acgmeSitesDF):
                                 F.least( F.col("minNameDistance"), F.col("minOtherNameDistance")) ))
     
     baseDF = baseDF.withColumn("acgmeSite",
-                               F.when( F.col("minDistance") < 4, 1)
+                               F.when( F.col("minDistance") < 4, 1) #could use either an absolute or relative cutoff
                                 .otherwise(0))
+
+    return baseDF
+
+def add_acgmeProgram(baseDF,acgmeProgramsDF):
+
 
     return baseDF
 
