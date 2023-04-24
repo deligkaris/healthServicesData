@@ -974,9 +974,9 @@ def add_acgmeProgram(baseDF,acgmeProgramsDF):
                     .withColumn("minDistance", 
                                 F.least( F.col("minNameDistance"), F.col("minOtherNameDistance")) )
                     .withColumn("providerNameIsContained",
-                                F.expr( "filter( acgmeProgramsInZip, x -> x like providerNameProcessed )"))
+                                F.expr( "filter( acgmeProgramsInZip, x -> x rlike providerNameProcessed )"))
                     .withColumn("providerOtherNameIsContained",
-                                F.expr( "filter( acgmeProgramsInZip, x -> x like providerOtherNameProcessed )")))
+                                F.expr( "filter( acgmeProgramsInZip, x -> x rlike providerOtherNameProcessed )")))
     
     baseDF = baseDF.withColumn("acgmeProgram",
                                F.when( (F.col("minDistance") < 4) | #could use either an absolute or relative cutoff
