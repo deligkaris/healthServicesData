@@ -997,9 +997,9 @@ def add_acgmeX(baseDF,acgmeXDF, X="Site"):
     baseDF = add_acgmeXInZip(baseDF,acgmeXDF,X=f"{X}s") #Site->Sites, Program->Programs....
 
     baseDF = (baseDF.withColumn("nameDistance", 
-                                F.expr(f' "transform( acgme{X}sInZip, x -> levenshtein(x,providerNameProcessed))"'))
+                                F.expr(f"transform( acgme{X}sInZip, x -> levenshtein(x,providerNameProcessed))"))
                     .withColumn("otherNameDistance", 
-                                F.expr(f' "transform( acgme{X}sInZip, x -> levenshtein(x,providerOtherNameProcessed))"'))
+                                F.expr(f"transform( acgme{X}sInZip, x -> levenshtein(x,providerOtherNameProcessed))"))
                     .withColumn("minNameDistance", 
                                 F.array_min(F.col("nameDistance")))
                     .withColumn("minOtherNameDistance", 
@@ -1007,9 +1007,9 @@ def add_acgmeX(baseDF,acgmeXDF, X="Site"):
                     .withColumn("minDistance", 
                                 F.least( F.col("minNameDistance"), F.col("minOtherNameDistance")) )
                     .withColumn("providerNameIsContained",
-                                F.expr(f' "filter( acgme{X}sInZip, x -> x rlike providerNameProcessed )"'))
+                                F.expr(f"filter( acgme{X}sInZip, x -> x rlike providerNameProcessed )"))
                     .withColumn("providerOtherNameIsContained",
-                                F.expr(f' "filter( acgme{X}sInZip, x -> x rlike providerOtherNameProcessed )"')))
+                                F.expr(f"filter( acgme{X}sInZip, x -> x rlike providerOtherNameProcessed )")))
 
     baseDF = baseDF.withColumn(f"acgme{X}",
                                F.when( (F.col("minDistance") < 4) | #could use either an absolute or relative cutoff
