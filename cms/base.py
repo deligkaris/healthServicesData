@@ -991,11 +991,6 @@ def add_acgmeSite(baseDF,acgmeSitesDF):
 
 def add_acgmeX(baseDF,acgmeXDF, X="Site"):
 
-    if (X == "Site"):
-        acgmeSitesDF = add_processed_name(acgmeSitesDF,colToProcess="Institution Name").withColumnRenamed("Institution NameProcessed","institutionNameProcessed")
-    elif ( X == "Program"):
-        acgmeProgramsDF = add_processed_name(acgmeProgramsDF,colToProcess="Program Name").withColumnRenamed("Program NameProcessed","programNameProcessed")
-
     baseDF = add_processed_name(baseDF,colToProcess="providerName")
     baseDF = add_processed_name(baseDF,colToProcess="providerOtherName")
 
