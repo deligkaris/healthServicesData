@@ -275,9 +275,9 @@ def prep_posDF(posDF):
 def prep_aamcHospitalsDF(aamcHospitalsDF):
 
     aamcHospitalsDF = (aamcHospitalsDF.withColumn("teachingStatus",
-                                          F.when( F.col("Teaching Status")=="Teaching", "1")
-                                          F.when( F.col("Teaching Status")=="Non-Teaching", "0")
-                                           .otherwise(""))
+                                                  F.when( F.col("Teaching Status")=="Teaching", "1")
+                                                   .when( F.col("Teaching Status")=="Non-Teaching", "0")
+                                                   .otherwise(""))
                                       .withColumn("teachingStatus", F.col("teachingStatus").cast('int')))
 
     return aamcHospitalsDF
