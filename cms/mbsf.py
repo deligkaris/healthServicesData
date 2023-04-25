@@ -163,6 +163,12 @@ def add_death_date_info(mbsfDF):
                                     F.col("DEATH_DT").substr(1,4).cast('int'))
                                  .otherwise(F.lit(None)))
 
+    # keep the month 
+    mbsfDF = mbsfDF.withColumn( "DEATH_DT_MONTH",
+                                F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date                              
+                                    F.col("DEATH_DT").substr(5,2).cast('int'))
+                                 .otherwise(F.lit(None)))
+
     # find number of days from yearStart-1 to year of death -1
     mbsfDF = mbsfDF.withColumn( "DEATH_DT_DAYSINYEARSPRIOR", 
                                 F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date
