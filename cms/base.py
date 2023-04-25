@@ -973,6 +973,18 @@ def add_aamcTeachingHospital(baseDF,aamcHospitalsDF):
 
     return baseDF
 
+def add_aamcMajorTeachingHospital(baseDF,aamcHospitalsDF):
+
+    baseDF = baseDF.join(aamcHospitalsDF
+                            .select(F.col("Medicare ID"),F.col("majorTeachingStatus").alias("aamcMajorTeachingHospital")),
+                         on=[F.col("Medicare ID")==F.col("PROVIDER")],
+                         how="left_outer")
+
+    baseDF = baseDF.drop("Medicare ID")
+
+    return baseDF
+
+
 def add_teachingHospital(baseDF, aamcHospitalsDF, acgmeProgramsDF):
 
     #definition of a teaching hospital:  https://hcup-us.ahrq.gov/db/vars/hosp_bedsize/nisnote.jsp

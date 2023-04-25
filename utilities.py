@@ -280,6 +280,13 @@ def prep_aamcHospitalsDF(aamcHospitalsDF):
                                                    .otherwise(""))
                                       .withColumn("teachingStatus", F.col("teachingStatus").cast('int')))
 
+    aamcHospitalsDF = (aamcHospitalsDF.withColumn("majorTeachingStatus",
+                                                  F.when( F.col("Major Teaching Status")=="Major Teaching", "1")
+                                                   .when( F.col("Major Teaching Status")=="Other Teaching", "0")
+                                                   .when( F.col("Major Teaching Status")=="Non-Teaching", "0")
+                                                   .otherwise(""))
+                                      .withColumn("majorTeachingStatus", F.col("majorTeachingStatus").cast('int')))
+
     return aamcHospitalsDF
 
 def add_processed_name(DF,colToProcess="providerName"):
