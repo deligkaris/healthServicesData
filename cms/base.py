@@ -973,17 +973,19 @@ def add_aamcTeachingHospital(baseDF,aamcHospitalsDF):
 
     return baseDF
 
-def add_teachingHospital(baseDF,teachingHospitalsDF):
+def add_teachingHospital(baseDF, aamcHospitalsDF, acgmeProgramsDF):
 
     #definition of a teaching hospital:  https://hcup-us.ahrq.gov/db/vars/hosp_bedsize/nisnote.jsp
 
-    baseDF = add_rbr(baseDF,teachingHospitalsDF)
-    baseDF = add_cothMember(baseDF, teachingHospitalsDF)
+    baseDF = add_rbr(baseDF,aamcHospitalsDF)
+    baseDF = add_cothMember(baseDF, aamcHospitalsDF)
+    baseDF = add_acgmeX(baseDF, acgmeProgramsDF, X="Program")
 
     baseDF = baseDF.withColumn("teachingHospital",
                                 F.when( 
                                     (F.col("cothMember") == "Y") |
-                                    (F.col("rbr") >= 0.25), 1)
+                                    (F.col("rbr") >= 0.25) |
+                                    (F.col("acgmeProgram") == 1), 1)
                                  .otherwise(0))
 
     return baseDF
