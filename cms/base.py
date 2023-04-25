@@ -930,65 +930,6 @@ def add_acgmeXInZip(baseDF,acgmeXDF, X="Sites"):
 
     return baseDF
 
-
-def add_acgmeSitesInZip(baseDF,acgmeSitesDF): 
-
-    eachZip = Window.partitionBy("institutionZip")
-
-    acgmeSitesDF = acgmeSitesDF.withColumn("acgmeSitesInZip",
-                                           F.collect_set( F.col("institutionNameProcessed")).over(eachZip))
-
-    baseDF = baseDF.join(acgmeSitesDF
-                             .select(
-                                 F.col("acgmeSitesInZip"), F.col("institutionZip"))
-                             .distinct(),
-                         on=[ F.col("providerZip")==F.col("institutionZip") ],
-                         how="left_outer")
-
-    return baseDF
-
-def add_acgmeProgramsInZip(baseDF,acgmeSitesDF):
-
-    eachZip = Window.partitionBy("programZip")
-
-    acgmeProgramsDF = acgmeProgramsDF.withColumn("acgmeProgramsInZip",
-                                           F.collect_set( F.col("programNameProcessed")).over(eachZip))
-
-    baseDF = baseDF.join(acgmeProgramsDF
-                             .select(
-                                 F.col("acgmeProgramsInZip"), F.col("programZip"))
-                             .distinct(),
-                         on=[ F.col("providerZip")==F.col("programZip") ],
-                         how="left_outer")
-
-    return baseDF
-
-def add_acgmeSite(baseDF,acgmeSitesDF):
-
-    acgmeSitesDF = add_processed_name(acgmeSitesDF,colToProcess="Institution Name").withColumnRenamed("Institution NameProcessed","institutionNameProcessed")
-
-    baseDF = add_processed_name(baseDF,colToProcess="providerName")
-    baseDF = add_processed_name(baseDF,colToProcess="providerOtherName")
-
-    baseDF = add_acgmeSitesInZip(baseDF,acgmeSitesDF)
-
-    baseDF = (baseDF.withColumn("nameDistance", 
-                                F.expr( "transform( acgmeSitesInZip, x -> levenshtein(x,providerNameProcessed))"))
-                    .withColumn("otherNameDistance", 
-                                F.expr( "transform( acgmeSitesInZip, x -> levenshtein(x,providerOtherNameProcessed))"))
-                    .withColumn("minNameDistance", 
-                                F.array_min(F.col("nameDistance")))
-                    .withColumn("minOtherNameDistance", 
-                                F.array_min(F.col("otherNameDistance")))
-                    .withColumn("minDistance", 
-                                F.least( F.col("minNameDistance"), F.col("minOtherNameDistance")) ))
-    
-    baseDF = baseDF.withColumn("acgmeSite",
-                               F.when( F.col("minDistance") < 4, 1) #could use either an absolute or relative cutoff
-                                .otherwise(0))
-
-    return baseDF
-
 def add_acgmeX(baseDF,acgmeXDF, X="Site"):
 
     baseDF = add_processed_name(baseDF,colToProcess="providerName")
@@ -1017,38 +958,7 @@ def add_acgmeX(baseDF,acgmeXDF, X="Site"):
                                        (F.size(F.col("providerOtherNameIsContained"))>0), 1)
                                 .otherwise(0))
 
-    return baseDF
-
-
-def add_acgmeProgram(baseDF,acgmeProgramsDF):
-
-    acgmeProgramsDF = add_processed_name(acgmeProgramsDF,colToProcess="Program Name").withColumnRenamed("Program NameProcessed","programNameProcessed")
- 
-    baseDF = add_processed_name(baseDF,colToProcess="providerName")
-    baseDF = add_processed_name(baseDF,colToProcess="providerOtherName")
-
-    baseDF = add_acgmeProgramsInZip(baseDF,acgmeProgramsDF)
-
-    baseDF = (baseDF.withColumn("nameDistance", 
-                                F.expr( "transform( acgmeProgramsInZip, x -> levenshtein(x,providerNameProcessed))"))
-                    .withColumn("otherNameDistance", 
-                                F.expr( "transform( acgmeProgramsInZip, x -> levenshtein(x,providerOtherNameProcessed))"))
-                    .withColumn("minNameDistance", 
-                                F.array_min(F.col("nameDistance")))
-                    .withColumn("minOtherNameDistance", 
-                                F.array_min(F.col("otherNameDistance")))
-                    .withColumn("minDistance", 
-                                F.least( F.col("minNameDistance"), F.col("minOtherNameDistance")) )
-                    .withColumn("providerNameIsContained",
-                                F.expr( "filter( acgmeProgramsInZip, x -> x rlike providerNameProcessed )"))
-                    .withColumn("providerOtherNameIsContained",
-                                F.expr( "filter( acgmeProgramsInZip, x -> x rlike providerOtherNameProcessed )")))
-    
-    baseDF = baseDF.withColumn("acgmeProgram",
-                               F.when( (F.col("minDistance") < 4) | #could use either an absolute or relative cutoff
-                                       (F.size(F.col("providerNameIsContained"))>0) | 
-                                       (F.size(F.col("providerOtherNameIsContained"))>0), 1)
-                                .otherwise(0))
+    baseDF = baseDF.drop("nameDistance","otherNameDistance","minNameDistance","minOtherNameDistance","minDistance","providerNameIsContained","providerOtherNameIsContained")
 
     return baseDF
 
