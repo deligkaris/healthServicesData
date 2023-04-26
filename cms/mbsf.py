@@ -49,7 +49,7 @@ def add_hmo(mbsfDF):
     hmoIndColumns = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
 
     #"C": Lock-in GHO to process all provider claims
-    hmoCodes = {"C"} #,"C")
+    hmoCodes = ("C","C")
 
     mbsfDF = (mbsfDF.withColumn("hmoIndAll",   #make the array
                                 F.array(hmoIndColumns))
