@@ -60,7 +60,7 @@ def add_hmo(mbsfDF):
                                 F.array_distinct(F.col("hmoIndAllSliced")))
                     #keep from sliced array only codes that indicate hmo
                     .withColumn("hmoIndAllSlicedDistinctHmo",
-                                F.expr(f'filter(hmoIndAllSlicedDistinct, x -> x in {hmoCodes})'))
+                                F.expr(f"filter(hmoIndAllSlicedDistinct, x -> x in ('C',)"))
                     #indicate who had hmo and who did not
                     .withColumn("hmo",
                                 F.when( F.size(F.col("hmoIndAllSlicedDistinctHmo"))>0, 1)
