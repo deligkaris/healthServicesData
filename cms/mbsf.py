@@ -46,7 +46,7 @@ def add_hmo(mbsfDF):
     hmoIndColumns = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
 
     #"C": Lock-in GHO to process all provider claims
-    hmoCodes = tuple(["C"])
+    hmoCodes = ("C",)
 
     mbsfDF = (mbsfDF.withColumn("hmoIndAll",   #make the array
                                 F.array(hmoIndColumns))
@@ -60,7 +60,7 @@ def add_hmo(mbsfDF):
                                 F.array_distinct(F.col("hmoIndAllSliced")))
                     #keep from sliced array only codes that indicate hmo
                     .withColumn("hmoIndAllSlicedDistinctHmo",
-                                F.expr(f"filter(hmoIndAllSlicedDistinct, x -> x in {hmoCodes})"))
+                                F.expr(f'filter(hmoIndAllSlicedDistinct, x -> x in {hmoCodes})'))
                     #indicate who had hmo and who did not
                     .withColumn("hmo",
                                 F.when( F.size(F.col("hmoIndAllSlicedDistinctHmo"))>0, 1)
