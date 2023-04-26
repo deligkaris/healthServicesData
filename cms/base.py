@@ -1011,11 +1011,13 @@ def prep_baseDF(baseDF, claim="inpatient"):
     if (claim=="inpatient"):
         baseDF = add_discharge_date_info(baseDF,claim=claim)
         baseDF = add_admission_date_info(baseDF,claim=claim)
+        #add SSA county of beneficiaries
+        baseDF = add_ssaCounty(baseDF)
     elif ( (claim=="snf") | (claim=="hosp") | (claim=="hha") ):
         baseDF = add_admission_date_info(baseDF,claim=claim)
-
-    #add SSA county of beneficiaries
-    baseDF = add_ssaCounty(baseDF)
+    elif ( claim=="outpatient" ):
+        #add SSA county of beneficiaries
+        baseDF = add_ssaCounty(baseDF)
 
     return baseDF
 
