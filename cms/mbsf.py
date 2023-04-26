@@ -1,63 +1,90 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-def add_allPartBEligible(mbsfDF):
+def add_allPartBEligible(mbsfDF): #assumes add death date info
 
-    buyInList = list(map(lambda x: f"BUYIN{x}",range(1,13))) # ['BUYIN1','BUYIN2',...'BUYIN12']
+    buyInColumns = list(map(lambda x: f"BUYIN{x}",range(1,13))) # ['BUYIN1','BUYIN2',...'BUYIN12']
 
     # if patients were enrolled in any of these, then they did not have Part B during the entire year
     #"0": not entitled, "1": Part A only, "A": Part A state buy-in
     #"2": Part B only, "3": Part A and Part B
     #"B": Part B state buy in, "c": Part A and Part B state buy-in
     # source: RESDAC MBSF excel file
-    #
-    notPartBList = ["0","1","A"]
+    notPartBCodes = ("0","1","A")
 
-    # condition (a string for now) that allows us to see who had Part B and who did not at any time during the year
-    buyInCondition = '(' + '|'.join('F.col(' + f'"{x}"' + ').isin(notPartBList)' for x in buyInList) +')'
+    mbsfDF = (mbsfDF.withColumn("buyInAll",   #make the array
+                                F.array(buyInColumns))
+                    #keep all 12 elements if beneficiary did not die that year, otherwise keep up to the month of death (after that month all codes are 0)
+                    .withColumn("buyInAllSliced",   
+                                F.when( F.col("DEATH_DT_MONTH").isNull(), F.col("buyInAll"))
+                                 #.otherwise(F.slice("buyInAll",F.lit(1),F.col("DEATH_DT_MONTH"))) #unsure why this is not working
+                                 .otherwise(F.expr("slice(buyInAll,1,DEATH_DT_MONTH)")))
+                     #no need to keep all elements, just the distinct ones
+                    .withColumn("buyInAllSlicedDistinct",  
+                                F.array_distinct(F.col("buyInAllSliced")))
+                    #keep from sliced array only codes that indicate not enrollment in part B
+                    .withColumn("buyInAllSlicedDistinctNotPartB", 
+                                F.expr(f"filter(buyInAllSlicedDistinct, x -> x in {notPartBCodes})"))
+                    #indicate who had part B and who did not
+                    .withColumn("allPartBEligible",  
+                                F.when( F.size(F.col("buyInAllSlicedDistinctNotPartB"))>0, 0)
+                                 .otherwise(1)))
 
-    # add a column to indicate who had Part B and who did not at any time during the year
-    mbsfDF=mbsfDF.withColumn("allPartBEligible",
-                                  F.when(eval(buyInCondition),0)
-                                   .otherwise(1))
-
-    # this is doing exactly what the previous is doing
+    # could be an alternative, but have not checked
     #mbsf = mbsf.withColumn("allPartBEligibleTEST", 
     #                                   F.when(F.col("B_MO_CNT")==12,1)
     #                                    .otherwise(0))
 
     return mbsfDF
 
-def add_noHMO(mbsfDF):
+def add_hmo(mbsfDF):
 
-    # enrollment summaries, *allows unpacking the list
-    hmoIndList = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
-
-    #"C": Lock-in GHO to process all provider claims
-    yesHmoList = ["C"]
-
-    hmoIndCondition = '(' + '|'.join('F.col(' + f'"{x}"' + ').isin(yesHmoList)' for x in hmoIndList) +')'
-
-    # add a column to indicate whether there is a chance CMS processed the claims
     # this approach is the only way to get what we need from MBSF
     # Using the HMO_COVERAGE indicator would exclude beneficiaries that may have had their claims processed by CMS
-    mbsfDF = mbsfDF.withColumn("noHMO", 
-                                F.when(eval(hmoIndCondition),0) #set them to false, as CMS definitely did not process their claims
-                                 .otherwise(1)) #otherwise True
+
+    # enrollment summaries
+    hmoIndColumns = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
+
+    #"C": Lock-in GHO to process all provider claims
+    hmoCodes = ["C"]
+
+    mbsfDF = (mbsfDF.withColumn("hmoIndAll",   #make the array
+                                F.array(hmoIndColumns))
+                    #keep all 12 elements if beneficiary did not die that year, otherwise keep up to the month of death
+                    .withColumn("hmoIndAllSliced",
+                                F.when( F.col("DEATH_DT_MONTH").isNull(), F.col("hmoIndAll"))
+                                 #.otherwise(F.slice("hmoIndAll",F.lit(1),F.col("DEATH_DT_MONTH"))) #unsure why this is not working
+                                 .otherwise(F.expr("slice(hmoIndAll,1,DEATH_DT_MONTH)")))
+                     #no need to keep all elements, just the distinct ones
+                    .withColumn("hmoIndAllSlicedDistinct",
+                                F.array_distinct(F.col("hmoIndAllSliced")))
+                    #keep from sliced array only codes that indicate hmo
+                    .withColumn("hmoIndAllSlicedDistinctHmo",
+                                F.expr(f"filter(hmoIndAllSlicedDistinct, x -> x in {hmoCodes})"))
+                    #indicate who had hmo and who did not
+                    .withColumn("hmo",
+                                F.when( F.size(F.col("hmoIndAllSlicedDistinctHmo"))>0, 1)
+                                 .otherwise(0)))   
+
+    #this would search over all 12 variables, even when beneficiaries are dead for part of the year
+    #hmoIndCondition = '(' + '|'.join('F.col(' + f'"{x}"' + ').isin(yesHmoList)' for x in hmoIndList) +')'
+    #mbsfDF = mbsfDF.withColumn("noHMO", 
+    #                            F.when(eval(hmoIndCondition),0) #set them to false, as CMS definitely did not process their claims
+    #                             .otherwise(1)) #otherwise True
 
     return mbsfDF
 
 def add_enrollment_info(mbsfDF):
         
     mbsfDF = add_allPartBEligible(mbsfDF)
-    mbsfDF = add_noHMO(mbsfDF)
+    mbsfDF = add_hmo(mbsfDF)
 
     return mbsfDF
 
 def filter_FFS(mbsfDF):
 
     mbsfDF = add_enrollment_info(mbsfDF)
-    mbsfDF = mbsfDF.filter(F.col("noHMO")==1).filter(F.col("allPartBEligible")==1)
+    mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartBEligible")==1)
 
     return mbsfDF
 
