@@ -1002,7 +1002,7 @@ def add_teachingHospital(baseDF, aamcHospitalsDF, acgmeProgramsDF):
 
     return baseDF
   
-def prep_baseDF(baseDF, claim="inpatient")
+def prep_baseDF(baseDF, claim="inpatient"):
 
     #add some date-related info
     baseDF = cast_dates_as_int(baseDF,claim=claim)
