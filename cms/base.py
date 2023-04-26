@@ -63,7 +63,7 @@ def add_admission_date_info(baseDF, claim="outpatient"):
 def add_through_date_info(baseDF, claim="outpatient"):
 
     #unfortunately, SNF claims have a different column name for claim through date
-    if ( (claim=="snf") | (claim=="hha") ):
+    if ( (claim=="snf") | (claim=="hha") | (claim=="hosp") ):
         baseDF = baseDF.withColumn( "THRU_DT", F.col("CLM_THRU_DT"))
 
     baseDF = baseDF.withColumn( "THRU_DT_DAYOFYEAR", 
