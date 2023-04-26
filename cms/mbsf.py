@@ -236,7 +236,15 @@ def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
 
     return deadDF
 
+def prep_mbsfDF(mbsfDF):
 
+    # DEATH_DT is currently a double, need to convert to int to be consistent with other date fields in CMS data
+    mbsfDF  = cast_dates_as_int(mbsfDF)
+
+    # add the death date of year, year, and day in order to calculate 90 day mortality rate when needed
+    mbsfDF = add_death_date_info(mbsfDF)
+ 
+    return mbsfDF
 
 
 
