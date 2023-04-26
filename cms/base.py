@@ -1002,7 +1002,22 @@ def add_teachingHospital(baseDF, aamcHospitalsDF, acgmeProgramsDF):
 
     return baseDF
   
+def prep_baseDF(baseDF, claim="inpatient")
 
+    #add some date-related info
+    baseDF = cast_dates_as_int(baseDF,claim=claim)
+    baseDF = add_through_date_info(baseDF,claim=claim)
+
+    if (claim=="inpatient"):
+        baseDF = add_discharge_date_info(baseDF,claim=claim)
+        baseDF = add_admission_date_info(baseDF,claim=claim)
+    elif ( (claim=="snf") | (claim=="hosp") | (claim=="hha") ):
+        baseDF = add_admission_date_info(baseDF,claim=claim)
+
+    #add SSA county of beneficiaries
+    baseDF = add_ssaCounty(baseDF)
+
+    return baseDF
 
 
 
