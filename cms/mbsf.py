@@ -23,12 +23,15 @@ def add_allPartBEligible(mbsfDF): #assumes add death date info
                     .withColumn("buyInAllSlicedDistinct",  
                                 F.array_distinct(F.col("buyInAllSliced")))
                     #keep from sliced array only codes that indicate not enrollment in part B
+                    #instead of filter, I could also use F.array_overlap, not sure if it would be faster though
                     .withColumn("buyInAllSlicedDistinctNotPartB", 
                                 F.expr(f"filter(buyInAllSlicedDistinct, x -> x in {notPartBCodes})"))
                     #indicate who had part B and who did not
                     .withColumn("allPartBEligible",  
                                 F.when( F.size(F.col("buyInAllSlicedDistinctNotPartB"))>0, 0)
                                  .otherwise(1)))
+
+    mbsfDF = mbsfDF.drop("buyInAll","buyInAllSliced","buyInAllSlicedDistinct","buyInAllSlicedDistinctNotPartB")
 
     # could be an alternative, but have not checked
     #mbsf = mbsf.withColumn("allPartBEligibleTEST", 
@@ -46,7 +49,7 @@ def add_hmo(mbsfDF):
     hmoIndColumns = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
 
     #"C": Lock-in GHO to process all provider claims
-    hmoCodes = ("C","C")
+    hmoCodes = {"C"} #,"C")
 
     mbsfDF = (mbsfDF.withColumn("hmoIndAll",   #make the array
                                 F.array(hmoIndColumns))
@@ -65,6 +68,8 @@ def add_hmo(mbsfDF):
                     .withColumn("hmo",
                                 F.when( F.size(F.col("hmoIndAllSlicedDistinctHmo"))>0, 1)
                                  .otherwise(0)))   
+
+    mbsfDF = mbsfDF.drop("hmoIndAll","hmoIndAllSliced","hmoIndAllSlicedDistinct","hmoIndAllSlicedDistinctHmo")
 
     #this would search over all 12 variables, even when beneficiaries are dead for part of the year
     #hmoIndCondition = '(' + '|'.join('F.col(' + f'"{x}"' + ').isin(yesHmoList)' for x in hmoIndList) +')'
