@@ -54,6 +54,7 @@ def add_hmo(mbsfDF):
     mbsfDF = (mbsfDF.withColumn("hmoIndAll",   #make the array
                                 F.array(hmoIndColumns))
                     #keep all 12 elements if beneficiary did not die that year, otherwise keep up to the month of death
+                    #HMOINDs after month of death are all 0
                     .withColumn("hmoIndAllSliced",
                                 F.when( F.col("DEATH_DT_MONTH").isNull(), F.col("hmoIndAll"))
                                  #.otherwise(F.slice("hmoIndAll",F.lit(1),F.col("DEATH_DT_MONTH"))) #unsure why this is not working
