@@ -153,11 +153,26 @@ def add_stroke(baseDF):
 
     return baseDF
 
-def add_parkinsons(baseDF):
+def add_parkinsonsPrncpalDgns(baseDF):
 
     baseDF = baseDF.withColumn("parkinsons",
                               F.when((F.regexp_extract( F.trim(F.col("PRNCPAL_DGNS_CD")), '^G20[\d]*',0) !=''), 1)
                                .otherwise(0))
+
+    return baseDF
+
+def add_parkinsons(baseDF):
+
+    dgnsColumnList = [f"ICD_DGNS_CD{x}" for x in range(1,26)] #all 25 DGNS columns
+
+    baseDF = (baseDF.withColumn("dgnsList", #add an array of all dgns codes found in their claims
+                                F.array(dgnsColumnList))
+                    .withColumn("parkinsonsList", #keeps codes that match the regexp pattern
+                                F.expr(f'filter(dgnsList, x -> x rlike "G20[0-9]?")'))
+
+    baseDF = baseDF.withColumn("parkinsons",
+                               F.when( F.size(F.col("parkinsonsList"))>0, 1)
+                                .otherwise(0))
 
     return baseDF
 
