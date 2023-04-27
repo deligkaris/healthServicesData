@@ -9,6 +9,7 @@ def get_filename_dicts(pathCMS, yearInitial, yearFinal):
     pathSNF = pathCMS + '/SNF' #skilled nursing facilities
     pathHHA = pathCMS + '/HHA' #home health agency
     pathHOSP = pathCMS + '/HOSP' #hospice care
+    pathCAR = pathCMS + '/CAR' #carrier 
 
     #because there are several CMS files, put them in a dictionary
     outClaimsFilenames = {}
@@ -22,6 +23,8 @@ def get_filename_dicts(pathCMS, yearInitial, yearFinal):
     hhaRevenueFilenames = {}
     hospClaimsFilenames = {}
     hospRevenueFilenames = {}
+    carClaimsFilenames = {}
+    carRevenueFilenames = {}
 
     #all filenames will include their absolute paths
     for iYear in range(yearInitial,yearFinal+1): #remember range does not include the last point
@@ -36,12 +39,15 @@ def get_filename_dicts(pathCMS, yearInitial, yearFinal):
         hhaRevenueFilenames[f'{iYear}'] = pathHHA + f"/hha_revenuek_{iYear}.parquet"
         hospClaimsFilenames[f'{iYear}'] = pathHOSP + f"/hosp_claimsk_{iYear}.parquet"
         hospRevenueFilenames[f'{iYear}'] = pathHOSP + f"/hosp_revenuek_{iYear}.parquet"
+        carClaimsFilenames[f'{iYear}'] = pathCAR + f"/car_claimsk_{iYear}.parquet"
+        carRevenueFilenames[f'{iYear}'] = pathCAR + f"/car_linek_{iYear}.parquet"
 
     return (mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inClaimsFilenames, inRevenueFilenames, snfClaimsFilenames, snfRevenueFilenames,
-           hhaClaimsFilenames, hhaRevenueFilenames, hospClaimsFilenames, hospRevenueFilenames)
+           hhaClaimsFilenames, hhaRevenueFilenames, hospClaimsFilenames, hospRevenueFilenames, carClaimsFilenames, carRevenueFilenames)
 
 def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inClaimsFilenames, inRevenueFilenames,
-             snfClaimsFilenames, snfRevenueFilenames, hhaClaimsFilenames, hhaRevenueFilenames, hospClaimsFilenames, hospRevenueFilenames):
+             snfClaimsFilenames, snfRevenueFilenames, hhaClaimsFilenames, hhaRevenueFilenames, hospClaimsFilenames, hospRevenueFilenames,
+             carClaimsFilenames, carRevenueFilenames):
 
     #assume the worst...that each type of file includes claims from different years
     outClaimsYears = sorted(list(outClaimsFilenames.keys()))
@@ -55,6 +61,8 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
     hhaRevenueYears = sorted(list(hhaRevenueFilenames.keys()))
     hospClaimsYears = sorted(list(hospClaimsFilenames.keys()))
     hospRevenueYears = sorted(list(hospRevenueFilenames.keys()))
+    carClaimsYears = sorted(list(carClaimsFilenames.keys()))
+    carRevenueYears = sorted(list(carRevenueFilenames.keys()))
 
     # PySpark defaults to reading and writing in the Parquet format
     # spark.read.parquet maps to spark.read.format('parquet').load()
@@ -71,6 +79,8 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
     hhaRevenueDict={}
     hospClaimsDict={}
     hospRevenueDict={}
+    carClaimsDict={}
+    carRevenueDict={}
 
     #read all data and put them in dictionary
     for iYear in outClaimsYears:
@@ -106,6 +116,12 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
     for iYear in hospRevenueYears:
         hospRevenueDict[f'{iYear}'] = spark.read.parquet(hospRevenueFilenames[f'{iYear}'])
     
+    for iYear in carClaimsYears:
+        carClaimsDict[f'{iYear}'] = spark.read.parquet(carClaimsFilenames[f'{iYear}'])
+
+    for iYear in hospRevenueYears:
+        carRevenueDict[f'{iYear}'] = spark.read.parquet(carRevenueFilenames[f'{iYear}'])
+
     # merge all previous years in one dataframe
     outClaims = outClaimsDict[outClaimsYears[0]] #initialize here
     outRevenue = outRevenueDict[outRevenueYears[0]]
@@ -116,8 +132,10 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
     snfRevenue = snfRevenueDict[snfRevenueYears[0]]
     hhaClaims = hhaClaimsDict[hhaClaimsYears[0]]
     hhaRevenue = hhaRevenueDict[hhaRevenueYears[0]]
-    hospClaims = hospClaimsDict[inClaimsYears[0]]
-    hospRevenue = hospRevenueDict[inRevenueYears[0]]
+    hospClaims = hospClaimsDict[hospClaimsYears[0]]
+    hospRevenue = hospRevenueDict[hospRevenueYears[0]]
+    carClaims = carClaimsDict[carClaimsYears[0]]
+    carRevenue = carRevenueDict[carRevenueYears[0]]
 
     if (len(outClaimsYears) > 1): 
         for iYear in outClaimsYears[1:]: 
@@ -163,20 +181,39 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
        for iYear in hospRevenueYears[1:]:
            hospRevenue = hospRevenue.union(hospRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    return(mbsf, outClaims, outRevenue, inClaims, inRevenue, snfClaims, snfRevenue, hhaClaims, hhaRevenue, hospClaims, hospRevenue)
+    if (len(carClaimsYears) > 1):
+       for iYear in carClaimsYears[1:]:
+           carClaims = carClaims.union(carClaimsDict[f'{iYear}']) #and then do union with the rest
+
+    if (len(carRevenueYears) > 1):
+       for iYear in carRevenueYears[1:]:
+           carRevenue = carRevenue.union(carRevenueDict[f'{iYear}']) #and then do union with the rest
+
+    return(mbsf, outClaims, outRevenue, inClaims, inRevenue, 
+           snfClaims, snfRevenue, hhaClaims, hhaRevenue, hospClaims, hospRevenue, 
+           carClaims, carRevenue)
 
 def get_data(pathCMS, yearInitial, yearFinal, spark):
 
     (mbsfFilenames, outBaseFilenames, outRevenueFilenames, inBaseFilenames, inRevenueFilenames,
     snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, 
-    hospBaseFilenames, hospRevenueFilenames) = get_filename_dicts(pathCMS, yearInitial, yearFinal)
+    hospBaseFilenames, hospRevenueFilenames,
+    carBaseFilenames, carRevenueFilenames) = get_filename_dicts(pathCMS, yearInitial, yearFinal)
 
     (mbsf, outBase, outRevenue, inBase, inRevenue, 
     snfBase, snfRevenue, 
     hhaBase, hhaRevenue, 
-    hospBase, hospRevenue) = read_data(spark, mbsfFilenames, outBaseFilenames, outRevenueFilenames, inBaseFilenames, inRevenueFilenames,
+    hospBase, hospRevenue,
+    carBase, carRevenue) = read_data(spark, mbsfFilenames, outBaseFilenames, outRevenueFilenames, inBaseFilenames, inRevenueFilenames,
                                                      snfBaseFilenames, snfRevenueFilenames, 
                                                      hhaBaseFilenames, hhaRevenueFilenames, 
-                                                     hospBaseFilenames, hospRevenueFilenames) 
+                                                     hospBaseFilenames, hospRevenueFilenames,
+                                                     carBaseFilenames, carRevenueFilenames) 
 
-    return (mbsf, outBase, outRevenue, inBase, inRevenue, snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue) 
+    return (mbsf, outBase, outRevenue, inBase, inRevenue, 
+            snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue,
+            carBase, carRevenue)
+
+
+
+ 
