@@ -178,6 +178,8 @@ def add_parkinsons(baseDF):
 
 def add_dbsPrcdr(baseDF): # dbs: deep brain stimulation
 
+    #this function tries to find dbs in procedure codes only, and those are found in inpatient claims
+
     dbsPrcdrCodes = ("00H00MZ", "00H03MZ")
     
     prcdrCodeColumns = [f"ICD_PRCDR_CD{x}" for x in range(1,26)]
@@ -196,6 +198,8 @@ def add_dbsPrcdr(baseDF): # dbs: deep brain stimulation
     return baseDF
 
 def add_dbsCpt(baseDF):
+
+    #this function tries to find dbs in current procedural terminology, cpt, codes, and those are found in carrier files
 
     dbsCptCodes = ("61855", "61862", "61863", "61865", "61867")
 
