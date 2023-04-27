@@ -161,14 +161,11 @@ def add_parkinsons(baseDF):
 
     return baseDF
 
-def add_dbs(baseDF): # dbs: deep brain stimulation
+def add_dbsPrcdr(baseDF): # dbs: deep brain stimulation
 
     dbsPrcdrCodes = ("00H00MZ", "00H03MZ")
-    dbsCptCodes = ("61855", "61862-3", "61865", "61867")
     
     prcdrCodeColumns = [f"ICD_PRCDR_CD{x}" for x in range(1,26)]
-
-    eachClaim = Window.partitionBy("CLAIMNO")
 
     #find dbs procedure codes in claims
     baseDF = (baseDF.withColumn("prcdrCodeAll",
@@ -176,16 +173,28 @@ def add_dbs(baseDF): # dbs: deep brain stimulation
                     .withColumn("dbsPrcdrCodes",
                                F.expr( f"filter(prcdrCodeAll, x -> x in {dbsPrcdrCodes})")))
 
+    #if dbs prcdr codes are found, then dbs was performed
+    baseDF = baseDF.withColumn("dbsPrcdr",
+                               F.when( F.size(F.col("dbsPrcdrCodes"))>0,     1)
+                                .otherwise(0))
+
+    return baseDF
+
+def add_dbsCpt(baseDF):
+
+    dbsCptCodes = ("61855", "61862", "61863", "61865", "61867")
+
+    eachClaim = Window.partitionBy("CLAIMNO")
+
     #find dbs cpt codes in claims
-    baseDF = (baseDF.withColumn("cptCodeAll",
+    baseDF = (baseDF.withColumn("hcpcsCodeAll",
                                 F.collect_set(F.col("HCPCS_CD")).over(eachClaim))
                     .withColumn("dbsCptCodes",
-                                F.expr(f"filter(cptCodeAll, x - > x in {dbsCptCodes})")))
-    
-    #if dbs prcdr or cpt codes are found, then dbs was performed
-    baseDF = baseDF.withColumn("dbs",
-                               F.when( (F.size(F.col("dbsPrcdrCodes"))>0) | 
-                                       (F.size(F.col("dbsCptCodes"))>0),     1)
+                                F.expr(f"filter(hcpcsCodeAll, x - > x in {dbsCptCodes})")))
+
+    #if dbs cpt codes are found, then dbsCpt was performed
+    baseDF = baseDF.withColumn("dbsCpt",
+                               F.when( F.size(F.col("dbsCptCodes"))>0,     1)
                                 .otherwise(0))
 
     return baseDF
