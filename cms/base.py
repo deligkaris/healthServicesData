@@ -153,6 +153,14 @@ def add_stroke(baseDF):
 
     return baseDF
 
+def add_parkinsons(baseDF):
+
+    baseDF = baseDF.withColumn("parkinsons",
+                              F.when((F.regexp_extract( F.trim(F.col("PRNCPAL_DGNS_CD")), '^G20[\d]*',0) !=''), 1)
+                               .otherwise(0))
+
+    return baseDF
+
 def add_ohProvider(baseDF):
 
     # keep providers in OH (PRSTATE)
