@@ -168,7 +168,7 @@ def add_parkinsons(baseDF):
     baseDF = (baseDF.withColumn("dgnsList", #add an array of all dgns codes found in their claims
                                 F.array(dgnsColumnList))
                     .withColumn("parkinsonsList", #keeps codes that match the regexp pattern
-                                F.expr(f'filter(dgnsList, x -> x rlike "G20[0-9]?")'))
+                                F.expr(f'filter(dgnsList, x -> x rlike "G20[0-9]?")')))
 
     baseDF = baseDF.withColumn("parkinsons",
                                F.when( F.size(F.col("parkinsonsList"))>0, 1)
