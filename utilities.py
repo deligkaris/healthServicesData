@@ -257,7 +257,7 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
             acgmeSites,
             acgmePrograms,
             strokeCentersCarmago,
-            strokeCertificationJC)
+            strokeCentersJC)
 
 def get_cbus_metro_ssa_counties():
 
