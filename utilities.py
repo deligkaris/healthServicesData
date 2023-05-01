@@ -288,7 +288,11 @@ def prep_hospCostDF(hospCostDF):
 
 def prep_posDF(posDF):
 
+    #posDF = posDF.withColumn("providerName", F.col("FAC_NAME"))
+
     posDF = posDF.withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
+
+    posDF = add_processed_name(posDF,colToProcess="FAC_NAME")
 
     return posDF
 
@@ -406,4 +410,24 @@ def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
     strokeCentersCamargoDF = strokeCentersCamargoDF.withColumn("strokeCenterCamargo", F.lit(1))
 
     return strokeCentersCamargoDF
+
+def add_ccn_from_pos(DF,posDF): #assumes a zipCode column, providerNameProcessed
+
+    DF = DF.join(posDF
+                     .select(F.col("FAC_NAMEProcessed"),F.col("ZIP_CD"),F.col("PRVDR_NUM")),
+                 on=[F.col("ZIP_CD")==F.col("providerZip")],
+                 how="inner")
+
+    DF = DF.withColumn("levenshteinDistance",
+                       F.levenshtein(F.col("providerNameProcessed"), F.col("FAC_NAMEProcessed")))
+
+    eachZip = Window.partitionBy("providerZip")
+
+    DF = DF.withColumn("minLevenshteinDistance",
+                       F.min(F.col("levenshteinDistance")).over(eachZip))
+
+    DF = DF.filter(F.col("minLevenshteinDistance")==F.col("levenshteinDistance"))
+
+    return DF
+
 
