@@ -1086,7 +1086,17 @@ def prep_baseDF(baseDF, claim="inpatient"):
 
     return baseDF
 
+def add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF):
 
+    baseDF = baseDF.join(strokeCentersCamargoDF.select(
+                                                   F.col("CCN"),F.col("strokeCenterCamargo")),
+                         on=[F.col("CCN")==F.col("PROVIDER")],
+                         how="left_outer")
+
+    baseDF = baseDF.fillna(0,subset="strokeCenterCamargo")
+
+
+    return baseDF    
 
 
 
