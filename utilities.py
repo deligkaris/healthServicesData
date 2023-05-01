@@ -229,7 +229,7 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
                           aamcHospitalsFilename,
                           acgmeSitesFilename,
                           acgmeProgramsFilename,
-                          strokeCentersCarmagoFilename)
+                          strokeCentersCamargoFilename)
 
     with urlopen(geojsonCountyFilename) as response:
         counties = json.load(response)
