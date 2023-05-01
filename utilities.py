@@ -421,7 +421,7 @@ def add_ccn_from_pos(DF,posDF, providerZip="providerZip",providerName="providerN
 
     DF = DF.join(posDF
                      .select(F.col("FAC_NAMEProcessed"),F.col("ZIP_CD"),F.col("PRVDR_NUM")),
-                 on=[F.col("ZIP_CD")==F.colf({"providerZip}")],
+                 on=[F.col("ZIP_CD")==F.col(f"{providerZip}")],
                  how="inner")
 
     DF = DF.withColumn("levenshteinDistance",
