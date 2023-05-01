@@ -104,10 +104,14 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
 
     acgmeProgramsFilename = pathToData + "/ACGME/ProgramListingAY20212022.csv"
 
+    #https://onlinelibrary.wiley.com/doi/10.1002/emp2.12673
+    strokeCentersCamargoFilename = pathToData + "/CAMARGO-GROUP/2018_Stroke_CMS_2023apr-modifiedHeader.csv"
+
     return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
             usdaErsIncomeFilename, usdaErsRuccFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
             hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-            medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename, acgmeProgramsFilename)
+            medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename, acgmeProgramsFilename,
+            strokeCentersCamargoFilename)
 
 
 def read_data(spark, 
@@ -117,7 +121,8 @@ def read_data(spark,
               census2021Filename, censusGazetteer2020Filename,
               cbiHospitalsFilename, cbiDetailsFilename,
               hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-              medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename, acgmeProgramsFilename):
+              medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename, acgmeProgramsFilename,
+              strokeCentersCamargoFilename):
 
      npiProviders = spark.read.csv(npiFilename, header="True") # read CMS provider information
      cbsa = spark.read.csv(cbsaFilename, header="True") # read CBSA information
@@ -172,9 +177,11 @@ def read_data(spark,
 
      acgmePrograms = spark.read.csv(acgmeProgramsFilename, header="True")
 
+     strokeCentersCamargo = spark.read.csv(strokeCentersCamargoFilename, header="True")
+
      return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails, 
              hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos, adi, aamcHospitals,
-             acgmeSites, acgmePrograms)
+             acgmeSites, acgmePrograms, strokeCentersCamargo)
 
 def get_data(pathToData, yearInitial, yearFinal, spark):
 
@@ -191,7 +198,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
     adiFilename,
     aamcHospitalsFilename,
     acgmeSitesFilename,
-    acgmeProgramsFilename) = get_filename_dicts(pathToData, yearInitial, yearFinal)
+    acgmeProgramsFilename,
+    strokeCentersCamargoFilename) = get_filename_dicts(pathToData, yearInitial, yearFinal)
 
     (npiProviders, cbsa, 
     ersPeople, ersJobs, ersIncome, ersRucc, 
@@ -206,7 +214,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
     adi,
     aamcHospitals,
     acgmeSites,
-    acgmePrograms) = read_data(spark, npiFilename, cbsaFilename, 
+    acgmePrograms,
+    strokeCentersCarmago) = read_data(spark, npiFilename, cbsaFilename, 
                           usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
                           census2021Filename, censusGazetteer2020Filename,
                           cbiHospitalsFilename, cbiDetailsFilename,
@@ -219,7 +228,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
                           adiFilename, 
                           aamcHospitalsFilename,
                           acgmeSitesFilename,
-                          acgmeProgramsFilename)
+                          acgmeProgramsFilename,
+                          strokeCentersCarmagoFilename)
 
     with urlopen(geojsonCountyFilename) as response:
         counties = json.load(response)
@@ -237,7 +247,8 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
             adi,
             aamcHospitals,
             acgmeSites,
-            acgmePrograms)
+            acgmePrograms,
+            strokeCentersCarmago)
 
 def get_cbus_metro_ssa_counties():
 
