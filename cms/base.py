@@ -875,6 +875,10 @@ def add_losDaysOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
     #now filter that set for all days prior to Y
     baseDF = baseDF.withColumn(f"losDaysOver{X}Until{Y}",
                               F.expr(f"filter(losDaysOver{X}, x -> x < {Y})"))
+
+    #replace null values with empty arrays [] so that any concatenation later will happen correctly
+    baseDF = baseDF.withColumn(f"losDaysOver{X}Until{Y}",
+                              F.coalesce( F.col(f"losDaysOver{X}Until{Y}"), F.array() ))
     
     return baseDF
 
