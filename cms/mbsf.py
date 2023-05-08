@@ -236,7 +236,7 @@ def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
 
     return deadDF
 
-def add_ssaCounty(baseDF):
+def add_ssaCounty(mbsfDF):
 
     mbsfDF = mbsfDF.withColumn("ssaCounty",
                                F.concat(
