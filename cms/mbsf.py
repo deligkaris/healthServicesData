@@ -236,6 +236,15 @@ def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
 
     return deadDF
 
+def add_ssaCounty(baseDF):
+
+    mbsfDF = mbsfDF.withColumn("ssaCounty",
+                               F.concat(
+                                    F.col("STATE_CD").substr(1,2),
+                                    F.format_string("%03d",F.col("CNTY_CD"))))
+
+    return mbsfDF
+
 def prep_mbsfDF(mbsfDF):
 
     # DEATH_DT is currently a double, need to convert to int to be consistent with other date fields in CMS data
@@ -244,6 +253,9 @@ def prep_mbsfDF(mbsfDF):
     # add the death date of year, year, and day in order to calculate 90 day mortality rate when needed
     mbsfDF = add_death_date_info(mbsfDF)
  
+    #need to have ssa state+county code
+    mbsfDF = add_ssaCounty(mbsfDF)
+
     return mbsfDF
 
 
