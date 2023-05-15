@@ -405,6 +405,12 @@ def add_primaryTaxonomy(npiProvidersDF):
 
     return npiProvidersDF
 
+def prep_npiProvidersDF(npiProvidersDF):
+
+    npiProvidersDF = add_primaryTaxonomy(npiProvidersDF)
+
+    return npiProvidersDF
+
 def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
 
     strokeCentersCamargoDF = strokeCentersCamargoDF.withColumn("strokeCenterCamargo", F.lit(1))
