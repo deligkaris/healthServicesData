@@ -292,6 +292,10 @@ def prep_posDF(posDF):
 
     posDF = posDF.withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
 
+    posDF = posDF.withColumn("hospital",
+                             F.when( F.col("PRVDR_CTGRY_CD")=="01", 1)
+                              .otherwise(0))
+
     posDF = add_processed_name(posDF,colToProcess="FAC_NAME")
 
     return posDF
