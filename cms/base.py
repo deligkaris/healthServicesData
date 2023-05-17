@@ -1102,6 +1102,39 @@ def add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF):
 
     return baseDF    
 
+def add_providerOwner(baseDF, posDF):
+
+    baseDF = baseDF.join(posDF
+                          .select( F.col("GNRL_CNTL_TYPE_CD"),F.col("PRVDR_NUM")),
+                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
+                         how="left_outer")
+
+    baseDF = baseDF.drop("PRVDR_NUM")
+
+    return baseDF
+
+def add_numberOfResidents(baseDF, hospCostDF):
+
+    baseDF = baseDF.join(hospCostDF
+                          .select( F.col("Number of Interns and Residents (FTE)").alias("numberOfResidents"),
+                                   F.col("Provider CCN")),
+                         on=[F.col("Provider CCN")==F.col("PROVIDER")],
+                         how="left_outer")
+
+    baseDF = baseDF.drop("Provider CCN")
+
+    return baseDF
+
+
+
+
 
 
    
+
+
+
+
+
+
+
