@@ -418,6 +418,7 @@ def add_provider_info(baseDF, npiProvidersDF, medicareHospitalInfoDF, posDF, zip
     baseDF = add_providerState(baseDF,npiProvidersDF)
     baseDF = add_providerCounty(baseDF, medicareHospitalInfoDF)
     baseDF = add_providerFIPS(baseDF, posDF, zipToCountyDF)
+    baseDF = add_providerOwner(baseDF, posDF)
 
     return baseDF
 
@@ -785,7 +786,8 @@ def add_cost_report_info(baseDF,costReportDF):
                                F.col("Provider CCN"),
                                F.col("Rural Versus Urban").alias("RuralVersusUrban"),
                                F.col("Number of Beds").alias("NumberOfBeds"),
-                               F.col("teaching")),
+                               F.col("teaching"),
+                               F.col("Number of Interns and Residents (FTE)").alias("numberOfResidents")),
                          #see note on add_cbi_info on why I am not using ORGNPINM for the join
                          #hospital cost report files include only the CMS Certification Number (Provider ID, CCN), they do not include NPI
                          on=[F.col("Provider CCN")==F.col("Provider")],
