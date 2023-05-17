@@ -419,6 +419,7 @@ def add_provider_info(baseDF, npiProvidersDF, medicareHospitalInfoDF, posDF, zip
     baseDF = add_providerCounty(baseDF, medicareHospitalInfoDF)
     baseDF = add_providerFIPS(baseDF, posDF, zipToCountyDF)
     baseDF = add_providerOwner(baseDF, posDF)
+    baseDF = add_cah(baseDF, posDF)
 
     return baseDF
 
@@ -1127,7 +1128,16 @@ def add_numberOfResidents(baseDF, hospCostDF):
 
     return baseDF
 
+def add_cah(baseDF, posDF): #critical access hospital
 
+    baseDF = baseDF.join(posDF
+                          .select(F.col("cah")),
+                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
+                         how="left_outer")
+
+    baseDF = baseDF.drop("PRVDR_NUM")
+
+    return baseDF
 
 
 

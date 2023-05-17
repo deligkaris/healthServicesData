@@ -296,6 +296,10 @@ def prep_posDF(posDF):
                              F.when( F.col("PRVDR_CTGRY_CD")=="01", 1)
                               .otherwise(0))
 
+    posDF = posDF.withColumn("cah",  #critical access hospital
+                             F.when( F.col("PRVDR_CTGRY_SBTYP_CD")=="11", 1)
+                              .otherwise(0))
+
     posDF = add_processed_name(posDF,colToProcess="FAC_NAME")
 
     return posDF
