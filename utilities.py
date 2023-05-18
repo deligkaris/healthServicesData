@@ -221,7 +221,7 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
     aamcHospitals,
     acgmeSites,
     acgmePrograms,
-    strokeCentersCarmago,
+    strokeCentersCamargo,
     strokeCentersJC) = read_data(spark, npiFilename, cbsaFilename, 
                           usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
                           census2021Filename, censusGazetteer2020Filename,
@@ -256,10 +256,10 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
     aamcHospitals,
     acgmeSites,
     acgmePrograms,
-    strokeCentersCarmago,
+    strokeCentersCamargo,
     strokeCentersJC) = prep_dfs(npiProviders, cbsa, counties, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails,
                                 hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos,
-                                adi, aamcHospitals, acgmeSites,acgmePrograms, strokeCentersCarmago, strokeCentersJC) 
+                                adi, aamcHospitals, acgmeSites,acgmePrograms, strokeCentersCamargo, strokeCentersJC) 
 
     return (npiProviders, cbsa, counties,
             ersPeople, ersJobs, ersIncome, ersRucc, 
@@ -275,7 +275,7 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
             aamcHospitals,
             acgmeSites,
             acgmePrograms,
-            strokeCentersCarmago,
+            strokeCentersCamargo,
             strokeCentersJC)
 
 def prep_dfs(npiProviders, cbsa, counties,
@@ -292,7 +292,7 @@ def prep_dfs(npiProviders, cbsa, counties,
             aamcHospitals,
             acgmeSites,
             acgmePrograms,
-            strokeCentersCarmago,
+            strokeCentersCamargo,
             strokeCentersJC):
 
     maPenetration = prep_maPenetrationDF(maPenetration)
@@ -318,7 +318,7 @@ def prep_dfs(npiProviders, cbsa, counties,
             aamcHospitals,
             acgmeSites,
             acgmePrograms,
-            strokeCentersCarmago,
+            strokeCentersCamargo,
             strokeCentersJC)
 
 
