@@ -239,6 +239,25 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
                           strokeCentersCamargoFilename,
                           strokeCentersJCFilename)
 
+    (npiProviders, cbsa,
+    ersPeople, ersJobs, ersIncome, ersRucc,
+    census, gazetteer,
+    cbiHospitals, cbiDetails,
+    hospGme2021, hospCost2018,
+    npiMedicareXw,
+    zipToCounty,
+    maPenetration,
+    medicareHospitalInfo,
+    pos,
+    adi,
+    aamcHospitals,
+    acgmeSites,
+    acgmePrograms,
+    strokeCentersCarmago,
+    strokeCentersJC) = prep_dfs(npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails,
+                                hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos,
+                                adi, aamcHospitals, acgmeSites,acgmePrograms, strokeCentersCarmago, strokeCentersJC) 
+
     with urlopen(geojsonCountyFilename) as response:
         counties = json.load(response)
 
@@ -258,6 +277,50 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
             acgmePrograms,
             strokeCentersCarmago,
             strokeCentersJC)
+
+def prep_dfs(npiProviders, cbsa, counties,
+            ersPeople, ersJobs, ersIncome, ersRucc,
+            census, gazetteer,
+            cbiHospitals, cbiDetails,
+            hospGme2021, hospCost2018,
+            npiMedicareXw,
+            zipToCounty,
+            maPenetration,
+            medicareHospitalInfo,
+            pos,
+            adi,
+            aamcHospitals,
+            acgmeSites,
+            acgmePrograms,
+            strokeCentersCarmago,
+            strokeCentersJC):
+
+    maPenetration = prep_maPenetrationDF(maPenetration)
+    hospCost2018 = prep_hospCostDF(hospCost2018)
+    pos = prep_posDF(pos)
+    acgmeSites = prep_acgmeSitesDF(acgmeSites)
+    acgmePrograms = prep_acgmeProgramsDF(acgmePrograms)
+    aamcHospitals = prep_aamcHospitalsDF(aamcHospitals)
+    strokeCentersCamargo = prep_strokeCentersCamargoDF(strokeCentersCamargo)
+    strokeCentersJC = prep_strokeCentersJCDF(strokeCentersJC)
+
+return (npiProviders, cbsa, counties,
+            ersPeople, ersJobs, ersIncome, ersRucc,
+            census, gazetteer,
+            cbiHospitals, cbiDetails,
+            hospGme2021, hospCost2018,
+            npiMedicareXw,
+            zipToCounty,
+            maPenetration,
+            medicareHospitalInfo,
+            pos,
+            adi,
+            aamcHospitals,
+            acgmeSites,
+            acgmePrograms,
+            strokeCentersCarmago,
+            strokeCentersJC)
+
 
 def get_cbus_metro_ssa_counties():
 
