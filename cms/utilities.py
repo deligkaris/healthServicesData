@@ -195,25 +195,37 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
 
 def get_data(pathCMS, yearInitial, yearFinal, spark):
 
-    (mbsfFilenames, outBaseFilenames, outRevenueFilenames, inBaseFilenames, inRevenueFilenames,
+    (mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
     snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, 
     hospBaseFilenames, hospRevenueFilenames,
     carBaseFilenames, carRevenueFilenames) = get_filename_dicts(pathCMS, yearInitial, yearFinal)
 
-    (mbsf, outBase, outRevenue, inBase, inRevenue, 
+    (mbsf, opBase, opRevenue, ipBase, ipRevenue, 
     snfBase, snfRevenue, 
     hhaBase, hhaRevenue, 
     hospBase, hospRevenue,
-    carBase, carRevenue) = read_data(spark, mbsfFilenames, outBaseFilenames, outRevenueFilenames, inBaseFilenames, inRevenueFilenames,
+    carBase, carRevenue) = read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
                                                      snfBaseFilenames, snfRevenueFilenames, 
                                                      hhaBaseFilenames, hhaRevenueFilenames, 
                                                      hospBaseFilenames, hospRevenueFilenames,
                                                      carBaseFilenames, carRevenueFilenames) 
 
-    return (mbsf, outBase, outRevenue, inBase, inRevenue, 
-            snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue,
+    (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue,
+    carBase, carRevenue) = prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue,
+                                    hospBase, hospRevenue, carBase, carRevenue) 
+
+    return (mbsf, outBase, outRevenue, ipBase, ipRevenue, snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue,
             carBase, carRevenue)
 
+def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carRevenue):
+
+    mbsf = mbsfF.prep_mbsfDF(mbsf)
+    ipBase = baseF.prep_baseDF(ipBase,claim="inpatient")
+    opBase = baseF.prep_baseDF(opBase,claim="outpatient")
+    snfBase = baseF.prep_baseDF(snfBase,claim="snf")
+    hospBase = baseF.prep_baseDF(hospBase,claim="hosp")
+    hhaBase = baseF.prep_baseDF(hhaBase,claim="hha")
+
+    return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carRevenue) 
 
 
- 
