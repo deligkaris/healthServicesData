@@ -215,7 +215,7 @@ def get_data(pathCMS, yearInitial, yearFinal, spark):
     carBase, carRevenue) = prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue,
                                     hospBase, hospRevenue, carBase, carRevenue) 
 
-    return (mbsf, outBase, outRevenue, ipBase, ipRevenue, snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue,
+    return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue,
             carBase, carRevenue)
 
 def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carRevenue):
