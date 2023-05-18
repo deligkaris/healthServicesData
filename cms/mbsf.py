@@ -168,9 +168,9 @@ def add_ohResident(mbsfDF): #also used in base.py
 
     return mbsfDF
 
-def cast_dates_as_int(mbsfDF): #date fields in the dataset must be interpreted as integers (and not as floats)
+def cast_columns_as_int(mbsfDF): #date fields in the dataset must be interpreted as integers (and not as floats)
 
-    columns = ["DEATH_DT"] 
+    columns = ["DEATH_DT", "DSYSRTKY"] 
 
     for iColumns in columns:
         mbsfDF = mbsfDF.withColumn( iColumns, F.col(iColumns).cast('int'))
@@ -248,7 +248,7 @@ def add_ssaCounty(mbsfDF):
 def prep_mbsfDF(mbsfDF):
 
     # DEATH_DT is currently a double, need to convert to int to be consistent with other date fields in CMS data
-    mbsfDF  = cast_dates_as_int(mbsfDF)
+    mbsfDF  = cast_columns_as_int(mbsfDF)
 
     # add the death date of year, year, and day in order to calculate 90 day mortality rate when needed
     mbsfDF = add_death_date_info(mbsfDF)

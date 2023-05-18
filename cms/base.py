@@ -3,17 +3,17 @@ from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip
 
-def cast_dates_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
+def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
     if (claim=="outpatient"):
-       columns = ["THRU_DT"]
+       columns = ["THRU_DT", "DSYSRTKY"]
     elif (claim=="inpatient"):
-       columns = ["THRU_DT", "DSCHRGDT", "ADMSN_DT"]
+       columns = ["THRU_DT", "DSCHRGDT", "ADMSN_DT", "DSYSRTKY"]
     # SNF: DSCHRG DT is either NULL (quite frequently) or the same as THRU_DT, so for SNF claims use the THRU_DT when you need DSCHRG_DT
     elif ( (claim=="snf") | (claim=="hha") ):
-       columns = ["CLM_THRU_DT", "NCH_BENE_DSCHRG_DT", "CLM_ADMSN_DT"]
+       columns = ["CLM_THRU_DT", "NCH_BENE_DSCHRG_DT", "CLM_ADMSN_DT", "DESY_SORT_KEY"]
     elif ( (claim=="hosp") ):
-       columns = ["CLM_THRU_DT", "CLM_HOSPC_START_DT_ID"]
+       columns = ["CLM_THRU_DT", "CLM_HOSPC_START_DT_ID", "DESY_SORT_KEY"]
 
     for iColumns in columns:
         baseDF = baseDF.withColumn( iColumns, F.col(iColumns).cast('int'))
@@ -1077,7 +1077,7 @@ def add_teachingHospital(baseDF, aamcHospitalsDF, acgmeProgramsDF):
 def prep_baseDF(baseDF, claim="inpatient"):
 
     #add some date-related info
-    baseDF = cast_dates_as_int(baseDF,claim=claim)
+    baseDF = cast_columns_as_int(baseDF,claim=claim)
     baseDF = add_through_date_info(baseDF,claim=claim)
 
     if (claim=="inpatient"):
