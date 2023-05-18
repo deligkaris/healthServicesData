@@ -1030,7 +1030,7 @@ def add_acgmeX(baseDF,acgmeXDF, X="Site"):
                                        (F.size(F.col("providerOtherNameIsContained"))>0), 1)
                                 .otherwise(0))
 
-    baseDF = baseDF.drop("nameDistance","otherNameDistance","minNameDistance","minOtherNameDistance","minDistance","providerNameIsContained","providerOtherNameIsContained")
+    baseDF = baseDF.drop("nameDistance","otherNameDistance","minNameDistance","minOtherNameDistance","minDistance","providerNameIsContained","providerOtherNameIsContained", f"acgme{X}sInZip")
 
     return baseDF
 
