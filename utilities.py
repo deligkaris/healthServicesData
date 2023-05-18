@@ -239,7 +239,10 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
                           strokeCentersCamargoFilename,
                           strokeCentersJCFilename)
 
-    (npiProviders, cbsa,
+    with urlopen(geojsonCountyFilename) as response:
+        counties = json.load(response)
+
+    (npiProviders, cbsa, counties,
     ersPeople, ersJobs, ersIncome, ersRucc,
     census, gazetteer,
     cbiHospitals, cbiDetails,
@@ -254,12 +257,9 @@ def get_data(pathToData, yearInitial, yearFinal, spark):
     acgmeSites,
     acgmePrograms,
     strokeCentersCarmago,
-    strokeCentersJC) = prep_dfs(npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails,
+    strokeCentersJC) = prep_dfs(npiProviders, cbsa, counties, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails,
                                 hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos,
                                 adi, aamcHospitals, acgmeSites,acgmePrograms, strokeCentersCarmago, strokeCentersJC) 
-
-    with urlopen(geojsonCountyFilename) as response:
-        counties = json.load(response)
 
     return (npiProviders, cbsa, counties,
             ersPeople, ersJobs, ersIncome, ersRucc, 
