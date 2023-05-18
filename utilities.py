@@ -304,7 +304,7 @@ def prep_dfs(npiProviders, cbsa, counties,
     strokeCentersCamargo = prep_strokeCentersCamargoDF(strokeCentersCamargo)
     strokeCentersJC = prep_strokeCentersJCDF(strokeCentersJC)
 
-return (npiProviders, cbsa, counties,
+    return (npiProviders, cbsa, counties,
             ersPeople, ersJobs, ersIncome, ersRucc,
             census, gazetteer,
             cbiHospitals, cbiDetails,
