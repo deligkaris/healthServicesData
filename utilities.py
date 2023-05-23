@@ -351,6 +351,7 @@ def prep_hospCostDF(hospCostDF):
 
 def prep_posDF(posDF):
 
+    #https://data.cms.gov/sites/default/files/2022-10/58ee74d6-9221-48cf-b039-5b7a773bf39a/Layout%20Sep%2022%20Other.pdf
     #posDF = posDF.withColumn("providerName", F.col("FAC_NAME"))
 
     posDF = posDF.withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
@@ -360,7 +361,15 @@ def prep_posDF(posDF):
                               .otherwise(0))
 
     posDF = posDF.withColumn("cah",  #critical access hospital
-                             F.when( F.col("PRVDR_CTGRY_SBTYP_CD")=="11", 1)
+                             F.when( 
+                                 (F.col("hospital")==1) &  
+                                 (F.col("PRVDR_CTGRY_SBTYP_CD")=="11"), 1)
+                              .otherwise(0))
+
+    posDF = posDF.withColumn("shortTerm",  #short term hospital
+                             F.when( 
+                                 (F.col("hospital")==1) &
+                                 (F.col("PRVDR_CTGRY_SBTYP_CD")=="01"), 1)
                               .otherwise(0))
 
     posDF = add_processed_name(posDF,colToProcess="FAC_NAME")
