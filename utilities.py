@@ -493,6 +493,12 @@ def prep_npiProvidersDF(npiProvidersDF):
 
 def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
 
+    #note on data: the column name is CCN however some rows include 5 digit long codes and those cannot be CCN numbers 
+    #(I checked the CMS documentation), the 5 digit long codes may be state IDs (the methods of their paper include
+    #finding stroke centers from state data) or may be something else....
+
+    strokeCentersCamargoDF = strokeCentersCamargoDF.select( F.col("CCN") ).distinct() #CCN 220074 appears twice for some reason... 
+
     strokeCentersCamargoDF = strokeCentersCamargoDF.withColumn("strokeCenterCamargo", F.lit(1))
 
     return strokeCentersCamargoDF
