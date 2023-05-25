@@ -284,7 +284,7 @@ def add_providerName(baseDF, npiProviderDF):
                       npiProviderDF.select(
                           F.col("NPI"),F.col("Provider Organization Name (Legal Business Name)").alias("providerName")),
                       on = [F.col("ORGNPINM") == F.col("NPI")],
-                      how = "inner")
+                      how = "left_outer")
 
     # drop the NPI column that was just added
     baseDF = baseDF.drop(F.col("NPI"))
@@ -297,7 +297,7 @@ def add_providerOtherName(baseDF, npiProviderDF):
                       npiProviderDF.select(
                           F.col("NPI"),F.col("Provider Other Organization Name").alias("providerOtherName")),
                       on = [F.col("ORGNPINM") == F.col("NPI")],
-                      how = "inner")
+                      how = "left_outer")
 
     # drop the NPI column that was just added
     baseDF = baseDF.drop(F.col("NPI"))
@@ -317,7 +317,7 @@ def add_providerAddress(baseDF, npiProviderDF):
                                               F.col("Provider Business Practice Location Address Postal Code").substr(1,5))
                                               .alias("providerAddress")),
                          on = [F.col("ORGNPINM")==F.col("NPI")],
-                         how = "inner")
+                         how = "left_outer")
 
     baseDF = baseDF.drop(F.col("NPI"))
 
@@ -330,7 +330,7 @@ def add_providerZip(baseDF,npiProviderDF):
                                           F.col("NPI"),
                                           F.col("Provider Business Practice Location Address Postal Code").substr(1,5).alias("providerZip")),
                          on = [F.col("ORGNPINM")==F.col("NPI")],
-                         how = "inner")
+                         how = "left_outer")
 
     baseDF = baseDF.drop(F.col("NPI"))
 
@@ -343,7 +343,7 @@ def add_providerState(baseDF,npiProviderDF):
                                           F.col("NPI"),
                                           F.col("Provider Business Practice Location Address State Name").alias("providerState")),
                          on = [F.col("ORGNPINM")==F.col("NPI")],
-                         how = "inner")
+                         how = "left_outer")
 
     baseDF = baseDF.drop(F.col("NPI"))
 
@@ -380,6 +380,7 @@ def add_providerFIPS(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
 
     #baseDF = baseDF.drop("countyname","state")
 
+    #the posDF will give me ~99.9%of the providerFIPS codes
     baseDF = baseDF.join(posDF
                              .select( F.col("PRVDR_NUM"),F.col("providerFIPS")),
                          on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
@@ -387,6 +388,7 @@ def add_providerFIPS(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
 
     baseDF = baseDF.drop("PRVDR_NUM")
 
+    #for the rest 0.1% I will use a probabilistic method to get the fips county, but even with this method there will still be some nulls
     eachZip = Window.partitionBy("zip")
 
     baseDF = baseDF.join(zipToCountyDF

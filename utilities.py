@@ -303,6 +303,7 @@ def prep_dfs(npiProviders, cbsa, counties,
     aamcHospitals = prep_aamcHospitalsDF(aamcHospitals)
     strokeCentersCamargo = prep_strokeCentersCamargoDF(strokeCentersCamargo)
     strokeCentersJC = prep_strokeCentersJCDF(strokeCentersJC)
+    zipToCounty = prep_zipToCountyDF(zipToCounty)
 
     return (npiProviders, cbsa, counties,
             ersPeople, ersJobs, ersIncome, ersRucc,
@@ -328,6 +329,46 @@ def get_cbus_metro_ssa_counties():
     # source: https://obamawhitehouse.archives.gov/sites/default/files/omb/bulletins/2013/b13-01.pdf (page 29)
     # city of Columbus may have a different definition
     return ["36250", "36210", "36230", "36460", "36500", "36660", "36810", "36650", "36600","36380"]
+
+def zipToCountyDF(zipToCountyDF):
+
+    #note: the method used below to assign a signle fips county code to a zip code should only be used as a last resort when all else has failed...
+
+    eachZip = Window.partitionBy("zip")
+
+    zipToCountyDF = (zipToCountyDF.withColumn("maxBusRatio",
+                                              F.max(F.col("bus_ratio")).over(eachZip))
+                                  .withColumn("countyOfMaxBusRatio",
+                                              F.when( F.col("maxBusRatio")==F.col("bus_ratio"), 1) #more than 1 counties per zip can be that county
+                                               .otherwise(0))
+                                  .withColumn("numberOfCountiesOfMaxBusRatio",
+                                              F.sum( F.col("countyOfMaxBusRatio")).over(eachZip))
+                                  .withColumn("maxTotRatio",
+                                              F.max(F.col("tot_ratio")).over(eachZip))
+                                  .withColumn("countyOfMaxTotRatio",
+                                              F.when( F.col("maxTotRatio")==F.col("tot_ratio"), 1) #more than 1 counties per zip can be that county
+                                               .otherwise(0))
+                                  .withColumn("numberOfCountiesOfMaxTotRatio",
+                                              F.sum( F.col("countyOfMaxTotRatio")).over(eachZip))
+                                  .withColumn("minFips",
+                                              F.min(F.col("county").cast('double')).over(eachZip)) #when all else fails, just choose one deterministically
+                                  .withColumn("countyOfMinFips",
+                                              F.when( F.col("county")==F.col("minFips"), 1)
+                                               .otherwise(0)))
+
+    zipToCountyDF = (zipToCountyDF.withColumn("countyForZip",
+                                              F.when( 
+                                                  (F.col("numberOfCountiesOfMaxBusRatio")==1) & #number one choice: county with most businesses
+                                                  (F.col("countyOfMaxBusRatio")==1), 1)
+                                               .when( (F.col("numberOfCountiesOfMaxTotRatio")==1) & #number two choice: county with most bus+res+other
+                                                  (F.col("numberOfCountiesOfMaxBusRatio")>1) &
+                                                  (F.col("countyOfMaxTotRatio")==1), 1)
+                                               .when( (F.col("numberOfCountiesOfMaxBusRatio")>1) &
+                                                  (F.col("numberOfCountiesOfMaxTotRatio")>1) &
+                                                  (F.col("countyOfMinFips")==1), 1)             #number three choice: county with the min fips 
+                                               .otherwise(0)))
+
+    return zipToCountyDF
 
 def prep_maPenetrationDF(maPenetrationDF):
 
