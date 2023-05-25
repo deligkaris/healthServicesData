@@ -330,7 +330,7 @@ def get_cbus_metro_ssa_counties():
     # city of Columbus may have a different definition
     return ["36250", "36210", "36230", "36460", "36500", "36660", "36810", "36650", "36600","36380"]
 
-def zipToCountyDF(zipToCountyDF):
+def prep_zipToCountyDF(zipToCountyDF):
 
     #note: the method used below to assign a signle fips county code to a zip code should only be used as a last resort when all else has failed...
 
