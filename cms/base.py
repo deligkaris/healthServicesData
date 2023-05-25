@@ -389,19 +389,14 @@ def add_providerFIPS(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
     baseDF = baseDF.drop("PRVDR_NUM")
 
     #for the rest 0.1% I will use a probabilistic method to get the fips county, but even with this method there will still be some nulls
-    eachZip = Window.partitionBy("zip")
 
     baseDF = baseDF.join(zipToCountyDF
-                                   .withColumn("maxBusRatio",
-                                                F.max(F.col("bus_ratio")).over(eachZip))
-                                   #find the row of zipToCounty with the FIPS code of the county with the biggest ratio of business
-                                   #I assume that is where it is more likely to find the provider
-                                   .filter(F.col("bus_ratio")==F.col("maxBusRatio")) 
+                                   .filter(F.col("countyForZip")==1) 
                                    .select(F.col("zip"),F.col("county").alias("providerFIPSzipToCounty")),
               on= [  (zipToCountyDF["zip"]==baseDF["providerZip"]) ],
               how="left_outer")
 
-    baseDF = baseDF.drop("bus_ratio","maxBusRatio","zip")
+    baseDF = baseDF.drop("zip")
 
     baseDF = baseDF.withColumn("providerFIPS",
                                F.when( F.col("providerFIPS").isNull(), F.col("providerFIPSzipToCounty"))
