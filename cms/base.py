@@ -1136,6 +1136,57 @@ def add_cah(baseDF, posDF): #critical access hospital
 
     return baseDF
 
+def add_providerStrokeVol(baseDF):
+
+    eachProvider = Window.partitionBy("ORGNPINM")
+
+    baseDF = baseDF.withColumn("providerStrokeVol",
+                               F.sum( F.col("stroke") ).over(eachProvider))
+
+    return baseDF
+
+def add_providerEvtVol(baseDF):
+
+    eachProvider = Window.partitionBy("ORGNPINM")
+
+    baseDF = baseDF.withColumn("providerEvtVol",
+                               F.sum( F.col("evt") ).over(eachProvider))
+
+    return baseDF
+
+def add_providerTpaVol(baseDF):
+
+    eachProvider = Window.partitionBy("ORGNPINM")
+
+    baseDF = baseDF.withColumn("providerTpaVol",
+                               F.sum( F.col("tpa") ).over(eachProvider))
+
+    return baseDF
+
+def add_providerMeanEvt(baseDF):
+
+    eachProvider = Window.partitionBy("ORGNPINM")
+
+    baseDF = baseDF.withColumn("providerMeanEvt",
+                               F.mean( F.col("evt") ).over(eachProvider))
+
+    return baseDF
+
+def add_providerMeanTpa(baseDF):
+
+    eachProvider = Window.partitionBy("ORGNPINM")
+
+    baseDF = baseDF.withColumn("providerMeanTpa",
+                               F.mean( F.col("tpa") ).over(eachProvider))
+
+    return baseDF
+
+
+
+
+
+
+
 
 
 
