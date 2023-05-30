@@ -147,8 +147,10 @@ def add_stroke(baseDF):
 
     baseDF = baseDF.withColumn("stroke",
                               # ^I63[\d]: beginning of string I63 matches 0 or more digit characters 0-9
-                              # I63 cerebral infraction
-                              F.when((F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I63[\d]*',0) !=''), 1)
+                              # I63 cerebral infraction, I64 
+                              F.when(
+                                      (F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I63[\d]*',0) !='') |
+                                      (F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I64[\d]*',0) !=''), 1)
                                .otherwise(0)) 
 
     return baseDF
@@ -655,26 +657,6 @@ def test_get_aggregate_summary(summaryDF):
         print("No issues found.")
 
 def add_gach(baseDF, npiProvidersDF):
-
-    # taxonomy codes are not part of MBSF or LDS files, but they are present in the CMS Provider file, they can be linked using NPI
-    # in order for a provider to obtain an NPI they must have at least 1 taxonomy code (primary one)
-    # but they may also have more than 1 taxonomy codes
-    # it seems that the CMS Provider file is quite complete, did not result in loss of rows
-    # https://www.cms.gov/Medicare/Provider-Enrollment-and-Certification/Find-Your-Taxonomy-Code
-
-    #GACH: general acute care hospital
-    # https://taxonomy.nucc.org/?searchTerm=282N00000X&searchButton=search
-    # all of them are listed here: https://taxonomy.nucc.org/
-
-    gachTaxonomyCodes = ["282N00000X"] #my definition of general acute care hospitals
-
-    gachTaxonomyCondition = \
-         '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(gachTaxonomyCodes))' \
-                   for x in range(1,16)) +')'
-
-    npiProvidersDF = npiProvidersDF.withColumn("gach",
-                                               F.when(eval(gachTaxonomyCondition), 1)
-                                                .otherwise(0))
 
     # join with general acute care hospital GACH flag
     baseDF = baseDF.join(npiProvidersDF.select(
