@@ -390,19 +390,19 @@ def add_providerFIPS(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
 
     #for the rest 0.1% I will use a probabilistic method to get the fips county, but even with this method there will still be some nulls
 
-    baseDF = baseDF.join(zipToCountyDF
-                                   .filter(F.col("countyForZip")==1) 
-                                   .select(F.col("zip"),F.col("county").alias("providerFIPSzipToCounty")),
-              on= [  (zipToCountyDF["zip"]==baseDF["providerZip"]) ],
-              how="left_outer")
+    #baseDF = baseDF.join(zipToCountyDF
+    #                               .filter(F.col("countyForZip")==1) 
+    #                               .select(F.col("zip"),F.col("county").alias("providerFIPSzipToCounty")),
+    #          on= [  (zipToCountyDF["zip"]==baseDF["providerZip"]) ],
+    #          how="left_outer")
 
-    baseDF = baseDF.drop("zip")
+    #baseDF = baseDF.drop("zip")
 
-    baseDF = baseDF.withColumn("providerFIPS",
-                               F.when( F.col("providerFIPS").isNull(), F.col("providerFIPSzipToCounty"))
-                                .otherwise( F.col("providerFIPS") ))
+    #baseDF = baseDF.withColumn("providerFIPS",
+    #                           F.when( F.col("providerFIPS").isNull(), F.col("providerFIPSzipToCounty"))
+    #                            .otherwise( F.col("providerFIPS") ))
 
-    baseDF = baseDF.drop("providerFIPSzipToCounty")
+    #baseDF = baseDF.drop("providerFIPSzipToCounty")
 
     return baseDF
 
