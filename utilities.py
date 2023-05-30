@@ -295,6 +295,7 @@ def prep_dfs(npiProviders, cbsa, counties,
             strokeCentersCamargo,
             strokeCentersJC):
 
+    npiProviders = prep_npiProvidersDF(npiProviders)
     maPenetration = prep_maPenetrationDF(maPenetration)
     hospCost2018 = prep_hospCostDF(hospCost2018)
     pos = prep_posDF(pos)
