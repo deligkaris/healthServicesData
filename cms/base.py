@@ -1181,8 +1181,21 @@ def add_providerMeanTpa(baseDF):
 
     return baseDF
 
+def add_provider_stroke_treatment_info(baseDF):
 
+    baseDF = add_providerMeanTpa(baseDF)
+    baseDF = add_providerMeanEvt(baseDF)
+    baseDF = add_providerTpaVol(baseDF)
+    baseDF = add_providerEvtVol(baseDF)
 
+    return baseDF
+
+def add_provider_stroke_info(baseDF):
+
+    baseDF = add_provider_stroke_treatment_info(baseDF)
+    baseDF = add_providerStrokeVol(baseDF)
+
+    return baseDF
 
 
 
