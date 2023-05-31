@@ -269,16 +269,28 @@ def add_sameStay(baseDF):
 
     return baseDF
 
-def add_inToInTransfer(baseDF):
+#def add_inToInTransfer(baseDF):
 
     #inpatient -> inpatient transfer is defined as the same beneficiary having claims from two different organizations on the same day
-    eachAdmissionDate = Window.partitionBy(["DSYSRTKY","ADMSN_DT"])
+#    eachAdmissionDate = Window.partitionBy(["DSYSRTKY","ADMSN_DT"])
 
-    baseDF = baseDF.withColumn("inToInTransfer",
-                                F.when(  F.size(F.collect_set(F.col("ORGNPINM")).over(eachAdmissionDate)) > 1, 1)
-                                 .otherwise(0))
+#    baseDF = baseDF.withColumn("inToInTransfer",
+#                                F.when(  F.size(F.collect_set(F.col("ORGNPINM")).over(eachAdmissionDate)) > 1, 1)
+#                                 .otherwise(0))
 
-    return baseDF
+#    return baseDF
+
+def add_numberOfXOverY(baseDF, X="ORGNPINM", Y=["DSYSRTKY","ADMSN_DT"]):
+
+    #eachBeneficiaryAdmissionDate = Window.partitionBy(["DSYSRTKY","ADMSN_DT"])
+    eachY = Window.partitionBy(Y)
+
+    YasString = ''.join(Y)
+
+    baseDF = baseDF.withColumn(f"numberOf{X}Over{YasString}",
+                                F.size(F.collect_set(F.col(X)).over(eachY)) )
+
+    return baseDF                            
 
 def add_providerName(baseDF, npiProviderDF):
 
