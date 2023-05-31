@@ -435,19 +435,50 @@ def add_osu(baseDF):
 
     return baseDF
 
-def add_evt(baseDF):
+def add_evtDrg(baseDF):
 
-    # EVT takes place only in inpatient settings, EVT events are found on base claim file, not in the revenue center
     evtDrgCodes=[23,24]
-    evtPrcdrCodes=["03CG3ZZ","03CH3ZZ","03CJ3ZZ","03CK3ZZ","03CL3ZZ","03CM3ZZ","03CN3ZZ","03CP3ZZ","03CQ3ZZ"]
 
     evtDrgCondition = '(F.col("DRG_CD").isin(evtDrgCodes))'
 
-    evtPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(evtPrcdrCodes))' for x in range(1,26)) +')'
+    baseDF = baseDF.withColumn("evtDrg",
+                               F.when( eval(evtDrgCondition), 1)
+                                .otherwise(0))
 
-    evtCondition = '(' + evtDrgCondition + '|' + evtPrcdrCondition + ')' # do NOT forget the parenthesis!!!
+    return baseDF
 
-    # add a column to indicate which patients with stroke had an EVT
+def add_evtPrcdr(baseDF):
+
+    evtPrcdrCodes=("03CG3ZZ","03CH3ZZ","03CJ3ZZ","03CK3ZZ","03CL3ZZ","03CM3ZZ","03CN3ZZ","03CP3ZZ","03CQ3ZZ")
+
+    prcdrCodeColumns = [f"ICD_PRCDR_CD{x}" for x in range(1,26)]
+
+    baseDF = (baseDF.withColumn("prcdrCodeAll",
+                                F.array(prcdrCodeColumns))
+                    .withColumn("evtPrcdrCodes",
+                                F.expr( f"filter(prcdrCodeAll, x -> x in {evtPrcdrCodes})"))
+                    .withColumn("evtPrcdr",
+                                F.when( F.size(F.col("evtPrcdrCodes"))>0,     1)
+                                .otherwise(0)))
+
+    #a different approach, not sure if this is slower/faster
+    #evtPrcdrCodes=["03CG3ZZ","03CH3ZZ","03CJ3ZZ","03CK3ZZ","03CL3ZZ","03CM3ZZ","03CN3ZZ","03CP3ZZ","03CQ3ZZ"]
+    #evtPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(evtPrcdrCodes))' for x in range(1,26)) +')'
+    #evtCondition = '( (F.col("evtDrg")==1) | (F.col("evtPrcdr")==1) )' # do NOT forget the parenthesis!!!
+    #baseDF = baseDF.withColumn("evt", 
+    #                           F.when(eval(evtCondition) ,1) #set them to true
+    #                            .otherwise(0)) #otherwise false
+
+    return baseDF
+
+def add_evt(baseDF):
+
+    # EVT takes place only in inpatient settings, EVT events are found on base claim file, not in the revenue center
+    baseDF = add_evtDrg(baseDF)
+    baseDF = add_evtPrcdr(baseDF)
+
+    evtCondition = '( (F.col("evtDrg")==1) | (F.col("evtPrcdr")==1) )' # do NOT forget the parenthesis!!!
+
     baseDF = baseDF.withColumn("evt", 
                                F.when(eval(evtCondition) ,1) #set them to true
                                 .otherwise(0)) #otherwise false
