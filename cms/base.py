@@ -249,12 +249,15 @@ def add_firstClaim(baseDF):
                                  .otherwise(0))
 
     #a fairly small portion will have more than 1 claim on the same day, keep only those that include exactly 1 claim on the first stroke
-    #baseDF = (baseDF.withColumn("firstClaimSum",
-    #                           F.sum(F.col("firstClaim")).over(eachDsysrtky))
-    #                 .filter(
-    #                           F.col("firstClaimSum")<=1))
 
-    #baseDF = baseDF.drop("firstClaimSum") #no longer needed
+    return baseDF
+
+def add_firstClaimSum(baseDF):
+
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+
+    baseDF = (baseDF.withColumn("firstClaimSum",
+                                F.sum(F.col("firstClaim")).over(eachDsysrtky))
 
     return baseDF
 
