@@ -257,7 +257,7 @@ def add_firstClaimSum(baseDF):
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
 
     baseDF = (baseDF.withColumn("firstClaimSum",
-                                F.sum(F.col("firstClaim")).over(eachDsysrtky))
+                                F.sum(F.col("firstClaim")).over(eachDsysrtky)))
 
     return baseDF
 
