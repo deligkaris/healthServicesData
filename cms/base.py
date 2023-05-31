@@ -383,7 +383,7 @@ def add_providerCounty(baseDF,medicareHospitalInfoDF):
 
     return baseDF
 
-def add_providerFIPS(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
+def add_providerFIPS(baseDF,posDF): #assumes add_providerCounty
 
     #I found that CBSA will duplicate some of my baseDF rows, I did not look into why because I found that posDF can be used as well
     #baseDF = baseDF.join(cbsaDF
@@ -404,6 +404,11 @@ def add_providerFIPS(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
                          how="left_outer")
 
     baseDF = baseDF.drop("PRVDR_NUM")
+
+    return baseDF
+
+
+def add_providerFIPSToNulls(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
 
     #for the rest 0.1% I will use a probabilistic method to get the fips county, but even with this method there will still be some nulls
 
