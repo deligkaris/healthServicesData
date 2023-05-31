@@ -695,7 +695,7 @@ def add_rehabilitationFromTaxonomy(baseDF, npiProvidersDF, primary=True):
     baseDF = baseDF.join(npiProvidersDF.select(
                                             F.col("NPI"), F.col("rehabilitation").alias("rehabilitationFromTaxonomy")),
                          on = [baseDF["ORGNPINM"] == npiProvidersDF["NPI"]],
-                         how = "inner")
+                         how = "left_outer")
 
     # the join will keep NPI as it is a different name
     baseDF = baseDF.drop(F.col("NPI"))
