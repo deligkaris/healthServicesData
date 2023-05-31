@@ -366,20 +366,30 @@ def add_providerState(baseDF,npiProviderDF):
 
     return baseDF
 
-def add_providerCounty(baseDF,medicareHospitalInfoDF):
+def add_providerCounty(baseDF,cbsaDF): #assumes providerFIPS
 
     #if ever run into problems, eg a lot of nulls, the CMS hospital cost report (hospCost2018) also have the county of providers
 
     #medicareHospitalInfo works well for inpatient claims, but is less complete for outpatient claims
     #that is why in finding providerFIPS below I also use the zipToCounty dataframe
-    baseDF = baseDF.join(medicareHospitalInfoDF
-                              .select(
-                                     F.col("Facility ID"),  
-                                     F.lower(F.trim(F.col("County Name"))).alias("providerCounty")),
-                         on=[ F.col("Facility ID")==F.col("PROVIDER") ],
-                         how="left_outer")
+    #baseDF = baseDF.join(medicareHospitalInfoDF
+    #                          .select(
+    #                                 F.col("Facility ID"),  
+    #                                 F.lower(F.trim(F.col("County Name"))).alias("providerCounty")),
+    #                     on=[ F.col("Facility ID")==F.col("PROVIDER") ],
+    #                     how="left_outer")
 
-    baseDF = baseDF.drop("Facility ID")
+    #baseDF = baseDF.drop("Facility ID")
+
+    #if you know the providerFIPS, this is the best way to find the county name
+    baseDF = (baseDF.join(
+                        cbsaDF
+                            .select(
+                                F.col("countyname").alias("providerCounty"),
+                                F.col("fipscounty")),
+                        on=[F.col("fipscounty")==F.col("providerFIPS")],
+                        how="left_outer")
+                    .drop("fipscounty"))
 
     return baseDF
 
@@ -428,15 +438,15 @@ def add_providerFIPSToNulls(baseDF,posDF,zipToCountyDF): #assumes add_providerCo
 
     return baseDF
 
-def add_provider_info(baseDF, npiProvidersDF, medicareHospitalInfoDF, posDF):
+def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF):
 
     baseDF = add_providerName(baseDF,npiProvidersDF)
     baseDF = add_providerOtherName(baseDF,npiProvidersDF)
     baseDF = add_providerAddress(baseDF,npiProvidersDF)
     baseDF = add_providerZip(baseDF,npiProvidersDF)
     baseDF = add_providerState(baseDF,npiProvidersDF)
-    baseDF = add_providerCounty(baseDF, medicareHospitalInfoDF)
     baseDF = add_providerFIPS(baseDF, posDF)
+    baseDF = add_providerCounty(baseDF, cbsaDF)
     baseDF = add_providerOwner(baseDF, posDF)
     baseDF = add_cah(baseDF, posDF)
 
