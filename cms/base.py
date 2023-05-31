@@ -489,34 +489,77 @@ def add_evtOsu(baseDF):
 
      return baseDF.withColumn("evtOsu", F.col("osu")*F.col("evt"))
 
+def add_tpaDrg(baseDF):
+
+    tpaDrgCodes = [61,62,63,65]
+
+    tpaDrgCondition = '(F.col("DRG_CD").isin(tpaDrgCodes))'
+
+    baseDF = baseDF.withColumn("tpaDrg",
+                               F.when( eval(tpaDrgCondition), 1)
+                                .otherwise(0))
+    return baseDF
+
+def add_tpaPrcdr(baseDF):
+
+    tpaPrcdrCodes = ("3E03317", "3E03317")
+                               
+    prcdrCodeColumns = [f"ICD_PRCDR_CD{x}" for x in range(1,26)]
+
+    baseDF = (baseDF.withColumn("prcdrCodeAll",
+                                F.array(prcdrCodeColumns))
+                    .withColumn("tpaPrcdrCodes",
+                                F.expr( f"filter(prcdrCodeAll, x -> x in {tpaPrcdrCodes})"))
+                    .withColumn("tpaPrcdr",
+                                F.when( F.size(F.col("tpaPrcdrCodes"))>0,     1)
+                                .otherwise(0)))
+    return baseDF
+
+def add_tpaDgns(baseDF):
+
+    tpaDgnsCodes = ("Z9282", "Z9282")
+  
+    dgnsCodeColumns = [f"ICD_DGNS_CD{x}" for x in range(1,26)]
+ 
+    baseDF = (baseDF.withColumn("dgnsCodeAll",
+                                F.array(dgnsCodeColumns))
+                    .withColumn("tpaDgnsCodes",
+                                F.expr( f"filter(dgnsCodeAll, x -> x in {tpaDgnsCodes})"))
+                    .withColumn("tpaDgns",
+                                F.when( F.size(F.col("tpaDgnsCodes"))>0,     1)
+                                .otherwise(0)))
+    return baseDF
+
 def add_tpa(baseDF, inpatient=True):
 
     # tPA can take place in either outpatient or inpatient setting
     # however, in an efficient health care world, tPA would be administered at the outpatient setting
     # perhaps with the help of telemedicine and the bigger hub's guidance, and then the patient would be transferred to the bigger hospital
     # the diagnostic code from IP should be consistent with the procedure code from outpatient but check this
-    # after 2015, use ICD10 exclusively, no need to check for ICD9
     # tpa can be found in DRG, DGNS and PRCDR codes
 
-    tpaDrgCodes = [61,62,63,65]
-    tpaDgnsCodes = ["Z9282"]
-    tpaPrcdrCodes = ["3E03317"]
-
-    tpaDrgCondition = '(F.col("DRG_CD").isin(tpaDrgCodes))'
-
-    tpaPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(tpaPrcdrCodes))' for x in range(1,26)) +')'
-
-    tpaDgnsCondition = '(' + '|'.join('(F.col(' + f'"ICD_DGNS_CD{x}"' + ').isin(tpaDgnsCodes))' for x in range(1,26)) +')'
+    #a different approach, not sure if this is faster/slower
+    #tpaDgnsCodes = ["Z9282"]
+    #tpaPrcdrCodes = ["3E03317"]
+    #tpaPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(tpaPrcdrCodes))' for x in range(1,26)) +')'
+    #tpaDgnsCondition = '(' + '|'.join('(F.col(' + f'"ICD_DGNS_CD{x}"' + ').isin(tpaDgnsCodes))' for x in range(1,26)) +')'
+    #if (inpatient):
+    #    tpaCondition = '(' + tpaDrgCondition + '|' + tpaPrcdrCondition + '|' + tpaDgnsCondition + ')' # inpatient condition
+    #else:
+    #    tpaCondition = tpaPrcdrCondition # outpatient condition
+    
+    baseDF = add_tpaDrg(baseDF)
+    baseDF = add_tpaPrcdr(baseDF)
+    baseDF = add_tpaDgns(baseDF)
 
     if (inpatient):
-        tpaCondition = '(' + tpaDrgCondition + '|' + tpaPrcdrCondition + '|' + tpaDgnsCondition + ')' # inpatient condition
+        tpaCondition = '( (F.col("tpaDrg")==1) | (F.col("tpaPrcdr")==1) | (F.col("tpaDgns")==1) )' # do NOT forget the parenthesis!!!
     else:
-        tpaCondition = tpaPrcdrCondition # outpatient condition
+        tpaCondition = '( (F.col("tpaPrcdr")==1) )'
 
     baseDF = baseDF.withColumn("tpa",
                                F.when(eval(tpaCondition),1) # 1 if tpa was done during visit
                                 .otherwise(0))
-
     return baseDF
 
 def add_tpaOsu(baseDF):
