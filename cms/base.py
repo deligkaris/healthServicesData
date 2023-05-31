@@ -428,7 +428,7 @@ def add_providerFIPSToNulls(baseDF,posDF,zipToCountyDF): #assumes add_providerCo
 
     return baseDF
 
-def add_provider_info(baseDF, npiProvidersDF, medicareHospitalInfoDF, posDF, zipToCountyDF):
+def add_provider_info(baseDF, npiProvidersDF, medicareHospitalInfoDF, posDF):
 
     baseDF = add_providerName(baseDF,npiProvidersDF)
     baseDF = add_providerOtherName(baseDF,npiProvidersDF)
@@ -436,7 +436,7 @@ def add_provider_info(baseDF, npiProvidersDF, medicareHospitalInfoDF, posDF, zip
     baseDF = add_providerZip(baseDF,npiProvidersDF)
     baseDF = add_providerState(baseDF,npiProvidersDF)
     baseDF = add_providerCounty(baseDF, medicareHospitalInfoDF)
-    baseDF = add_providerFIPS(baseDF, posDF, zipToCountyDF)
+    baseDF = add_providerFIPS(baseDF, posDF)
     baseDF = add_providerOwner(baseDF, posDF)
     baseDF = add_cah(baseDF, posDF)
 
