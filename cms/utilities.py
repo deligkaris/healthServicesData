@@ -7,10 +7,10 @@ def get_filename_dicts(pathCMS, yearInitial, yearFinal):
     pathIn = pathCMS +'/INP' #inpatient data folder
     pathOut = pathCMS + '/OUT' #outpatient data folder
     pathDenom = pathCMS + '/Denom' #demographic and enrollment data folder
-    pathSNF = pathCMS + '/SNF' #skilled nursing facilities
-    pathHHA = pathCMS + '/HHA' #home health agency
-    pathHOSP = pathCMS + '/HOSP' #hospice care
-    pathCAR = pathCMS + '/CAR' #carrier 
+    pathSNF = pathCMS + '/SAF/SNF' #skilled nursing facilities
+    pathHHA = pathCMS + '/SAF/HHA' #home health agency
+    pathHOSP = pathCMS + '/SAF/HOSP' #hospice care
+    pathCAR = pathCMS + '/SAF/CAR' #carrier 
 
     #because there are several CMS files, put them in a dictionary
     outClaimsFilenames = {}
