@@ -10,6 +10,7 @@ def get_filename_dicts(pathToData, yearInitial, yearFinal):
 
     # got this file from https://data.nber.org/data/cbsa-msa-fips-ssa-county-crosswalk.html
     # found it using some insight from https://resdac.org/cms-data/variables/county-code-claim-ssa
+    #https://www.nber.org/research/data/census-core-based-statistical-area-cbsa-federal-information-processing-series-fips-county-crosswalk
     cbsaFilename = pathToData + '/cbsatocountycrosswalk.csv'
 
     # county level data were obtained from US Census Bureau
@@ -419,6 +420,12 @@ def prep_posDF(posDF):
     return posDF
 
 def prep_aamcHospitalsDF(aamcHospitalsDF):
+
+    aamcHospitalsDF = (aamcHospitalsDF.withColumn("cothMember",
+                                                  F.when( F.col("FY22 COTH Member")=="Y", "1")
+                                                   .when( F.col("FY22 COTH Member")=="N", "0")
+                                                   .otherwise(""))
+                                      .withColumn("cothMember", F.col("cothMember").cast('int')))
 
     aamcHospitalsDF = (aamcHospitalsDF.withColumn("teachingStatus",
                                                   F.when( F.col("Teaching Status")=="Teaching", "1")

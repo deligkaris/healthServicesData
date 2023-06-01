@@ -1044,7 +1044,7 @@ def add_cothMember(baseDF, teachingHospitalsDF):
 
     baseDF = baseDF.join(teachingHospitalsDF
                             .select(
-                                F.col("FY22 COTH Member").alias("cothMember"),
+                                F.col("cothMember"),
                                 F.col("Medicare ID")),
                          on = [F.col("Medicare ID")==F.col("PROVIDER")],
                          how = "left_outer")
@@ -1150,7 +1150,7 @@ def add_teachingHospital(baseDF, aamcHospitalsDF, acgmeProgramsDF):
 
     baseDF = baseDF.withColumn("teachingHospital",
                                 F.when( 
-                                    (F.col("cothMember") == "Y") |
+                                    (F.col("cothMember") == 1) |
                                     (F.col("rbr") >= 0.25) |
                                     (F.col("acgmeProgram") == 1), 1)
                                  .otherwise(0))
