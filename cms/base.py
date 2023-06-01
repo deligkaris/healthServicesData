@@ -581,11 +581,11 @@ def add_tpa(baseDF, inpatient=True):
     #else:
     #    tpaCondition = tpaPrcdrCondition # outpatient condition
     
-    baseDF = add_tpaDrg(baseDF)
-    baseDF = add_tpaPrcdr(baseDF)
-    baseDF = add_tpaDgns(baseDF)
+    baseDF = add_tpaPrcdr(baseDF) #common for both inpatient and outpatient
 
     if (inpatient):
+        baseDF = add_tpaDrg(baseDF) #used only in inpatient
+        baseDF = add_tpaDgns(baseDF) #used only in inpatient
         tpaCondition = '( (F.col("tpaDrg")==1) | (F.col("tpaPrcdr")==1) | (F.col("tpaDgns")==1) )' # do NOT forget the parenthesis!!!
     else:
         tpaCondition = '( (F.col("tpaPrcdr")==1) )'
