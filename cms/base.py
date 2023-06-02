@@ -258,11 +258,11 @@ def add_lastClaim(baseDF):
 
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
 
-    baseDF = baseDF.withColumn("lastADMSN_DT_DAY",
-                                F.max(F.col("ADMSN_DT_DAY")).over(eachDsysrtky))
+    baseDF = baseDF.withColumn("lastTHRU_DT_DAY",
+                                F.max(F.col("THRU_DT_DAY")).over(eachDsysrtky))
 
     baseDF = baseDF.withColumn("lastClaim", #and mark it/them (could be more than 1)
-                                F.when(F.col("ADMSN_DT_DAY")==F.col("lastADMSN_DT_DAY"),1)
+                                F.when(F.col("THRU_DT_DAY")==F.col("lastTHRU_DT_DAY"),1)
                                  .otherwise(0))
 
     return baseDF
