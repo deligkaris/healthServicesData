@@ -234,21 +234,14 @@ def add_ohProvider(baseDF):
             
 def add_firstClaim(baseDF):
 
-    # find the first claims for each beneficiary
-    # limitation: our data start on yearStart, so we cannot really know when all beneficiaries had their first claim
-
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
 
-    #find day the first stroke occured
-    baseDF = baseDF.withColumn("firstADMSN_DT_DAY",
+    baseDF = baseDF.withColumn("firstADMSN_DT_DAY", # find the first claims for each beneficiary
                                 F.min(F.col("ADMSN_DT_DAY")).over(eachDsysrtky))
 
-    #and mark it/them (could be more than 1)
-    baseDF = baseDF.withColumn("firstClaim",
+    baseDF = baseDF.withColumn("firstClaim", #and mark it/them (could be more than 1)
                                 F.when(F.col("ADMSN_DT_DAY")==F.col("firstADMSN_DT_DAY"),1)
                                  .otherwise(0))
-
-    #a fairly small portion will have more than 1 claim on the same day, keep only those that include exactly 1 claim on the first stroke
 
     return baseDF
 
@@ -258,6 +251,28 @@ def add_firstClaimSum(baseDF):
 
     baseDF = (baseDF.withColumn("firstClaimSum",
                                 F.sum(F.col("firstClaim")).over(eachDsysrtky)))
+
+    return baseDF
+
+def add_lastClaim(baseDF):
+
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+
+    baseDF = baseDF.withColumn("lastADMSN_DT_DAY",
+                                F.max(F.col("ADMSN_DT_DAY")).over(eachDsysrtky))
+
+    baseDF = baseDF.withColumn("lastClaim", #and mark it/them (could be more than 1)
+                                F.when(F.col("ADMSN_DT_DAY")==F.col("lastADMSN_DT_DAY"),1)
+                                 .otherwise(0))
+
+    return baseDF
+
+def add_lastClaimSum(baseDF):
+
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+
+    baseDF = (baseDF.withColumn("lastClaimSum",
+                                F.sum(F.col("lastClaim")).over(eachDsysrtky)))
 
     return baseDF
 
