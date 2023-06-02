@@ -1297,7 +1297,14 @@ def add_provider_stroke_info(baseDF):
 
     return baseDF
 
+def add_numberOfClaims(baseDF):
 
+    eachDsysrtky = Window.partitionBy("DSYSRTKY")
+
+    baseDF = baseDF.withColumn("numberOfClaims",
+                               F.size(F.collect_set(F.col("CLAIMNO")).over(eachDsysrtky)))
+
+    return baseDF
 
 
 
