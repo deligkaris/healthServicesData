@@ -82,3 +82,20 @@ def add_ct(revenueDF):
 
     return revenueDF
 
+def add_echo(revenueDF):
+
+    echoCodes = ["93304", "93306", "93307", "93320", "93321", "93312", "93313", "93314","93315", "93316", "93317"]
+
+    echoCondition = '(F.col("HCPCS_CD").isin(echoCodes))'
+
+    revenueDF = revenueDF.withColumn("echo",
+                                    F.when( eval(echoCondition) ,1)
+                                     .otherwise(0))
+
+    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
+
+    revenueDF = revenueDF.withColumn("echo",
+                                     F.max(F.col("echo")).over(eachDsysrtkyAndClaim))
+
+    return revenueDF
+
