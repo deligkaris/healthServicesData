@@ -397,6 +397,8 @@ def prep_posDF(posDF):
     #https://data.cms.gov/sites/default/files/2022-10/58ee74d6-9221-48cf-b039-5b7a773bf39a/Layout%20Sep%2022%20Other.pdf
     #posDF = posDF.withColumn("providerName", F.col("FAC_NAME"))
 
+    posDF = posDF.withColumn("providerStateFIPS", F.col("FIPS_STATE_CD"))  
+
     posDF = posDF.withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
 
     posDF = posDF.withColumn("hospital",

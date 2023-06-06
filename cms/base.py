@@ -435,6 +435,39 @@ def add_providerFIPS(baseDF,posDF): #assumes add_providerCounty
 
     return baseDF
 
+def add_providerStateFIPS(baseDF, posDF):
+
+    baseDF = baseDF.join(posDF
+                            .select( F.col("PRVDR_NUM"), F.col("providerStateFIPS") ),
+                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
+                         how="left_outer")
+
+    baseDF = baseDF.drop("PRVDR_NUM")
+
+    return baseDF
+
+
+def add_providerRegion(baseDF):
+
+    westCodes = ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"] #state fips codes
+    southCodes = ["10", "11", "12", "13", "24", "37", "45", "51", "54", "01", "21", "28", "47", "05", "22", "40", "48"]
+    midwestCodes = ["18", "17", "26", "39", "55", "19", "20", "27", "29", "31", "38", "46"]
+    northeastCodes = ["09", "23", "25", "33", "44", "50", "34", "36", "42"]
+
+    westCondition = '(F.col("providerStateFIPS").isin(westCodes))' 
+    southCondition = '(F.col("providerStateFIPS").isin(southCodes))'
+    midwestCondition = '(F.col("providerStateFIPS").isin(midwestCodes))'
+    northeastCondition = '(F.col("providerStateFIPS").isin(northeastCodes))'
+
+    baseDF = (baseDF.withColumn("providerRegion",
+                                F.when( eval(westCondition), "4")
+                                 .when( eval(southCondition), "3")
+                                 .when( eval(midwestCondition), "2")
+                                 .when( eval(northeastCondition), "1") 
+                                 .otherwise(""))
+                    .withColumn("providerRegion", F.col("providerRegion").cast('int')))
+
+    return baseDF
 
 def add_providerFIPSToNulls(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
 
@@ -463,6 +496,7 @@ def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF):
     baseDF = add_providerAddress(baseDF,npiProvidersDF)
     baseDF = add_providerZip(baseDF,npiProvidersDF)
     baseDF = add_providerState(baseDF,npiProvidersDF)
+    baseDF = add_providerStateFIPS(baseDF, posDF)
     baseDF = add_providerFIPS(baseDF, posDF)
     baseDF = add_providerCounty(baseDF, cbsaDF)
     baseDF = add_providerOwner(baseDF, posDF)
@@ -508,6 +542,8 @@ def add_evtPrcdr(baseDF):
                     .withColumn("evtPrcdr",
                                 F.when( F.size(F.col("evtPrcdrCodes"))>0,     1)
                                 .otherwise(0)))
+
+    baseDF = baseDF.drop("evtPrcdrCodes")
 
     #a different approach, not sure if this is slower/faster
     #evtPrcdrCodes=["03CG3ZZ","03CH3ZZ","03CJ3ZZ","03CK3ZZ","03CL3ZZ","03CM3ZZ","03CN3ZZ","03CP3ZZ","03CQ3ZZ"]
@@ -561,6 +597,9 @@ def add_tpaPrcdr(baseDF):
                     .withColumn("tpaPrcdr",
                                 F.when( F.size(F.col("tpaPrcdrCodes"))>0,     1)
                                 .otherwise(0)))
+
+    baseDF = baseDF.drop("tpaPrcdrCodes")
+
     return baseDF
 
 def add_tpaDgns(baseDF):
@@ -576,6 +615,9 @@ def add_tpaDgns(baseDF):
                     .withColumn("tpaDgns",
                                 F.when( F.size(F.col("tpaDgnsCodes"))>0,     1)
                                 .otherwise(0)))
+
+    baseDF = baseDF.drop("tpaDgnsCodes")
+   
     return baseDF
 
 def add_tpa(baseDF, inpatient=True):
