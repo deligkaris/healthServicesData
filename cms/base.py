@@ -1242,6 +1242,7 @@ def add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF):
 
     baseDF = baseDF.fillna(0,subset="strokeCenterCamargo")
 
+    baseDF = baseDF.drop("CCN")
 
     return baseDF    
 
