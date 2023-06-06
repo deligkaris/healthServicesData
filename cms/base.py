@@ -498,6 +498,7 @@ def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF):
     baseDF = add_providerState(baseDF,npiProvidersDF)
     baseDF = add_providerStateFIPS(baseDF, posDF)
     baseDF = add_providerFIPS(baseDF, posDF)
+    baseDF = add_providerRegion(baseDF)
     baseDF = add_providerCounty(baseDF, cbsaDF)
     baseDF = add_providerOwner(baseDF, posDF)
     baseDF = add_cah(baseDF, posDF)
