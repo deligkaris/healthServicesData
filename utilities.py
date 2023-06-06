@@ -575,6 +575,11 @@ def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
 
     strokeCentersCamargoDF = strokeCentersCamargoDF.select( F.col("CCN") ).distinct() #CCN 220074 appears twice for some reason... 
 
+    #they probably used excel to get the list and excel removed 0 at the beginning of the CCN strings....
+    strokeCentersCamargoDF = strokeCentersCamargoDF.withColumn("CCN",
+                                                               F.when( F.length(F.col("CCN"))==5, F.concat(F.lit("0"),F.col("CCN")))
+                                                                .otherwise(F.col("CCN")))
+
     strokeCentersCamargoDF = strokeCentersCamargoDF.withColumn("strokeCenterCamargo", F.lit(1))
 
     return strokeCentersCamargoDF
