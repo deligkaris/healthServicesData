@@ -675,6 +675,20 @@ def add_beneficiary_info(baseDF,mbsfDF): #assumes add_ssaCounty
 
     return baseDF
 
+def add_age(baseDF,mbsfDF):
+
+    baseDF = baseDF.join(
+                         mbsfDF
+                             .select(
+                                F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR")),
+                         on = [ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
+                                F.col("THRU_DT_YEAR")==F.col("RFRNC_YR")],
+                         how = "inner")
+
+    baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
+
+    return baseDF
+
 def add_ssaCounty(baseDF):
 
     baseDF = baseDF.withColumn("ssaCounty",
