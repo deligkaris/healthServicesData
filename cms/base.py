@@ -605,6 +605,8 @@ def add_tpaPrcdr(baseDF):
 
 def add_tpaDgns(baseDF):
 
+    #this diagnostic code is: Status post administration of tPA (rtPA) in a different facility within the last 24 
+    #hours prior to admission to current facility, so this code should not be used to identify tpa performed at the provider of the claim (I think)
     tpaDgnsCodes = ("Z9282", "Z9282")
   
     dgnsCodeColumns = [f"ICD_DGNS_CD{x}" for x in range(1,26)]
