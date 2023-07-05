@@ -381,7 +381,7 @@ def add_providerState(baseDF,npiProviderDF):
 
     return baseDF
 
-def add_providerCounty(baseDF,cbsaDF): #assumes providerFIPS
+def add_providerCountyName(baseDF,cbsaDF): #assumes providerFIPS
 
     #if ever run into problems, eg a lot of nulls, the CMS hospital cost report (hospCost2018) also have the county of providers
 
@@ -402,7 +402,7 @@ def add_providerCounty(baseDF,cbsaDF): #assumes providerFIPS
     baseDF = (baseDF.join(
                         cbsaDF
                             .select(
-                                F.col("countyname").alias("providerCounty"),
+                                F.col("countyname").alias("providerCountyName"),
                                 F.col("fipscounty"))
                             .distinct(),
                         on=[F.col("fipscounty")==F.col("providerFIPS")],
@@ -499,7 +499,7 @@ def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF):
     baseDF = add_providerStateFIPS(baseDF, posDF)
     baseDF = add_providerFIPS(baseDF, posDF)
     baseDF = add_providerRegion(baseDF)
-    baseDF = add_providerCounty(baseDF, cbsaDF)
+    baseDF = add_providerCountyName(baseDF, cbsaDF)
     baseDF = add_providerOwner(baseDF, posDF)
     baseDF = add_cah(baseDF, posDF)
 
