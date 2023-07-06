@@ -256,6 +256,9 @@ def prep_mbsfDF(mbsfDF):
     #need to have ssa state+county code
     mbsfDF = add_ssaCounty(mbsfDF)
 
+    #without a repartition, the dataframe is extremely skewed...
+    mbsfDF = mbsfDF.repartition("DSYSRTKY")
+
     return mbsfDF
 
 
