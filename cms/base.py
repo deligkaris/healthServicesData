@@ -1247,6 +1247,9 @@ def prep_baseDF(baseDF, claim="inpatient"):
         #add SSA county of beneficiaries
         baseDF = add_ssaCounty(baseDF)
 
+    #without a repartition, the dataframe is extremely skewed...
+    baseDF = baseDF.repartition(128, "DSYSRTKY")   
+
     return baseDF
 
 def add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF):
