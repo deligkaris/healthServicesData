@@ -83,7 +83,8 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
     carClaimsDict={}
     carRevenueDict={}
 
-    #read all data and put them in dictionary
+    #read all data and put them in dictionary, 
+    #parquet files have a built-in schema so I do not need to infer schema when reading parquet files
     for iYear in outClaimsYears:
         outClaimsDict[f'{iYear}'] = spark.read.parquet(outClaimsFilenames[f'{iYear}'])
 
