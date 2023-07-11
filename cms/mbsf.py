@@ -257,7 +257,7 @@ def prep_mbsfDF(mbsfDF):
     mbsfDF = add_ssaCounty(mbsfDF)
 
     #without a repartition, the dataframe is extremely skewed...
-    mbsfDF = mbsfDF.repartition(128, "DSYSRTKY")
+    #mbsfDF = mbsfDF.repartition(128, "DSYSRTKY")
 
     return mbsfDF
 
