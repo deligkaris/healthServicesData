@@ -20,6 +20,19 @@ def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset
 
     return baseDF
 
+def cast_columns_as_string(baseDF, claim="outpatient"):
+
+    if ((claim=="outpatient") | (claim=="inpatient")):
+        baseDF = (baseDF.withColumn("PRSTATE", F.lpad(F.col("PRSTATE").cast("string"),2,'0'))
+                        .withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast("string"),2,'0'))
+                        .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast("string"),3,'0')))
+    elif ((claim=="hha") | (claim=="hosp") | (claim=="snf")):
+        baseDF = (baseDF.withColumn("PRVDR_STATE_CD", F.lpad(F.col("PRVDR_STATE_CD").cast("string"),2,'0'))
+                        .withColumn("BENE_STATE_CD", F.lpad(F.col("BENE_STATE_CD").cast("string"),2,'0'))
+                        .withColumn("BENE_CNTY_CD", F.lpad(F.col("BENE_CNTY_CD").cast("string"),3,'0')))
+        
+    return baseDF
+
 def add_admission_date_info(baseDF, claim="outpatient"):
 
     #leapYears=[2016,2020,2024,2028]
@@ -1235,6 +1248,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
     #add some date-related info
     baseDF = cast_columns_as_int(baseDF,claim=claim)
     baseDF = add_through_date_info(baseDF,claim=claim)
+    baseDF = cast_columns_as_string(baseDF,claim=claim)
 
     if (claim=="inpatient"):
         baseDF = add_discharge_date_info(baseDF,claim=claim)
