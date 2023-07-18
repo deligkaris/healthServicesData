@@ -1273,6 +1273,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
         baseDF = add_admission_date_info(baseDF,claim=claim)
         #add SSA county of beneficiaries
         baseDF = add_ssaCounty(baseDF)
+        baseDF = add_fipsCounty(baseDF)
         #without a repartition, the dataframe is extremely skewed...
         #baseDF = baseDF.repartition(128, "DSYSRTKY")
     elif ( (claim=="snf") | (claim=="hosp") | (claim=="hha") ):
@@ -1282,6 +1283,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
     elif ( claim=="outpatient" ):
         #add SSA county of beneficiaries
         baseDF = add_ssaCounty(baseDF)
+        baseDF = add_fipsCounty(baseDF)
         #without a repartition, the dataframe is extremely skewed...
         #baseDF = baseDF.repartition(128, "DSYSRTKY")
 
