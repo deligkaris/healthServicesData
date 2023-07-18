@@ -502,19 +502,36 @@ def add_providerFIPSToNulls(baseDF,posDF,zipToCountyDF): #assumes add_providerCo
 
     return baseDF
 
-def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF):
+def add_provider_npi_info(baseDF, npiProvidersDF):
 
     baseDF = add_providerName(baseDF,npiProvidersDF)
     baseDF = add_providerOtherName(baseDF,npiProvidersDF)
     baseDF = add_providerAddress(baseDF,npiProvidersDF)
     baseDF = add_providerZip(baseDF,npiProvidersDF)
     baseDF = add_providerState(baseDF,npiProvidersDF)
+
+    return baseDF
+
+def add_provider_pos_info(baseDF, posDF):
+
     baseDF = add_providerStateFIPS(baseDF, posDF)
     baseDF = add_providerFIPS(baseDF, posDF)
+    baseDF = add_providerOwner(baseDF, posDF)
+    baseDF = add_providerIsCah(baseDF, posDF)
+
+    return baseDF
+
+def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF):
+
+    baseDF = add_provider_npi_info(baseDF, npiProvidersDF)
+    baseDF = add_provider_pos_info(baseDF, posDF)
     baseDF = add_providerRegion(baseDF)
     baseDF = add_providerCountyName(baseDF, cbsaDF)
-    baseDF = add_providerOwner(baseDF, posDF)
-    baseDF = add_cah(baseDF, posDF)
+    baseDF = add_providerRucc(baseDF, ersRuccDF)
+    baseDF = add_providerMaPenetration(baseDF, maPenetrationDF)
+    #right now I prefer cost report data because they seem to be about 99.5% complete, vs 80% complete for cbi
+    #baseDF = add_cbi_info(baseDF, cbiDF)
+    baseDF = add_provider_cost_report_info(baseDF, costReportDF)
 
     return baseDF
 
@@ -951,7 +968,7 @@ def add_cbi_info(baseDF,cbiDF):
 
     return baseDF
 
-def add_cost_report_info(baseDF,costReportDF):
+def add_provider_cost_report_info(baseDF,costReportDF):
 
     baseDF = baseDF.join(costReportDF
                            .select(
@@ -1069,11 +1086,11 @@ def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
     
     return baseDF
 
-def add_maPenetration(baseDF, maPenetrationDF):
+def add_providerMaPenetration(baseDF, maPenetrationDF):
 
     #from one test with stroke inpatient claims, this was about 90% complete
     baseDF = baseDF.join(maPenetrationDF
-                          .select(F.col("FIPS"),F.col("Penetration").alias("maPenetration"),F.col("Year")),
+                          .select(F.col("FIPS"),F.col("Penetration").alias("providerMaPenetration"),F.col("Year")),
                          on=[ (F.col("FIPS")==F.col("providerFIPS")) & (F.col("Year")==F.col("THRU_DT_YEAR")) ],
                          how="left_outer")
 
