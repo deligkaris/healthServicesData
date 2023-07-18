@@ -1326,7 +1326,7 @@ def add_numberOfResidents(baseDF, hospCostDF):
 def add_providerIsCah(baseDF, posDF): #critical access hospital
 
     baseDF = baseDF.join(posDF
-                          .select(F.col("PRVDR_NUM"), F.col("providerIsCah")),
+                          .select(F.col("PRVDR_NUM"), F.col("cah").alias("providerIsCah")),
                          on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
                          how="left_outer")
 
