@@ -761,7 +761,7 @@ def add_fipsCounty(baseDF, cbsaDF):
 
 def add_fipsState(baseDF):
 
-    baseDF = baseDF.withColumn(fipsState, F.col("fipsCounty").substr(1,2))
+    baseDF = baseDF.withColumn("fipsState", F.col("fipsCounty").substr(1,2))
 
     return baseDF
 
