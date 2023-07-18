@@ -708,8 +708,9 @@ def add_ssaCounty(baseDF):
 
     baseDF = baseDF.withColumn("ssaCounty",
                                F.concat(
-                                    F.col("STATE_CD").substr(1,2),
-                                    F.format_string("%03d",F.col("CNTY_CD"))))
+                                    #F.col("STATE_CD").substr(1,2),
+                                    #F.format_string("%03d",F.col("CNTY_CD"))))
+                                    F.col("STATE_CD"), F.col("CNTY_CD")))
 
     return baseDF
 
