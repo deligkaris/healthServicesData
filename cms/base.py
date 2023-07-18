@@ -1248,7 +1248,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
     #add some date-related info
     baseDF = cast_columns_as_int(baseDF,claim=claim)
     baseDF = add_through_date_info(baseDF,claim=claim)
-    baseDF = cast_columns_as_string(baseDF,claim=claim)
+    #baseDF = cast_columns_as_string(baseDF,claim=claim)
 
     if (claim=="inpatient"):
         baseDF = add_discharge_date_info(baseDF,claim=claim)
