@@ -942,9 +942,9 @@ def add_cost_report_info(baseDF,costReportDF):
     baseDF = baseDF.join(costReportDF
                            .select(
                                F.col("Provider CCN"),
-                               F.col("Rural Versus Urban").alias("ruralVersusUrban"),
-                               F.col("Number of Beds").alias("numberOfBeds"),
-                               F.col("Number of Interns and Residents (FTE)").alias("numberOfResidents")),
+                               F.col("Rural Versus Urban").alias("providerRuralVersusUrban"),
+                               F.col("Number of Beds").alias("providerNumberOfBeds"),
+                               F.col("Number of Interns and Residents (FTE)").alias("providerNumberOfResidents")),
                          #see note on add_cbi_info on why I am not using ORGNPINM for the join
                          #hospital cost report files include only the CMS Certification Number (Provider ID, CCN), they do not include NPI
                          on=[F.col("Provider CCN")==F.col("Provider")],
@@ -1067,10 +1067,10 @@ def add_maPenetration(baseDF, maPenetrationDF):
 
     return baseDF
 
-def add_rucc(baseDF, ersRuccDF):
+def add_providerRucc(baseDF, ersRuccDF):
 
     baseDF = baseDF.join(ersRuccDF
-                             .select(F.col("FIPS"),F.col("RUCC_2013").alias("rucc")),
+                             .select(F.col("FIPS"),F.col("RUCC_2013").alias("providerRucc")),
                           on=[F.col("FIPS")==F.col("providerFIPS")],
                           how="left_outer")
 
