@@ -689,21 +689,35 @@ def add_tpaOsu(baseDF):
 
     return baseDF.withColumn("tpaOsu", F.col("osu")*F.col("tpa"))
 
-def add_beneficiary_info(baseDF,mbsfDF): #assumes add_ssaCounty
+#def add_beneficiary_info(baseDF,mbsfDF): #assumes add_ssaCounty
 
     # assumes baseDF includes columns from add_admission_date_info and add_through_date_info
     # county codes can be an issue because MBSF includes a county code for mailing address and 12 county codes 
     # for each month, need to decide at the beginning which county code to use for each patient
 
-    baseDF = baseDF.join( 
-                         mbsfDF
-                             .select(
-                                F.col("DSYSRTKY"),F.col("SEX"),F.col("RACE"),F.col("AGE"),F.col("RFRNC_YR"),F.col("ssaCounty")),
-                         on = [ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
-                                F.col("ADMSN_DT_YEAR")==F.col("RFRNC_YR")],
-                         how = "inner")
+    #baseDF = baseDF.join( 
+    #                     mbsfDF
+    #                         .select(
+    #                            F.col("DSYSRTKY"),F.col("SEX"),F.col("RACE"),F.col("AGE"),F.col("RFRNC_YR"),F.col("ssaCounty")),
+    #                     on = [ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
+    #                            F.col("ADMSN_DT_YEAR")==F.col("RFRNC_YR")],
+    #                     how = "inner")
 
-    baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
+    #baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
+
+    #return baseDF
+
+def add_beneficiary_info(baseDF, mbsfDF, cbsaDF, ersRuccDF):
+
+    baseDF = add_age(baseDF, mbsfDF)
+    baseDF = add_death_date_info(baseDF,mbsfDF)
+    baseDF = add_daysDeadAfterVisit(baseDF)
+    baseDF = add_90DaysDead(baseDF)
+    baseDF = add_365DaysDead(baseDF)
+ 
+    baseDF = add_fips_info(baseDF, cbsaDF) 
+    baseDF = add_rucc(baseDF, ersRuccDF)
+    baseDF = add_region(baseDF)
 
     return baseDF
 
@@ -745,6 +759,19 @@ def add_fipsCounty(baseDF, cbsaDF):
 
     return baseDF
 
+def add_fipsState(baseDF):
+
+    baseDF = baseDF.withColumn(fipsState, F.col("fipsCounty").substr(1,2))
+
+    return baseDF
+
+def add_fips_info(baseDF, cbsaDF):
+
+    baseDF = add_fipsCounty(baseDF, cbsaDF)
+    baseDF = add_fipsState(baseDF)
+
+    return baseDF
+
 def add_countyName(baseDF,cbsaDF):
 
     baseDF = baseDF.join(
@@ -756,6 +783,39 @@ def add_countyName(baseDF,cbsaDF):
     #baseDF = baseDF.drop(F.col("ssaCounty"))
 
     return(baseDF)
+
+def add_rucc(baseDF, ersRuccDF):
+
+    baseDF = baseDF.join(ersRuccDF
+                             .select(F.col("FIPS"),F.col("RUCC_2013").alias("rucc")),
+                          on=[F.col("FIPS")==F.col("fipsCounty")],
+                          how="left_outer")
+
+    baseDF = baseDF.drop("FIPS")
+
+    return baseDF
+
+def add_region(baseDF): 
+    
+    westCodes = ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"] #state fips codes
+    southCodes = ["10", "11", "12", "13", "24", "37", "45", "51", "54", "01", "21", "28", "47", "05", "22", "40", "48"]
+    midwestCodes = ["18", "17", "26", "39", "55", "19", "20", "27", "29", "31", "38", "46"]
+    northeastCodes = ["09", "23", "25", "33", "44", "50", "34", "36", "42"]
+    
+    westCondition = '(F.col("fipsState").isin(westCodes))'
+    southCondition = '(F.col("fipsState").isin(southCodes))'
+    midwestCondition = '(F.col("fipsState").isin(midwestCodes))'
+    northeastCondition = '(F.col("fipsState").isin(northeastCodes))'
+
+    baseDF = (baseDF.withColumn("region",
+                                F.when( eval(westCondition), "4")
+                                 .when( eval(southCondition), "3")
+                                 .when( eval(midwestCondition), "2")
+                                 .when( eval(northeastCondition), "1")
+                                 .otherwise(""))
+                    .withColumn("region", F.col("region").cast('int')))
+
+    return baseDF
 
 def add_regional_info(baseDF, censusDF):
 
@@ -1128,6 +1188,21 @@ def add_nihss(baseDF):
 
     return baseDF
 
+def add_claim_stroke_info(baseDF, inpatient=True):
+
+    baseDF = add_claim_stroke_treatment_info(baseDF, inpatient=inpatient)
+    baseDF = add_nihss(baseDF)
+
+    return baseDF
+
+def add_claim_stroke_treatment_info(baseDF, inpatient=True):
+
+    baseDF = add_tpa(baseDF, inpatient=inpatient)
+    if (inpatient):
+        baseDF = add_evt(baseDF)
+
+    return baseDF
+
 def add_processed_name(baseDF,colToProcess="providerName"):
 
     processedCol = colToProcess + "Processed"
@@ -1273,7 +1348,6 @@ def prep_baseDF(baseDF, claim="inpatient"):
         baseDF = add_admission_date_info(baseDF,claim=claim)
         #add SSA county of beneficiaries
         baseDF = add_ssaCounty(baseDF)
-        baseDF = add_fipsCounty(baseDF)
         #without a repartition, the dataframe is extremely skewed...
         #baseDF = baseDF.repartition(128, "DSYSRTKY")
     elif ( (claim=="snf") | (claim=="hosp") | (claim=="hha") ):
@@ -1283,7 +1357,6 @@ def prep_baseDF(baseDF, claim="inpatient"):
     elif ( claim=="outpatient" ):
         #add SSA county of beneficiaries
         baseDF = add_ssaCounty(baseDF)
-        baseDF = add_fipsCounty(baseDF)
         #without a repartition, the dataframe is extremely skewed...
         #baseDF = baseDF.repartition(128, "DSYSRTKY")
 
@@ -1381,19 +1454,21 @@ def add_providerMeanTpa(baseDF):
 
     return baseDF
 
-def add_provider_stroke_treatment_info(baseDF):
+def add_provider_stroke_treatment_info(baseDF, inpatient=True):
 
     baseDF = add_providerMeanTpa(baseDF)
-    baseDF = add_providerMeanEvt(baseDF)
     baseDF = add_providerTpaVol(baseDF)
-    baseDF = add_providerEvtVol(baseDF)
+    if (inpatient):
+        baseDF = add_providerMeanEvt(baseDF)   
+        baseDF = add_providerEvtVol(baseDF)
 
     return baseDF
 
-def add_provider_stroke_info(baseDF):
+def add_provider_stroke_info(baseDF, strokeCentersCamargoDF, inpatient=True):
 
-    baseDF = add_provider_stroke_treatment_info(baseDF)
+    baseDF = add_provider_stroke_treatment_info(baseDF, inpatient=inpatient)
     baseDF = add_providerStrokeVol(baseDF)
+    baseDF = add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF)
 
     return baseDF
 
