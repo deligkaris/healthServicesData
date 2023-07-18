@@ -237,7 +237,7 @@ def add_ohProvider(baseDF):
 
     # keep providers in OH (PRSTATE)
     # ohio is code 36, SSA code, https://resdac.org/cms-data/variables/state-code-claim-ssa
-    ohProviderCondition = '(F.col("PRSTATE")==36)'
+    ohProviderCondition = '(F.col("PRSTATE")=="36")'
 
     baseDF = baseDF.withColumn("ohProvider",
                                F.when(eval(ohProviderCondition), 1)
@@ -1248,7 +1248,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
     #add some date-related info
     baseDF = cast_columns_as_int(baseDF,claim=claim)
     baseDF = add_through_date_info(baseDF,claim=claim)
-    #baseDF = cast_columns_as_string(baseDF,claim=claim)
+    baseDF = cast_columns_as_string(baseDF,claim=claim)
 
     if (claim=="inpatient"):
         baseDF = add_discharge_date_info(baseDF,claim=claim)
