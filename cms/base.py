@@ -729,7 +729,7 @@ def add_age(baseDF,mbsfDF):
                                 F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR")),
                          on = [ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
                                 F.col("THRU_DT_YEAR")==F.col("RFRNC_YR")],
-                         how = "inner")
+                         how = "left_outer")
 
     baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
 
@@ -752,7 +752,7 @@ def add_fipsCounty(baseDF, cbsaDF):
                             .select(
                                 F.col("ssaCounty"),F.col("fipsCounty")),
                          on=["ssaCounty"],
-                         how="inner")
+                         how="left_outer")
 
     #drop the duplicate ssacounty, no longer needed
     #baseDF = baseDF.drop(F.col("ssaCounty"))
@@ -1060,8 +1060,10 @@ def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has be
                                  .select(
                                         F.col("DSYSRTKY"),
                                         F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"), 
-                                        F.col("DEATH_DT_DAY"), F.col("DEATH_DT")),
-                           on=["DSYSRTKY"],
+                                        F.col("DEATH_DT_DAY"), F.col("DEATH_DT"),
+                                        F.col("RFRNC_YR")),
+                           on=[ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
+                                F.col("THRU_DT_YEAR")==F.col("RFRNC_YR") ],
                            how="left_outer") #uses null when the beneficiary does not have a valid death date in mbsfDF
 
     return baseDF
