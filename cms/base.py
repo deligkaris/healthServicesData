@@ -653,6 +653,28 @@ def add_tpaDgns(baseDF):
    
     return baseDF
 
+def add_tpaCpt(baseDF):
+
+    #CPT codes from: https://svn.bmj.com/content/6/2/194
+    tpaCptCodes = ("37195", "37201", "37202")
+
+    eachClaim = Window.partitionBy("CLAIMNO")
+
+    #find tpa cpt codes in claims
+    baseDF = (baseDF.withColumn("hcpcsCodeAll",
+                                F.collect_set(F.col("HCPCS_CD")).over(eachClaim))
+                    .withColumn("tpaCptCodes",
+                                F.expr(f"filter(hcpcsCodeAll, x -> x in {tpaCptCodes})")))
+
+    #if tpa cpt codes are found, then tpaCpt was performed
+    baseDF = baseDF.withColumn("tpaCpt",
+                               F.when( F.size(F.col("tpaCptCodes"))>0,     1)
+                                .otherwise(0))
+
+    baseDF = baseDF.drop("tpaCptCodes")
+
+    return baseDF
+
 def add_tpa(baseDF, inpatient=True):
 
     # tPA can take place in either outpatient or inpatient setting
