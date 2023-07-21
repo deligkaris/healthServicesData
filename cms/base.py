@@ -1086,6 +1086,8 @@ def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has be
                                 F.col("THRU_DT_YEAR")==F.col("RFRNC_YR") ],
                            how="left_outer") #uses null when the beneficiary does not have a valid death date in mbsfDF
 
+    baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
+
     return baseDF
 
 def add_daysDeadAfterVisit(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
