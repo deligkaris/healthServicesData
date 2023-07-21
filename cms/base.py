@@ -472,13 +472,12 @@ def add_providerRegion(baseDF):
     midwestCondition = '(F.col("providerStateFIPS").isin(midwestCodes))'
     northeastCondition = '(F.col("providerStateFIPS").isin(northeastCodes))'
 
-    baseDF = (baseDF.withColumn("providerRegion",
-                                F.when( eval(westCondition), "4")
-                                 .when( eval(southCondition), "3")
-                                 .when( eval(midwestCondition), "2")
-                                 .when( eval(northeastCondition), "1") 
-                                 .otherwise(""))
-                    .withColumn("providerRegion", F.col("providerRegion").cast('int')))
+    baseDF = baseDF.withColumn("providerRegion",
+                               F.when( eval(westCondition), 4)
+                                .when( eval(southCondition), 3)
+                                .when( eval(midwestCondition), 2)
+                                .when( eval(northeastCondition), 1) 
+                                .otherwise(F.lit(None)))
 
     return baseDF
 
@@ -829,13 +828,12 @@ def add_region(baseDF):
     midwestCondition = '(F.col("fipsState").isin(midwestCodes))'
     northeastCondition = '(F.col("fipsState").isin(northeastCodes))'
 
-    baseDF = (baseDF.withColumn("region",
-                                F.when( eval(westCondition), "4")
-                                 .when( eval(southCondition), "3")
-                                 .when( eval(midwestCondition), "2")
-                                 .when( eval(northeastCondition), "1")
-                                 .otherwise(""))
-                    .withColumn("region", F.col("region").cast('int')))
+    baseDF = baseDF.withColumn("region",
+                               F.when( eval(westCondition), 4)
+                                .when( eval(southCondition), 3)
+                                .when( eval(midwestCondition), 2)
+                                .when( eval(northeastCondition), 1)
+                                .otherwise(F.lit(None)))
 
     return baseDF
 
@@ -1206,7 +1204,7 @@ def add_nihss(baseDF):
                    .withColumn("nihss",
                                F.when(
                                    F.size(F.col("nihssList")) == 1, F.substring(F.col("nihssList")[0],5,2))
-                                .otherwise(""))
+                                .otherwise(F.lit(None)))
                    .withColumn("nihss", F.col("nihss").cast('int'))
                    .drop("dgnsList","nihssList"))
 
