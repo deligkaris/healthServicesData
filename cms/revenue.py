@@ -99,3 +99,11 @@ def add_echo(revenueDF):
 
     return revenueDF
 
+def filter_claims(revenueDF, baseDF):
+
+    revenueDF = revenueDF.join(baseDF.select(F.col("CLAIMNO")),
+                               on=["CLAIMNO"],
+                               how="left_semi")
+
+    return revenueDF
+
