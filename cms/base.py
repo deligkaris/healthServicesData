@@ -1505,7 +1505,13 @@ def add_numberOfClaims(baseDF):
 
     return baseDF
 
+def filter_beneficiaries(baseDF, mbsfDF):
 
+    baseDF = baseDF.join(mbsfDF.select(F.col("DSYSRTKY")), 
+                         on=["DSYSRTKY"],
+                         how="left_semi")
+
+    return baseDF
 
 
 
