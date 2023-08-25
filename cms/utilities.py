@@ -100,20 +100,20 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
     for iYear in mbsfYears:
         mbsfDict[f'{iYear}'] = spark.read.parquet(mbsfFilenames[f'{iYear}'])
 
-    for iYear in snfClaimsYears:
-        snfClaimsDict[f'{iYear}'] = spark.read.parquet(snfClaimsFilenames[f'{iYear}'])
+    #for iYear in snfClaimsYears:
+    #    snfClaimsDict[f'{iYear}'] = spark.read.parquet(snfClaimsFilenames[f'{iYear}'])
 
     #for iYear in snfRevenueYears:
     #    snfRevenueDict[f'{iYear}'] = spark.read.parquet(snfRevenueFilenames[f'{iYear}'])
 
-    for iYear in hhaClaimsYears:
-        hhaClaimsDict[f'{iYear}'] = spark.read.parquet(hhaClaimsFilenames[f'{iYear}'])
+    #for iYear in hhaClaimsYears:
+    #    hhaClaimsDict[f'{iYear}'] = spark.read.parquet(hhaClaimsFilenames[f'{iYear}'])
 
     #for iYear in hhaRevenueYears:
     #    hhaRevenueDict[f'{iYear}'] = spark.read.parquet(hhaRevenueFilenames[f'{iYear}'])
 
-    for iYear in hospClaimsYears:
-        hospClaimsDict[f'{iYear}'] = spark.read.parquet(hospClaimsFilenames[f'{iYear}'])
+    #for iYear in hospClaimsYears:
+    #    hospClaimsDict[f'{iYear}'] = spark.read.parquet(hospClaimsFilenames[f'{iYear}'])
 
     #for iYear in hospRevenueYears:
     #    hospRevenueDict[f'{iYear}'] = spark.read.parquet(hospRevenueFilenames[f'{iYear}'])
@@ -130,11 +130,11 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
     inClaims = inClaimsDict[inClaimsYears[0]]
     inRevenue = inRevenueDict[inRevenueYears[0]]
     mbsf = mbsfDict[mbsfYears[0]]
-    snfClaims = snfClaimsDict[snfClaimsYears[0]]
+    #snfClaims = snfClaimsDict[snfClaimsYears[0]]
     #snfRevenue = snfRevenueDict[snfRevenueYears[0]]
-    hhaClaims = hhaClaimsDict[hhaClaimsYears[0]]
+    #hhaClaims = hhaClaimsDict[hhaClaimsYears[0]]
     #hhaRevenue = hhaRevenueDict[hhaRevenueYears[0]]
-    hospClaims = hospClaimsDict[hospClaimsYears[0]]
+    #hospClaims = hospClaimsDict[hospClaimsYears[0]]
     #hospRevenue = hospRevenueDict[hospRevenueYears[0]]
     #carClaims = carClaimsDict[carClaimsYears[0]]
     #carRevenue = carRevenueDict[carRevenueYears[0]]
@@ -159,33 +159,33 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
        for iYear in mbsfYears[1:]:
            mbsf = mbsf.union(mbsfDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(snfClaimsYears) > 1):
-        for iYear in snfClaimsYears[1:]:
-            snfClaims = snfClaims.union(snfClaimsDict[f'{iYear}']) #and then do union with the rest
+    #if (len(snfClaimsYears) > 1):
+    #    for iYear in snfClaimsYears[1:]:
+    #        snfClaims = snfClaims.union(snfClaimsDict[f'{iYear}']) #and then do union with the rest
 
     #if (len(snfRevenueYears) > 1):
     #   for iYear in snfRevenueYears[1:]:
     #       snfRevenue = snfRevenue.union(snfRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(hhaClaimsYears) > 1):
-        for iYear in hhaClaimsYears[1:]:
-            hhaClaims = hhaClaims.union(hhaClaimsDict[f'{iYear}']) #and then do union with the rest
+    #if (len(hhaClaimsYears) > 1):
+    #    for iYear in hhaClaimsYears[1:]:
+    #        hhaClaims = hhaClaims.union(hhaClaimsDict[f'{iYear}']) #and then do union with the rest
 
     #if (len(hhaRevenueYears) > 1):
     #   for iYear in hhaRevenueYears[1:]:
     #        hhaRevenue = hhaRevenue.union(hhaRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(hospClaimsYears) > 1):
-       for iYear in hospClaimsYears[1:]:
-           hospClaims = hospClaims.union(hospClaimsDict[f'{iYear}']) #and then do union with the rest
+    #if (len(hospClaimsYears) > 1):
+    #   for iYear in hospClaimsYears[1:]:
+    #       hospClaims = hospClaims.union(hospClaimsDict[f'{iYear}']) #and then do union with the rest
 
     #if (len(hospRevenueYears) > 1):
     #   for iYear in hospRevenueYears[1:]:
     #       hospRevenue = hospRevenue.union(hospRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(carClaimsYears) > 1):
-       for iYear in carClaimsYears[1:]:
-           carClaims = carClaims.union(carClaimsDict[f'{iYear}']) #and then do union with the rest
+    #if (len(carClaimsYears) > 1):
+    #   for iYear in carClaimsYears[1:]:
+    #       carClaims = carClaims.union(carClaimsDict[f'{iYear}']) #and then do union with the rest
 
     #if (len(carRevenueYears) > 1):
     #   for iYear in carRevenueYears[1:]:
@@ -195,6 +195,9 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
     hhaRevenue=1
     carRevenue=1
     carClaims=1    
+    snfClaims=1
+    hhaClaims=1
+    hospClaims=1
 
     return(mbsf, outClaims, outRevenue, inClaims, inRevenue, 
            snfClaims, snfRevenue, hhaClaims, hhaRevenue, hospClaims, hospRevenue, 
