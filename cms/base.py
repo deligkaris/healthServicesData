@@ -149,7 +149,7 @@ def add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90):
     
     return baseDF
 
-def add_stroke(baseDF):
+def add_ishStroke(baseDF):
 
     # PRNCPAL_DGNS_CD: diagnosis, condition problem or other reason for the admission/encounter/visit to 
     # be chiefly responsible for the services, redundantly stored as ICD_DGNS_CD1
@@ -158,13 +158,39 @@ def add_stroke(baseDF):
     # which suggests that the ICD_DGNS_CDs are after evaluation, therefore ICD_DGNS_CDs are definitely not rule-out 
     # JB: well, you can never be certain that they are not rule-out, but the principal diagnostic code for stroke has been validated
 
-    baseDF = baseDF.withColumn("stroke",
+    baseDF = baseDF.withColumn("ishStroke",
                               # ^I63[\d]: beginning of string I63 matches 0 or more digit characters 0-9
                               # I63 cerebral infraction, I64 
                               F.when(
                                       (F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I63[\d]*',0) !='') |
                                       (F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I64[\d]*',0) !=''), 1)
                                .otherwise(0)) 
+
+    return baseDF
+
+def add_ichStroke(baseDF):
+
+    baseDF = baseDF.withColumn("ichStroke",
+                              # ^I61[\d]: beginning of string I61 matches 0 or more digit characters 0-9
+                              F.when(
+                                      (F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I61[\d]*',0) !=''), 1)
+                               .otherwise(0)) 
+    return baseDF
+
+def add_tiaStroke(baseDF):
+
+    baseDF = baseDF.withColumn("tiaStroke",
+                              # ^G45[\d]: beginning of string I61 matches 0 or more digit characters 0-9
+                              F.when(
+                                      (F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^G45[\d]*',0) !=''), 1)
+                               .otherwise(0)) 
+    return baseDF
+
+def add_anyStroke(baseDF):
+
+    baseDF = baseDF.withColumn("anyStroke",
+                               F.when( (F.col("ishStroke")==1) | (F.col("ichStroke")==1) | (F.col("tiaStroke")==1), 1)
+                                .otherwise(0))
 
     return baseDF
 
