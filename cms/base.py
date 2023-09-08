@@ -1206,6 +1206,7 @@ def add_providerRucc(baseDF, ersRuccDF):
 def add_nihss(baseDF):
 
     #https://www.ahajournals.org/doi/10.1161/CIRCOUTCOMES.122.009215
+    #https://www.cms.gov/files/document/2021-coding-guidelines-updated-12162020.pdf  page 80
 
     dgnsColumnList = [f"ICD_DGNS_CD{x}" for x in range(1,26)] #all 25 DGNS columns
 
@@ -1443,12 +1444,12 @@ def add_providerIsCah(baseDF, posDF): #critical access hospital
 
     return baseDF
 
-def add_providerStrokeVol(baseDF):
+def add_providerStrokeVol(baseDF, stroke="anyStroke"):
 
     eachProvider = Window.partitionBy("ORGNPINM")
 
     baseDF = baseDF.withColumn("providerStrokeVol",
-                               F.sum( F.col("stroke") ).over(eachProvider))
+                               F.sum( F.col(stroke) ).over(eachProvider))
 
     return baseDF
 
@@ -1498,10 +1499,10 @@ def add_provider_stroke_treatment_info(baseDF, inpatient=True):
 
     return baseDF
 
-def add_provider_stroke_info(baseDF, strokeCentersCamargoDF, inpatient=True):
+def add_provider_stroke_info(baseDF, strokeCentersCamargoDF, inpatient=True, stroke="anyStroke"):
 
     baseDF = add_provider_stroke_treatment_info(baseDF, inpatient=inpatient)
-    baseDF = add_providerStrokeVol(baseDF)
+    baseDF = add_providerStrokeVol(baseDF, stroke=stroke)
     baseDF = add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF)
 
     return baseDF
