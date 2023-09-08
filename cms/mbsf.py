@@ -261,13 +261,14 @@ def prep_mbsfDF(mbsfDF):
 
     return mbsfDF
 
-def drop_columns(mbsfDF): #mbsf is typically large and usually early on the code I no longer need these...
+def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on the code I no longer need these...
 
     dropColumns = (list(map(lambda x: "STATE_CNTY_FIPS_CD_" + f"{x}".zfill(2),range(1,13))) +
                    list(map(lambda x: "MDCR_STUS_CD_" + f"{x}".zfill(2),range(1,13))) +
                    list(map(lambda x: "DUAL_" + f"{x}".zfill(2),range(1,13))) +
                    list(map(lambda x: f"BUYIN{x}",range(1,13))) +
-                   list(map(lambda x: f"HMOIND{x}",range(1,13))))
+                   list(map(lambda x: f"HMOIND{x}",range(1,13))) +
+                   ["SAMPLE_GROUP"])
 
     mbsfDF = mbsfDF.drop(*dropColumns)
 

@@ -536,7 +536,7 @@ def add_primaryTaxonomy(npiProvidersDF):
 
     return npiProvidersDF
 
-def add_gach(npiProvidersDF):
+def add_gach(npiProvidersDF, primary=True):
 
     # taxonomy codes are not part of MBSF or LDS files, but they are present in the CMS Provider file, they can be linked using NPI
     # in order for a provider to obtain an NPI they must have at least 1 taxonomy code (primary one)
@@ -550,8 +550,11 @@ def add_gach(npiProvidersDF):
 
     gachTaxonomyCodes = ["282N00000X"] #my definition of general acute care hospitals
 
-    gachTaxonomyCondition = \
-         '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(gachTaxonomyCodes))' \
+    if (primary):
+        gachTaxonomyCondition = 'F.col("primaryTaxonomy").isin(gachTaxonomyCodes)'
+    else:
+        gachTaxonomyCondition = \
+                   '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(gachTaxonomyCodes))' \
                    for x in range(1,16)) +')'
 
     npiProvidersDF = npiProvidersDF.withColumn("gach",
@@ -560,10 +563,34 @@ def add_gach(npiProvidersDF):
 
     return npiProvidersDF
 
+def add_rehabilitation(npiProvidersDF, primary=True):
+
+    # https://taxonomy.nucc.org/
+    #https://taxonomy.nucc.org/?searchTerm=283X00000X
+    # https://data.cms.gov/provider-data/dataset/7t8x-u3ir
+
+    rehabTaxonomyCodes = ["283X00000X", "273Y00000X"] #my definition of rehabilitation hospitals
+
+    if (primary):
+        rehabTaxonomyCondition = 'F.col("primaryTaxonomy").isin(rehabTaxonomyCodes)'         
+    else: 
+        rehabTaxonomyCondition = \
+             '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(rehabTaxonomyCodes))' \
+                       for x in range(1,16)) +')'
+
+    npiProvidersDF = npiProvidersDF.withColumn("rehabilitation",
+                                                F.when(eval(rehabTaxonomyCondition), 1)
+                                                 .otherwise(0))
+
+    return npiProvidersDF
+
 def prep_npiProvidersDF(npiProvidersDF):
 
     npiProvidersDF = add_primaryTaxonomy(npiProvidersDF)
-    npiProvidersDF = add_gach(npiProvidersDF)
+    npiProvidersDF = add_gach(npiProvidersDF, primary=True).withColumnRenamed("gach","gachPrimary")
+    npiProvidersDF = add_gach(npiProvidersDF, primary=False).withColumnRenamed("gach","gachAll")
+    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=True).withColumnRenamed("rehabilitation","rehabilitationPrimary")
+    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=False).withColumnRenamed("rehabilitation","rehabilitationAll")
 
     return npiProvidersDF
 
