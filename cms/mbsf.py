@@ -1,44 +1,46 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-def add_allPartBEligible(mbsfDF): #assumes add death date info
+def add_allPartB(mbsfDF): #assumes add death date info
 
-    buyInColumns = list(map(lambda x: f"BUYIN{x}",range(1,13))) # ['BUYIN1','BUYIN2',...'BUYIN12']
+    #first approach, takes into account death date, does not take into account if this is the year beneficiary first became eligible for Medicare
+    mbsfDF = mbsfDF.withColumn("allPartB",
+                               F.when( (F.col("DEATH_DT_MONTH")==F.col("B_MO_CNT")) | (F.col("B_MO_CNT")==12), 1)
+                                .otherwise(0))
 
-    # if patients were enrolled in any of these, then they did not have Part B during the entire year
-    #"0": not entitled, "1": Part A only, "A": Part A state buy-in
-    #"2": Part B only, "3": Part A and Part B
-    #"B": Part B state buy in, "c": Part A and Part B state buy-in
-    # source: RESDAC MBSF excel file
-    notPartBCodes = ("0","1","A")
+    #second approach, produces same results as first approach above, but slower
+    #buyInColumns = list(map(lambda x: f"BUYIN{x}",range(1,13))) # ['BUYIN1','BUYIN2',...'BUYIN12']
+    #https://resdac.org/cms-data/variables/medicare-entitlementbuy-indicator-january
+    #notPartBCodes = ("0","1","A")
 
-    mbsfDF = (mbsfDF.withColumn("buyInAll",   #make the array
-                                F.array(buyInColumns))
-                    #keep all 12 elements if beneficiary did not die that year, otherwise keep up to the month of death (after that month all codes are 0)
-                    .withColumn("buyInAllSliced",   
-                                F.when( F.col("DEATH_DT_MONTH").isNull(), F.col("buyInAll"))
-                                 #.otherwise(F.slice("buyInAll",F.lit(1),F.col("DEATH_DT_MONTH"))) #unsure why this is not working
-                                 .otherwise(F.expr("slice(buyInAll,1,DEATH_DT_MONTH)")))
-                     #no need to keep all elements, just the distinct ones
-                    .withColumn("buyInAllSlicedDistinct",  
-                                F.array_distinct(F.col("buyInAllSliced")))
-                    #keep from sliced array only codes that indicate not enrollment in part B
-                    #instead of filter, I could also use F.array_overlap, not sure if it would be faster though
-                    .withColumn("buyInAllSlicedDistinctNotPartB", 
-                                F.expr(f"filter(buyInAllSlicedDistinct, x -> x in {notPartBCodes})"))
-                    #indicate who had part B and who did not
-                    .withColumn("allPartBEligible",  
-                                F.when( F.size(F.col("buyInAllSlicedDistinctNotPartB"))>0, 0)
-                                 .otherwise(1)))
-
-    mbsfDF = mbsfDF.drop("buyInAll","buyInAllSliced","buyInAllSlicedDistinct","buyInAllSlicedDistinctNotPartB")
-
-    # could be an alternative, but have not checked
-    #mbsf = mbsf.withColumn("allPartBEligibleTEST", 
-    #                                   F.when(F.col("B_MO_CNT")==12,1)
-    #                                    .otherwise(0))
+    #mbsfDF = (mbsfDF.withColumn("buyInAll",   #make the array
+    #                            F.array(buyInColumns))
+    #                #keep all 12 elements if beneficiary did not die that year, otherwise keep up to the month of death (after that month all codes are 0)
+    #                .withColumn("buyInAllSliced",   
+    #                            F.when( F.col("DEATH_DT_MONTH").isNull(), F.col("buyInAll"))
+    #                             #.otherwise(F.slice("buyInAll",F.lit(1),F.col("DEATH_DT_MONTH"))) #unsure why this is not working
+    #                             .otherwise(F.expr("slice(buyInAll,1,DEATH_DT_MONTH)")))
+    #                 #no need to keep all elements, just the distinct ones
+    #                .withColumn("buyInAllSlicedDistinct",  
+    #                            F.array_distinct(F.col("buyInAllSliced")))
+    #                #keep from sliced array only codes that indicate not enrollment in part B
+    #                #instead of filter, I could also use F.array_overlap, not sure if it would be faster though
+    #                .withColumn("buyInAllSlicedDistinctNotPartB", 
+    #                            F.expr(f"filter(buyInAllSlicedDistinct, x -> x in {notPartBCodes})"))
+    #                #indicate who had part B and who did not
+    #                .withColumn("allPartBEligible",  
+    #                            F.when( F.size(F.col("buyInAllSlicedDistinctNotPartB"))>0, 0)
+    #                             .otherwise(1))
+    #                .drop("buyInAll","buyInAllSliced","buyInAllSlicedDistinct","buyInAllSlicedDistinctNotPartB"))
 
     return mbsfDF
+
+def add_allPartA(mbsfDF): #assumes add death date info
+
+    #first approach, takes into account death date, does not take into account if this is the year beneficiary first became eligible for Medicare
+    mbsfDF = mbsfDF.withColumn("allPartA",
+                               F.when( (F.col("DEATH_DT_MONTH")==F.col("A_MO_CNT")) | (F.col("A_MO_CNT")==12), 1)
+                                .otherwise(0))
 
 def add_hmo(mbsfDF):
 
@@ -49,7 +51,7 @@ def add_hmo(mbsfDF):
     # https://resdac.org/articles/identifying-medicare-managed-care-beneficiaries-master-beneficiary-summary-or-denominator
     # https://resdac.org/cms-data/variables/hmo-indicator
 
-    #first approach, fastest
+    #first approach, fastest, takes into account death date and if this is the year beneficiary became 65 or eligible for FFS
     mbsfDF = mbsfDF.withColumn("hmo",
                                F.when( F.col("HMO_MO")==0, 0)
                                 .otherwise(1))
@@ -90,8 +92,9 @@ def add_hmo(mbsfDF):
     return mbsfDF
 
 def add_enrollment_info(mbsfDF):
-        
-    mbsfDF = add_allPartBEligible(mbsfDF)
+
+    mbsfDF = add_allPartA(mbsfDF)
+    mbsfDF = add_allPartB(mbsfDF)
     mbsfDF = add_hmo(mbsfDF)
 
     return mbsfDF
@@ -99,7 +102,7 @@ def add_enrollment_info(mbsfDF):
 def filter_FFS(mbsfDF):
 
     mbsfDF = add_enrollment_info(mbsfDF)
-    mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartBEligible")==1)
+    mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1)
 
     return mbsfDF
 
