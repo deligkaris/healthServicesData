@@ -42,6 +42,8 @@ def add_allPartA(mbsfDF): #assumes add death date info
                                F.when( (F.col("DEATH_DT_MONTH")==F.col("A_MO_CNT")) | (F.col("A_MO_CNT")==12), 1)
                                 .otherwise(0))
 
+    return mbsfDF
+
 def add_hmo(mbsfDF):
 
     # Using the HMO_COVERAGE indicator would in theory exclude beneficiaries that may have had their claims processed by CMS
