@@ -49,7 +49,7 @@ def add_hmo(mbsfDF):
     hmoIndColumns = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
 
     #"C": Lock-in GHO to process all provider claims
-    hmoCodes = ("C","C")
+    hmoCodes = ("1","2","A","B","C")
 
     mbsfDF = (mbsfDF.withColumn("hmoIndAll",   #make the array
                                 F.array(hmoIndColumns))
@@ -68,9 +68,8 @@ def add_hmo(mbsfDF):
                     #indicate who had hmo and who did not
                     .withColumn("hmo",
                                 F.when( F.size(F.col("hmoIndAllSlicedDistinctHmo"))>0, 1)
-                                 .otherwise(0)))   
-
-    mbsfDF = mbsfDF.drop("hmoIndAll","hmoIndAllSliced","hmoIndAllSlicedDistinct","hmoIndAllSlicedDistinctHmo")
+                                 .otherwise(0))
+                    .drop("hmoIndAll","hmoIndAllSliced","hmoIndAllSlicedDistinct","hmoIndAllSlicedDistinctHmo"))
 
     #this would search over all 12 variables, even when beneficiaries are dead for part of the year
     #hmoIndCondition = '(' + '|'.join('F.col(' + f'"{x}"' + ').isin(yesHmoList)' for x in hmoIndList) +')'
