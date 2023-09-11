@@ -42,36 +42,46 @@ def add_allPartBEligible(mbsfDF): #assumes add death date info
 
 def add_hmo(mbsfDF):
 
-    # this approach is the only way to get what we need from MBSF
-    # Using the HMO_COVERAGE indicator would exclude beneficiaries that may have had their claims processed by CMS
+    # Using the HMO_COVERAGE indicator would in theory exclude beneficiaries that may have had their claims processed by CMS
+    # but in practice there is evidence that CMS does not process all of these beneficiaries's claims, so
+    # we need to exclude beneficiaries with codes 1 and A
+    # Using either the hmoCodes list or the HMO_COVERAGE column produces the same results (the second approach is faster)
+    # https://resdac.org/articles/identifying-medicare-managed-care-beneficiaries-master-beneficiary-summary-or-denominator
+    # https://resdac.org/cms-data/variables/hmo-indicator
 
-    # enrollment summaries
-    hmoIndColumns = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
+    #first approach, fastest
+    mbsfDF = mbsfDF.withColumn("hmo",
+                               F.when( F.col("HMO_MO")==0, 0)
+                                .otherwise(1))
 
-    #"C": Lock-in GHO to process all provider claims
-    hmoCodes = ("1","2","A","B","C")
+    return mbsfDF
 
-    mbsfDF = (mbsfDF.withColumn("hmoIndAll",   #make the array
-                                F.array(hmoIndColumns))
-                    #keep all 12 elements if beneficiary did not die that year, otherwise keep up to the month of death
-                    #HMOINDs after month of death are all 0
-                    .withColumn("hmoIndAllSliced",
-                                F.when( F.col("DEATH_DT_MONTH").isNull(), F.col("hmoIndAll"))
-                                 #.otherwise(F.slice("hmoIndAll",F.lit(1),F.col("DEATH_DT_MONTH"))) #unsure why this is not working
-                                 .otherwise(F.expr("slice(hmoIndAll,1,DEATH_DT_MONTH)")))
-                     #no need to keep all elements, just the distinct ones
-                    .withColumn("hmoIndAllSlicedDistinct",
-                                F.array_distinct(F.col("hmoIndAllSliced")))
-                    #keep from sliced array only codes that indicate hmo
-                    .withColumn("hmoIndAllSlicedDistinctHmo",
-                                F.expr(f"filter(hmoIndAllSlicedDistinct, x -> x in {hmoCodes})"))
-                    #indicate who had hmo and who did not
-                    .withColumn("hmo",
-                                F.when( F.size(F.col("hmoIndAllSlicedDistinctHmo"))>0, 1)
-                                 .otherwise(0))
-                    .drop("hmoIndAll","hmoIndAllSliced","hmoIndAllSlicedDistinct","hmoIndAllSlicedDistinctHmo"))
+    #second approach, produces same results as first approach
+    #hmoIndColumns = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
+    #hmoCodes = ("1","2","A","B","C")  #these indicate not FFS
 
-    #this would search over all 12 variables, even when beneficiaries are dead for part of the year
+    #mbsfDF = (mbsfDF.withColumn("hmoIndAll",   #make the array
+    #                            F.array(hmoIndColumns))
+    #                #keep all 12 elements if beneficiary did not die that year, otherwise keep up to the month of death
+    #                #HMOINDs after month of death are all 0
+    #                .withColumn("hmoIndAllSliced",
+    #                            F.when( F.col("DEATH_DT_MONTH").isNull(), F.col("hmoIndAll"))
+    #                             #.otherwise(F.slice("hmoIndAll",F.lit(1),F.col("DEATH_DT_MONTH"))) #unsure why this is not working
+    #                             .otherwise(F.expr("slice(hmoIndAll,1,DEATH_DT_MONTH)")))
+    #                 #no need to keep all elements, just the distinct ones
+    #                .withColumn("hmoIndAllSlicedDistinct",
+    #                            F.array_distinct(F.col("hmoIndAllSliced")))
+    #                #keep from sliced array only codes that indicate hmo
+    #                .withColumn("hmoIndAllSlicedDistinctHmo",
+    #                            F.expr(f"filter(hmoIndAllSlicedDistinct, x -> x in {hmoCodes})"))
+    #                #indicate who had hmo and who did not
+    #                .withColumn("hmo",
+    #                            F.when( F.size(F.col("hmoIndAllSlicedDistinctHmo"))>0, 1)
+    #                             .otherwise(0))
+    #                .drop("hmoIndAll","hmoIndAllSliced","hmoIndAllSlicedDistinct","hmoIndAllSlicedDistinctHmo"))
+
+    #third approach, searching over all 12 variables, even when beneficiaries are dead for part of the year
+    #a death date would not probably affect the results, since after death HMOINDXX becomes 0 anyway.
     #hmoIndCondition = '(' + '|'.join('F.col(' + f'"{x}"' + ').isin(yesHmoList)' for x in hmoIndList) +')'
     #mbsfDF = mbsfDF.withColumn("noHMO", 
     #                            F.when(eval(hmoIndCondition),0) #set them to false, as CMS definitely did not process their claims
