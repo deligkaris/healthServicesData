@@ -1,7 +1,7 @@
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType
 
 mbsfSchema = StructType(
-                 [StructField('DSYSRTKY', IntegerType(), True), 
+                 [StructField('DSYSRTKY', LongType(), True), 
                   StructField('RFRNC_YR', IntegerType(), True), 
                   StructField('SAMPLE_GROUP', IntegerType(), True), 
                   StructField('STATE_CD', StringType(), True), 
