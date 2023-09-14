@@ -1,5 +1,6 @@
 from .mbsf import prep_mbsfDF
 from cms.base import prep_baseDF
+from cms.SCHEMAS.mbsf_schema import mbsfSchema
 
 def get_filename_dicts(pathCMS, yearInitial, yearFinal):
 
@@ -98,7 +99,7 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
         inRevenueDict[f'{iYear}'] = spark.read.parquet(inRevenueFilenames[f'{iYear}'])
 
     for iYear in mbsfYears:
-        mbsfDict[f'{iYear}'] = spark.read.parquet(mbsfFilenames[f'{iYear}'])
+        mbsfDict[f'{iYear}'] = spark.read.schema(mbsfSchema).parquet(mbsfFilenames[f'{iYear}'])
 
     #for iYear in snfClaimsYears:
     #    snfClaimsDict[f'{iYear}'] = spark.read.parquet(snfClaimsFilenames[f'{iYear}'])

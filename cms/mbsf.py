@@ -8,7 +8,7 @@ def add_allPartB(mbsfDF): #assumes add death date info
                                F.when( (F.col("DEATH_DT_MONTH")==F.col("B_MO_CNT")) | (F.col("B_MO_CNT")==12), 1)
                                 .otherwise(0))
 
-    #second approach, produces same results as first approach above, but slower
+    #second approach, produces same results as first approach above, but slower, more flexible though since I check monthly indicators
     #buyInColumns = list(map(lambda x: f"BUYIN{x}",range(1,13))) # ['BUYIN1','BUYIN2',...'BUYIN12']
     #https://resdac.org/cms-data/variables/medicare-entitlementbuy-indicator-january
     #notPartBCodes = ("0","1","A")
@@ -57,8 +57,6 @@ def add_hmo(mbsfDF):
     mbsfDF = mbsfDF.withColumn("hmo",
                                F.when( F.col("HMO_MO")==0, 0)
                                 .otherwise(1))
-
-    return mbsfDF
 
     #second approach, produces same results as first approach
     #hmoIndColumns = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
@@ -163,6 +161,10 @@ def add_ohResident(mbsfDF): #also used in base.py
     #ohResidencyCondition = \
     #    '(' + '|'.join('(F.col(' + f'"STATE_CNTY_FIPS_CD_{x:02d}"' + ').substr(1,2) == "39")' for x in range(1,13)) +')'\
     #                            + '|(F.col("STATE_CD")==36)'
+
+    #annual residency codes are finalized on end of december of the calendar year
+    #residency is determined based on mailing address for official correspondence
+    #https://www.youtube.com/watch?v=-nxGbTPVLo8
     ohResidencyCondition = '(F.col("STATE_CD")==36)'
 
     # keep mbsf data for Ohio residents only
@@ -288,5 +290,29 @@ def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on t
 
     return mbsfDF
 
+def clean_mbsf(mbsfDF, ipBaseDF, opBaseDF):
 
+    eachDSYSRTKY = Window.partitionBy("DSYSRTKY")
+
+    mbsfDF = (mbsfDF
+                 #deaths are always validated but death dates are not always validated
+                 #unvalidated death dates will typically register at end of a month and this will bias survival rate calculations
+                 #https://www.youtube.com/watch?v=-nxGbTPVLo8
+                 .filter( (F.col("DEATH_DT").isNull()) | (F.col("V_DOD_SW")=="V") )
+                 #CMS misses a few deaths so some beneficiaries included in MBSF are actually dead
+                 #no standard approach on how to find these
+                 #one approach: if there is no op or ip claim for someone older than 90 years old, remove them from MBSF
+                 .join( ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_YEAR"))
+                                .union(opBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_YEAR")))
+                                .select(F.col("DSYSRTKY"), F.max(F.col("THRU_DT_YEAR")).over(eachDSYSRTKY).alias("lastYearWithClaim"))
+                                .distinct(),
+                        on = "DSYSRTKY",
+                        how="left_outer")
+                 .fillna(0, subset="lastYearWithClaim"))
+                 .withColumn("probablyDead",
+                       F.when( (F.col("AGE")>90) & (F.col("RFRNC_YR")>F.col("lastYearWithClaim")), 1)
+                        .otherwise(0))
+                 .filter( F.col("probablyDead")==0 )   
+
+    return mbsfDF
 
