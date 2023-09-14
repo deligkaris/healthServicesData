@@ -308,11 +308,11 @@ def clean_mbsf(mbsfDF, ipBaseDF, opBaseDF):
                                 .distinct(),
                         on = "DSYSRTKY",
                         how="left_outer")
-                 .fillna(0, subset="lastYearWithClaim"))
+                 .fillna(0, subset="lastYearWithClaim")
                  .withColumn("probablyDead",
                        F.when( (F.col("AGE")>90) & (F.col("RFRNC_YR")>F.col("lastYearWithClaim")), 1)
                         .otherwise(0))
-                 .filter( F.col("probablyDead")==0 )   
+                 .filter( F.col("probablyDead")==0 ))   
 
     return mbsfDF
 
