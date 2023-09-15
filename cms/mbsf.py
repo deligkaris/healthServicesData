@@ -102,8 +102,8 @@ def add_enrollment_info(mbsfDF):
 
 def filter_FFS(mbsfDF):
 
-    mbsfDF = add_enrollment_info(mbsfDF)
-    mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1)
+    mbsfDF = (add_enrollment_info(mbsfDF)
+              .filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1))
 
     return mbsfDF
 
@@ -256,9 +256,9 @@ def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
 def add_ssaCounty(mbsfDF):
 
     mbsfDF = mbsfDF.withColumn("ssaCounty",
-                               F.concat(
-                                    F.col("STATE_CD").substr(1,2),
-                                    F.format_string("%03d",F.col("CNTY_CD"))))
+                               F.concat( F.col("STATE_CD"), F.col("CNTY_CD") ))
+                                    #F.col("STATE_CD").substr(1,2),
+                                    #F.format_string("%03d",F.col("CNTY_CD"))))
 
     return mbsfDF
 
@@ -270,10 +270,10 @@ def prep_mbsfDF(mbsfDF):
     #mbsfDF  = cast_columns_as_int(mbsfDF)
 
     # add the death date of year, year, and day in order to calculate 90 day mortality rate when needed
-    #mbsfDF = add_death_date_info(mbsfDF)
+    mbsfDF = add_death_date_info(mbsfDF)
  
     #need to have ssa state+county code
-    #mbsfDF = add_ssaCounty(mbsfDF)
+    mbsfDF = add_ssaCounty(mbsfDF)
 
     #without a repartition, the dataframe is extremely skewed...
     #mbsfDF = mbsfDF.repartition(128, "DSYSRTKY")
@@ -282,7 +282,7 @@ def prep_mbsfDF(mbsfDF):
 
 def enforce_schema(mbsfDF):
 
-    #some columns need to be converted to ints first (the ones that are now double and that will be converted to strings later)
+    #some columns need to be converted to ints first (the ones that are now double and that will be converted to strings at the end)
     stCntFipsColList = [f"STATE_CNTY_FIPS_CD_{x:02d}" for x in range(1,13)]
     castToIntColList = stCntFipsColList + ["STATE_CD"]
     mbsfDF = mbsfDF.select([F.col(c).cast('int') if c in castToIntColList else F.col(c) for c in mbsfDF.columns])
