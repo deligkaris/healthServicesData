@@ -264,16 +264,16 @@ def add_ssaCounty(mbsfDF):
 
 def prep_mbsfDF(mbsfDF):
 
-    mbsfDF = enforce_schema(mbsfDF)
+    #mbsfDF = enforce_schema(mbsfDF)
 
     # DEATH_DT is currently a double, need to convert to int to be consistent with other date fields in CMS data
     #mbsfDF  = cast_columns_as_int(mbsfDF)
 
     # add the death date of year, year, and day in order to calculate 90 day mortality rate when needed
-    mbsfDF = add_death_date_info(mbsfDF)
+    #mbsfDF = add_death_date_info(mbsfDF)
  
     #need to have ssa state+county code
-    mbsfDF = add_ssaCounty(mbsfDF)
+    #mbsfDF = add_ssaCounty(mbsfDF)
 
     #without a repartition, the dataframe is extremely skewed...
     #mbsfDF = mbsfDF.repartition(128, "DSYSRTKY")
