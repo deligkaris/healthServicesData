@@ -99,6 +99,8 @@ def read_data(spark, mbsfFilenames, outClaimsFilenames, outRevenueFilenames, inC
         inRevenueDict[f'{iYear}'] = spark.read.parquet(inRevenueFilenames[f'{iYear}'])
 
     for iYear in mbsfYears:
+        #ideally the schema will be enforced when the reading of the file takes place, run into issues doing that though
+        #so for now the schema will be enforced during the dataframe prep functions
         #mbsfDict[f'{iYear}'] = spark.read.schema(mbsfSchema).parquet(mbsfFilenames[f'{iYear}'])
         mbsfDict[f'{iYear}'] = spark.read.parquet(mbsfFilenames[f'{iYear}'])
 

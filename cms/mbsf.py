@@ -263,17 +263,33 @@ def add_ssaCounty(mbsfDF):
 
 def prep_mbsfDF(mbsfDF):
 
+    mbsfDF = enforce_schema(mbsfDF)
+
     # DEATH_DT is currently a double, need to convert to int to be consistent with other date fields in CMS data
-    mbsfDF  = cast_columns_as_int(mbsfDF)
+    #mbsfDF  = cast_columns_as_int(mbsfDF)
 
     # add the death date of year, year, and day in order to calculate 90 day mortality rate when needed
-    mbsfDF = add_death_date_info(mbsfDF)
+    #mbsfDF = add_death_date_info(mbsfDF)
  
     #need to have ssa state+county code
-    mbsfDF = add_ssaCounty(mbsfDF)
+    #mbsfDF = add_ssaCounty(mbsfDF)
 
     #without a repartition, the dataframe is extremely skewed...
     #mbsfDF = mbsfDF.repartition(128, "DSYSRTKY")
+
+    return mbsfDF
+
+def enforce_schema(mbsfDF):
+
+    #some columns need to be converted to ints first (the ones that are now double and that will be converted to strings later)
+    castToIntColList = [f"STATE_CNTY_FIPS_CD_{x:02d}" for x in range(1,13)] + ["STATE_CD"]
+    mbsfDF = mbsfDF.select([F.col(c).cast('int') if c in castToIntColList else F.col(c) for c in mbsfDF.columns])
+
+    #STATE_CD needs to be formatted independently because there may be leading 0s
+    mbsfDF = mbsfDF.withColumn("STATE_CD", F.format_string("%02d",F.col("STATE_CD")))
+
+    #now enforce the schema set for mbsf
+    mbsfDF = mbsfDF.select([mbsfDF[field.name].cast(field.dataType) for field in mbsfSchema.fields])
 
     return mbsfDF
 
