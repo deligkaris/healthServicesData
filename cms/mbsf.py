@@ -290,7 +290,7 @@ def enforce_schema(mbsfDF):
     #some columns need to be formatted independently because there may be leading 0s
     mbsfDF = (mbsfDF.withColumn("STATE_CD", F.format_string("%02d",F.col("STATE_CD")))
                     .withColumn("CNTY_CD", F.format_string("%03d",F.col("CNTY_CD")))
-                    .select([ F.format_string("%05d",F.col(c)) if c in stCntFipsColList else F.col(c) for c in mbsfDF.columns ]))
+                    .select([ F.format_string("%05d",F.col(c)).alias(c) if c in stCntFipsColList else F.col(c) for c in mbsfDF.columns ]))
 
     #now enforce the schema set for mbsf
     mbsfDF = mbsfDF.select([mbsfDF[field.name].cast(field.dataType) for field in mbsfSchema.fields])
