@@ -236,9 +236,9 @@ def get_data(pathCMS, yearInitial, yearFinal, spark):
 
 def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carRevenue):
 
-    mbsf = prep_mbsfDF(mbsf)
     ipBase = prep_baseDF(ipBase,claim="inpatient")
     opBase = prep_baseDF(opBase,claim="outpatient")
+    mbsf = prep_mbsfDF(mbsf, ipBase, opBase)
     #snfBase = prep_baseDF(snfBase,claim="snf")
     #hospBase = prep_baseDF(hospBase,claim="hosp")
     #hhaBase = prep_baseDF(hhaBase,claim="hha")

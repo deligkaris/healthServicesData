@@ -185,15 +185,6 @@ def add_ohResident(mbsfDF): #also used in base.py
 
     return mbsfDF
 
-def cast_columns_as_int(mbsfDF): #date fields in the dataset must be interpreted as integers (and not as floats)
-
-    columns = ["DEATH_DT", "DSYSRTKY"] 
-
-    for iColumns in columns:
-        mbsfDF = mbsfDF.withColumn( iColumns, F.col(iColumns).cast('int'))
-
-    return mbsfDF
-
 def add_death_date_info(mbsfDF):
 
     #leapYears=[2016,2020,2024,2028]
@@ -262,18 +253,17 @@ def add_ssaCounty(mbsfDF):
 
     return mbsfDF
 
-def prep_mbsfDF(mbsfDF):
+def prep_mbsfDF(mbsfDF, ipBaseDF, opBaseDF):
 
     mbsfDF = enforce_schema(mbsfDF)
-
-    # DEATH_DT is currently a double, need to convert to int to be consistent with other date fields in CMS data
-    #mbsfDF  = cast_columns_as_int(mbsfDF)
 
     # add the death date of year, year, and day in order to calculate 90 day mortality rate when needed
     mbsfDF = add_death_date_info(mbsfDF)
  
     #need to have ssa state+county code
     mbsfDF = add_ssaCounty(mbsfDF)
+
+    mbsfDF = clean_mbsf(mbsfDF, ipBaseDF, opBaseDF)
 
     #without a repartition, the dataframe is extremely skewed...
     #mbsfDF = mbsfDF.repartition(128, "DSYSRTKY")
