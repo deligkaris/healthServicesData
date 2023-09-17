@@ -289,8 +289,8 @@ def enforce_schema(mbsfDF):
 
     #some columns need to be formatted independently because there may be leading 0s
     mbsfDF = (mbsfDF.withColumn("STATE_CD", 
-                                F.when( F.col("STATE_CD").isNull(), F.col("STATE_CD")
-                                 .otherwise( F.format_string("%02d",F.col("STATE_CD"))))
+                                F.when( F.col("STATE_CD").isNull(), F.col("STATE_CD") )
+                                 .otherwise( F.format_string("%02d",F.col("STATE_CD")))
                     .withColumn("CNTY_CD", 
                                 F.when( F.col("CNTY_CD").isNull(), F.col("CNTY_CD"))
                                  .otherwise( F.format_string("%03d",F.col("CNTY_CD")) ))
