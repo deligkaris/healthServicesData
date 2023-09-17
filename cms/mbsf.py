@@ -294,7 +294,7 @@ def enforce_schema(mbsfDF):
                     .withColumn("CNTY_CD", 
                                 F.when( F.col("CNTY_CD").isNull(), F.col("CNTY_CD") )
                                  .otherwise( F.format_string("%03d",F.col("CNTY_CD"))))
-                    .select([ F.when( ~F.col(c).isNull(), F.format_string("%05d",F.col(c)).alias(c) ) if c in stCntFipsColList else F.col(c) for c in mbsfDF.columns ]))
+                    .select([ F.when( ~F.col(c).isNull(), F.format_string("%05d",F.col(c))).alias(c)  if c in stCntFipsColList else F.col(c) for c in mbsfDF.columns ]))
 
     #now enforce the schema set for mbsf
     mbsfDF = mbsfDF.select([mbsfDF[field.name].cast(field.dataType) for field in mbsfSchema.fields])
