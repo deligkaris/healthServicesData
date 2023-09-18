@@ -190,7 +190,7 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
     #if (len(carClaimsYears) > 1):
     #   for iYear in carClaimsYears[1:]:
     #       carClaims = carClaims.union(carClaimsDict[f'{iYear}']) #and then do union with the rest
-    carClaims=1
+    carBase=1
 
     #if (len(carRevenueYears) > 1):
     #   for iYear in carRevenueYears[1:]:
