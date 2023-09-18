@@ -1,4 +1,4 @@
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType, DoubleType
 
 ipBaseSchema = StructType([
     StructField('DSYSRTKY', IntegerType(), True), 
