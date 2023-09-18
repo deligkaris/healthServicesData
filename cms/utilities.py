@@ -131,7 +131,7 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
     # merge all previous years in one dataframe
     opBase = opBaseDict[opBaseYears[0]] #initialize here
     opRevenue = opRevenueDict[opRevenueYears[0]]
-    ipBase = ipBaseDict[ipClaimsYears[0]]
+    ipBase = ipBaseDict[ipBaseYears[0]]
     ipRevenue = ipRevenueDict[ipRevenueYears[0]]
     mbsf = mbsfDict[mbsfYears[0]]
     #snfClaims = snfClaimsDict[snfClaimsYears[0]]
