@@ -3,7 +3,7 @@ from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip
 from cms.SCHEMAS.ip_base_schema import ipBaseSchema
-from cms.SCHEMAS.op_base_schema import ipBaseSchema
+from cms.SCHEMAS.op_base_schema import opBaseSchema
 
 def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
