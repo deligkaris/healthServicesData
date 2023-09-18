@@ -2,6 +2,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip
+from cms.SCHEMAS.ip_base_schema import ipBaseSchema
 
 def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
@@ -1374,9 +1375,10 @@ def add_teachingHospital(baseDF, aamcHospitalsDF, acgmeProgramsDF):
 def prep_baseDF(baseDF, claim="inpatient"):
 
     #add some date-related info
-    baseDF = cast_columns_as_int(baseDF,claim=claim)
+    #baseDF = cast_columns_as_int(baseDF,claim=claim)
+    baseDF = enforce_schema(baseDF, claim=claim)
     baseDF = add_through_date_info(baseDF,claim=claim)
-    baseDF = cast_columns_as_string(baseDF,claim=claim)
+    #baseDF = cast_columns_as_string(baseDF,claim=claim)
 
     if (claim=="inpatient"):
         baseDF = add_discharge_date_info(baseDF,claim=claim)
@@ -1524,6 +1526,16 @@ def filter_beneficiaries(baseDF, mbsfDF):
 
     return baseDF
 
+def enforce_schema(baseDF, claim="inpatient"):
+
+    baseDF = cast_columns_as_int(baseDF,claim=claim)
+    baseDF = cast_columns_as_string(baseDF,claim=claim)
+
+    #now enforce the schema set for base
+    if claim=="inpatient":
+        baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in ipBaseSchema.fields])
+
+    return baseDF
 
 
    
