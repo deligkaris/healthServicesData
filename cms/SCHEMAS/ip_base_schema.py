@@ -148,7 +148,7 @@ ipBaseSchema = StructType([
     StructField('ICD_PRCDR_CD3', StringType(), True), 
     StructField('PRCDR_DT3', IntegerType(), True), 
     StructField('ICD_PRCDR_CD4', StringType(), True), 
-    StructField('PRCDR_DT4', IntegereType(), True), 
+    StructField('PRCDR_DT4', IntegerType(), True), 
     StructField('ICD_PRCDR_CD5', StringType(), True), 
     StructField('PRCDR_DT5', IntegerType(), True),
     StructField('ICD_PRCDR_CD6', StringType(), True), 
