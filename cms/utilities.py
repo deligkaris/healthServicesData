@@ -104,23 +104,23 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
         #mbsfDict[f'{iYear}'] = spark.read.schema(mbsfSchema).parquet(mbsfFilenames[f'{iYear}'])
         mbsfDict[f'{iYear}'] = spark.read.parquet(mbsfFilenames[f'{iYear}'])
 
-    #for iYear in snfClaimsYears:
-    #    snfClaimsDict[f'{iYear}'] = spark.read.parquet(snfClaimsFilenames[f'{iYear}'])
+    for iYear in snfBaseYears:
+        snfBaseDict[f'{iYear}'] = spark.read.parquet(snfBaseFilenames[f'{iYear}'])
 
-    #for iYear in snfRevenueYears:
-    #    snfRevenueDict[f'{iYear}'] = spark.read.parquet(snfRevenueFilenames[f'{iYear}'])
+    for iYear in snfRevenueYears:
+        snfRevenueDict[f'{iYear}'] = spark.read.parquet(snfRevenueFilenames[f'{iYear}'])
 
-    #for iYear in hhaClaimsYears:
-    #    hhaClaimsDict[f'{iYear}'] = spark.read.parquet(hhaClaimsFilenames[f'{iYear}'])
+    for iYear in hhaBaseYears:
+        hhaBaseDict[f'{iYear}'] = spark.read.parquet(hhaBaseFilenames[f'{iYear}'])
 
-    #for iYear in hhaRevenueYears:
-    #    hhaRevenueDict[f'{iYear}'] = spark.read.parquet(hhaRevenueFilenames[f'{iYear}'])
+    for iYear in hhaRevenueYears:
+        hhaRevenueDict[f'{iYear}'] = spark.read.parquet(hhaRevenueFilenames[f'{iYear}'])
 
-    #for iYear in hospClaimsYears:
-    #    hospClaimsDict[f'{iYear}'] = spark.read.parquet(hospClaimsFilenames[f'{iYear}'])
+    for iYear in hospBaseYears:
+        hospBaseDict[f'{iYear}'] = spark.read.parquet(hospBaseFilenames[f'{iYear}'])
 
-    #for iYear in hospRevenueYears:
-    #    hospRevenueDict[f'{iYear}'] = spark.read.parquet(hospRevenueFilenames[f'{iYear}'])
+    for iYear in hospRevenueYears:
+        hospRevenueDict[f'{iYear}'] = spark.read.parquet(hospRevenueFilenames[f'{iYear}'])
     
     #for iYear in carClaimsYears:
     #    carClaimsDict[f'{iYear}'] = spark.read.parquet(carClaimsFilenames[f'{iYear}'])
@@ -134,12 +134,12 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
     ipBase = ipBaseDict[ipBaseYears[0]]
     ipRevenue = ipRevenueDict[ipRevenueYears[0]]
     mbsf = mbsfDict[mbsfYears[0]]
-    #snfClaims = snfClaimsDict[snfClaimsYears[0]]
-    #snfRevenue = snfRevenueDict[snfRevenueYears[0]]
-    #hhaClaims = hhaClaimsDict[hhaClaimsYears[0]]
-    #hhaRevenue = hhaRevenueDict[hhaRevenueYears[0]]
-    #hospClaims = hospClaimsDict[hospClaimsYears[0]]
-    #hospRevenue = hospRevenueDict[hospRevenueYears[0]]
+    snfBase = snfBaseDict[snfBaseYears[0]]
+    snfRevenue = snfRevenueDict[snfRevenueYears[0]]
+    hhaBase = hhaBaseDict[hhaBaseYears[0]]
+    hhaRevenue = hhaRevenueDict[hhaRevenueYears[0]]
+    hospBase = hospBaseDict[hospBaseYears[0]]
+    hospRevenue = hospRevenueDict[hospRevenueYears[0]]
     #carClaims = carClaimsDict[carClaimsYears[0]]
     #carRevenue = carRevenueDict[carRevenueYears[0]]
 
@@ -163,52 +163,43 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
        for iYear in mbsfYears[1:]:
            mbsf = mbsf.union(mbsfDict[f'{iYear}']) #and then do union with the rest
 
-    #if (len(snfClaimsYears) > 1):
-    #    for iYear in snfClaimsYears[1:]:
-    #        snfClaims = snfClaims.union(snfClaimsDict[f'{iYear}']) #and then do union with the rest
+    if (len(snfBaseYears) > 1):
+        for iYear in snfBaseYears[1:]:
+            snfBase = snfBase.union(snfBaseDict[f'{iYear}']) #and then do union with the rest
 
-    #if (len(snfRevenueYears) > 1):
-    #   for iYear in snfRevenueYears[1:]:
-    #       snfRevenue = snfRevenue.union(snfRevenueDict[f'{iYear}']) #and then do union with the rest
+    if (len(snfRevenueYears) > 1):
+       for iYear in snfRevenueYears[1:]:
+           snfRevenue = snfRevenue.union(snfRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    #if (len(hhaClaimsYears) > 1):
-    #    for iYear in hhaClaimsYears[1:]:
-    #        hhaClaims = hhaClaims.union(hhaClaimsDict[f'{iYear}']) #and then do union with the rest
+    if (len(hhaBaseYears) > 1):
+        for iYear in hhaBaseYears[1:]:
+            hhaBase = hhaBase.union(hhaBaseDict[f'{iYear}']) #and then do union with the rest
 
-    #if (len(hhaRevenueYears) > 1):
-    #   for iYear in hhaRevenueYears[1:]:
-    #        hhaRevenue = hhaRevenue.union(hhaRevenueDict[f'{iYear}']) #and then do union with the rest
+    if (len(hhaRevenueYears) > 1):
+       for iYear in hhaRevenueYears[1:]:
+            hhaRevenue = hhaRevenue.union(hhaRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    #if (len(hospClaimsYears) > 1):
-    #   for iYear in hospClaimsYears[1:]:
-    #       hospClaims = hospClaims.union(hospClaimsDict[f'{iYear}']) #and then do union with the rest
+    if (len(hospBaseYears) > 1):
+       for iYear in hospBaseYears[1:]:
+           hospBase = hospBase.union(hospBaseDict[f'{iYear}']) #and then do union with the rest
 
-    #if (len(hospRevenueYears) > 1):
-    #   for iYear in hospRevenueYears[1:]:
-    #       hospRevenue = hospRevenue.union(hospRevenueDict[f'{iYear}']) #and then do union with the rest
+    if (len(hospRevenueYears) > 1):
+       for iYear in hospRevenueYears[1:]:
+           hospRevenue = hospRevenue.union(hospRevenueDict[f'{iYear}']) #and then do union with the rest
 
     #if (len(carClaimsYears) > 1):
     #   for iYear in carClaimsYears[1:]:
     #       carClaims = carClaims.union(carClaimsDict[f'{iYear}']) #and then do union with the rest
+    carClaims=1
 
     #if (len(carRevenueYears) > 1):
     #   for iYear in carRevenueYears[1:]:
     #       carRevenue = carRevenue.union(carRevenueDict[f'{iYear}']) #and then do union with the rest
-    snfRevenue=1
-    hospRevenue=1
-    hhaRevenue=1
     carRevenue=1
-    carBase=1    
-    snfBase=1
-    hhaBase=1
-    hospBase=1
 
     return(mbsf, opBase, opRevenue, ipBase, ipRevenue, 
            snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, 
            carBase, carRevenue)
-
-    #return(mbsf, outClaims, outRevenue, inClaims, inRevenue,
-    #       snfClaims, hhaClaims, hospClaims)
 
 def get_data(pathCMS, yearInitial, yearFinal, spark):
 
@@ -239,9 +230,9 @@ def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hh
     ipBase = prep_baseDF(ipBase,claim="inpatient")
     opBase = prep_baseDF(opBase,claim="outpatient")
     mbsf = prep_mbsfDF(mbsf, ipBase, opBase)
-    #snfBase = prep_baseDF(snfBase,claim="snf")
-    #hospBase = prep_baseDF(hospBase,claim="hosp")
-    #hhaBase = prep_baseDF(hhaBase,claim="hha")
+    snfBase = prep_baseDF(snfBase,claim="snf")
+    hospBase = prep_baseDF(hospBase,claim="hosp")
+    hhaBase = prep_baseDF(hhaBase,claim="hha")
 
     return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carRevenue) 
 
