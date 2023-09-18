@@ -72,7 +72,7 @@ opBaseSchema = StructType([
     StructField('ICD_DGNS_E_CD6', StringType(), True), 
     StructField('ICD_DGNS_E_CD7', StringType(), True), 
     StructField('ICD_DGNS_E_CD8', StringType(), True), 
-    StructField('ICD_DGNS_E_CD9', StringeType(), True), 
+    StructField('ICD_DGNS_E_CD9', StringType(), True), 
     StructField('ICD_DGNS_E_CD10', StringType(), True),
     StructField('ICD_DGNS_E_CD11', StringType(), True), 
     StructField('ICD_DGNS_E_CD12', StringType(), True), 
