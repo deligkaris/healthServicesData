@@ -1539,7 +1539,9 @@ def enforce_schema(baseDF, claim="inpatient"):
     elif claim=="outpatient":
         baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in opBaseSchema.fields])
     elif claim=="snf":
-        baseDF = baseDF.select([(baseDF[field.name].cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
+        #baseDF = baseDF.select([(baseDF[field.name].cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
+        baseDF = (baseDF.select([(baseDF[field.name].cast(field.dataType)) for field in snfBaseSchema.fields])
+                        .withColumnRenamed(field.name, snfBaseLongToShortXW[field.name]))
 
     return baseDF
 
