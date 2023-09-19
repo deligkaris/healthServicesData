@@ -1,4 +1,4 @@
-snfBaseLongToShortXW[field.name]from .mbsf import prep_mbsfDF
+from .mbsf import prep_mbsfDF
 from cms.base import prep_baseDF
 from cms.SCHEMAS.mbsf_schema import mbsfSchema
 
