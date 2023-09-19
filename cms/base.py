@@ -5,6 +5,7 @@ from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgram
 from cms.SCHEMAS.ip_base_schema import ipBaseSchema
 from cms.SCHEMAS.op_base_schema import opBaseSchema
 from cms.SCHEMAS.snf_base_schema import snfBaseSchema, snfBaseLongToShortXW
+from cms.SCHEMAS.hha_base_schema import hhaBaseSchema, hhaBaseLongToShortXW
 
 def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
@@ -1548,9 +1549,10 @@ def enforce_schema(baseDF, claim="inpatient"):
         baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in opBaseSchema.fields])
     elif claim=="snf":
         baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
-        #baseDF = baseDF.select([(F.col(field.name)).cast(field.dataType) for field in snfBaseSchema.fields])
-        #for field in snfBaseSchema.fields:
-        #    baseDF = baseDF.withColumnRenamed(field.name, snfBaseLongToShortXW[field.name])
+    elif claim=="hha":
+        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hhaBaseLongToShortXW[field.name]) for field in hhaBaseSchema.fields])
+    elif claim=="hosp":
+        pass
 
     return baseDF
 
