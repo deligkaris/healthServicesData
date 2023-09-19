@@ -6,6 +6,7 @@ from cms.SCHEMAS.ip_base_schema import ipBaseSchema
 from cms.SCHEMAS.op_base_schema import opBaseSchema
 from cms.SCHEMAS.snf_base_schema import snfBaseSchema, snfBaseLongToShortXW
 from cms.SCHEMAS.hha_base_schema import hhaBaseSchema, hhaBaseLongToShortXW
+from cms.SCHEMAS.hosp_base_schema import hospBaseSchema, hospBaseLongToShortXW
 
 def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
@@ -1405,6 +1406,8 @@ def prep_baseDF(baseDF, claim="inpatient"):
 
 def clean_base(baseDF, claim="snf"):
 
+    #mbsf, op, ip files were cleaned and this line was removed in them, but the rest of the files still include the first row
+    #that essentially repeats the column names
     if ( (claim=="snf") | (claim=="hha") | (claim=="hosp") ):
         baseDF = baseDF.filter(~(F.col("DESY_SORT_KEY")=="DESY_SORT_KEY"))
 
@@ -1552,7 +1555,7 @@ def enforce_schema(baseDF, claim="inpatient"):
     elif claim=="hha":
         baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hhaBaseLongToShortXW[field.name]) for field in hhaBaseSchema.fields])
     elif claim=="hosp":
-        pass
+        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hospBaseLongToShortXW[field.name]) for field in hospBaseSchema.fields])
 
     return baseDF
 
