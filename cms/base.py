@@ -1379,7 +1379,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
     #add some date-related info
     #baseDF = cast_columns_as_int(baseDF,claim=claim)
     baseDF = enforce_schema(baseDF, claim=claim)
-    #baseDF = add_through_date_info(baseDF,claim=claim)
+    baseDF = add_through_date_info(baseDF,claim=claim)
     #baseDF = cast_columns_as_string(baseDF,claim=claim)
 
     if (claim=="inpatient"):
@@ -1389,7 +1389,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
         baseDF = add_ssaCounty(baseDF)
         #without a repartition, the dataframe is extremely skewed...
         #baseDF = baseDF.repartition(128, "DSYSRTKY")
-    #elif ( (claim=="snf") | (claim=="hosp") | (claim=="hha") ):
+    elif ( (claim=="snf") | (claim=="hosp") | (claim=="hha") ):
         baseDF = add_admission_date_info(baseDF,claim=claim)
         #without a repartition, the dataframe is extremely skewed...
         #baseDF = baseDF.repartition(128, "DESY_SORT_KEY")
@@ -1539,8 +1539,7 @@ def enforce_schema(baseDF, claim="inpatient"):
     elif claim=="outpatient":
         baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in opBaseSchema.fields])
     elif claim=="snf":
-        #baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
-        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)) for field in snfBaseSchema.fields])
+        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
 
     return baseDF
 
