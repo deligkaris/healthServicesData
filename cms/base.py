@@ -1530,7 +1530,7 @@ def filter_beneficiaries(baseDF, mbsfDF):
 
 def enforce_schema(baseDF, claim="inpatient"):
 
-    baseDF = cast_columns_as_int(baseDF,claim=claim)
+    #baseDF = cast_columns_as_int(baseDF,claim=claim)
     baseDF = cast_columns_as_string(baseDF,claim=claim)
 
     #now enforce the schema set for base
