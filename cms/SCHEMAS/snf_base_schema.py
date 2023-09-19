@@ -39,8 +39,8 @@ snfBaseSchema = StructType([
     StructField('CLM_SRC_IP_ADMSN_CD', IntegerType(), True), 
     StructField('NCH_PTNT_STATUS_IND_CD', StringType(), True), 
     StructField('NCH_BENE_IP_DDCTBL_AMT', DoubleType(), True), 
-    StructField('NCH_BENE_PTA_COINSRNC_LBLTY_AM', DoubleType(), True), S
-    tructField('NCH_BENE_BLOOD_DDCTBL_LBLTY_AM', DoubleType(), True), 
+    StructField('NCH_BENE_PTA_COINSRNC_LBLTY_AM', DoubleType(), True), 
+    StructField('NCH_BENE_BLOOD_DDCTBL_LBLTY_AM', DoubleType(), True), 
     StructField('NCH_IP_NCVRD_CHRG_AMT', DoubleType(), True), 
     StructField('CLM_PPS_CPTL_FSP_AMT', DoubleType(), True), 
     StructField('CLM_PPS_CPTL_OUTLIER_AMT', DoubleType(), True), 
