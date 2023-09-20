@@ -129,7 +129,7 @@ opBaseSchema = StructType([
     StructField('RSN_VISIT_CD1', StringType(), True), 
     StructField('RSN_VISIT_CD2', StringType(), True), 
     StructField('RSN_VISIT_CD3', StringType(), True), 
-    StructField('PTB_DED', IntegerType(), True), 
+    StructField('PTB_DED', DoubleType(), True), 
     StructField('PTB_COIN', DoubleType(), True), 
     StructField('PRVDRPMT', DoubleType(), True), 
     StructField('BENEPMT', DoubleType(), True), 
