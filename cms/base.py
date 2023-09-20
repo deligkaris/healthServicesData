@@ -1542,10 +1542,10 @@ def filter_beneficiaries(baseDF, mbsfDF):
 
 def enforce_schema(baseDF, claim="inpatient"):
 
-    #baseDF = cast_columns_as_int(baseDF,claim=claim)
+    #some columns are read as double or int but they are strings and include leading zeros, so fix this
     baseDF = cast_columns_as_string(baseDF,claim=claim)
 
-    #now enforce the schema set for base
+    #now enforce the schema set for base df
     if claim=="inpatient":
         baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in ipBaseSchema.fields])
     elif claim=="outpatient":
