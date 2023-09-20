@@ -235,8 +235,8 @@ def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hh
     hospBase = prep_baseDF(hospBase,claim="hosp")
     hhaBase = prep_baseDF(hhaBase,claim="hha")
 
-    ipRevenue = prep_revenueDF(ipRevenueDF,claim="inpatient")
-    opRevenue = prep_revenueDF(opRevenueDF,claim="outpatient")
+    ipRevenue = prep_revenueDF(ipRevenue,claim="inpatient")
+    opRevenue = prep_revenueDF(opRevenue,claim="outpatient")
 
     return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carRevenue) 
 
