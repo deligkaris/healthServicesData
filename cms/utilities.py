@@ -1,6 +1,7 @@
 from .mbsf import prep_mbsfDF
 from cms.base import prep_baseDF
 from cms.SCHEMAS.mbsf_schema import mbsfSchema
+from cms.revenue import prep_revenueDF
 
 def get_filename_dicts(pathCMS, yearInitial, yearFinal):
 
@@ -233,6 +234,9 @@ def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hh
     snfBase = prep_baseDF(snfBase,claim="snf")
     hospBase = prep_baseDF(hospBase,claim="hosp")
     hhaBase = prep_baseDF(hhaBase,claim="hha")
+
+    ipRevenue = prep_revenueDF(ipRevenueDF,claim="inpatient")
+    opRevenue = prep_revenueDF(opRevenueDF,claim="outpatient")
 
     return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carRevenue) 
 

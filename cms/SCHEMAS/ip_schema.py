@@ -230,3 +230,29 @@ ipBaseSchema = StructType([
     StructField('CLM_NEXT_GNRTN_ACO_IND_CD4', IntegerType(), True), 
     StructField('CLM_NEXT_GNRTN_ACO_IND_CD5', IntegerType(), True), 
     StructField('ACO_ID_NUM', StringType(), True)] )
+
+ipRevenueSchema=StructType([
+    StructField('DSYSRTKY', IntegerType(), True), 
+    StructField('CLAIMNO', IntegerType(), True), 
+    StructField('CLM_LN', IntegerType(), True), 
+    StructField('THRU_DT', IntegerType(), True), 
+    StructField('CLM_TYPE', IntegerType(), True), 
+    StructField('REV_CNTR', IntegerType(), True), 
+    StructField('HCPCS_CD', StringType(), True), 
+    StructField('MDFR_CD1', StringType(), True), 
+    StructField('MDFR_CD2', StringType(), True), 
+    StructField('MDFR_CD3', StringType(), True), 
+    StructField('REV_UNIT', IntegerType(), True), 
+    StructField('REV_RATE', DoubleType(), True), 
+    StructField('REV_CHRG', DoubleType(), True), 
+    StructField('REV_NCVR', DoubleType(), True), 
+    StructField('REVDEDCD', StringType(), True), 
+    StructField('APCHIPPS', StringType(), True),
+    StructField('REV_CNTR_RNDRNG_PHYSN_UPIN', IntegerType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_NPI', IntegerType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_SPCLTY_CD', IntegerType(), True), 
+    StructField('IDENDC', StringType(), True), 
+    StructField('REV_CNTR_PRCNG_IND_CD', StringType(), True), 
+    StructField('THRPY_CAP_IND_CD1', StringType(), True), 
+    StructField('THRPY_CAP_IND_CD2', StringType(), True)])
+

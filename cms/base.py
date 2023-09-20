@@ -2,11 +2,11 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip
-from cms.SCHEMAS.ip_base_schema import ipBaseSchema
-from cms.SCHEMAS.op_base_schema import opBaseSchema
-from cms.SCHEMAS.snf_base_schema import snfBaseSchema, snfBaseLongToShortXW
-from cms.SCHEMAS.hha_base_schema import hhaBaseSchema, hhaBaseLongToShortXW
-from cms.SCHEMAS.hosp_base_schema import hospBaseSchema, hospBaseLongToShortXW
+from cms.SCHEMAS.ip_schema import ipBaseSchema
+from cms.SCHEMAS.op_schema import opBaseSchema
+from cms.SCHEMAS.snf_schema import snfBaseSchema, snfBaseLongToShortXW
+from cms.SCHEMAS.hha_schema import hhaBaseSchema, hhaBaseLongToShortXW
+from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
 
 def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 

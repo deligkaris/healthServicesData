@@ -1,5 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
+from cms.SCHEMAS.ip_schema import ipRevenueSchema
+from cms.SCHEMAS.op_schema import opRevenueSchema
 
 #I think for now I prefer not implementing any filters on revenue records because I am doing an inner join of base with revenue summaries
 #maybe I should rethink how to to do the base and revenue summary join
@@ -104,6 +106,21 @@ def filter_claims(revenueDF, baseDF):
     revenueDF = revenueDF.join(baseDF.select(F.col("CLAIMNO")),
                                on=["CLAIMNO"],
                                how="left_semi")
+
+    return revenueDF
+
+def prep_revenueDF(revenueDF, claim="inpatient"):
+
+    revenueDF = enforce_schema(revenueDF, claim=claim)
+
+    return revenueDF
+
+def enforce_schema(revenueDF, claim="inpatient"):
+
+    if claim=="inpatient":
+        revenueDF = revenueDF.select([revenueDF[field.name].cast(field.dataType) for field in ipRevenueSchema.fields])
+    elif claim=="outpatient":
+        revenueDF = revenueDF.select([revenueDF[field.name].cast(field.dataType) for field in opRevenueSchema.fields])
 
     return revenueDF
 
