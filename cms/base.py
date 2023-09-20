@@ -44,10 +44,10 @@ def add_admission_date_info(baseDF, claim="outpatient"):
    
     #unfortunately, SNF claims have a different column name for admission date
     #admissionColName = "CLM_ADMSN_DT" if claim=="snf" else "ADMSN_DT"
-    #if ( (claim=="hha") ):
-    #    baseDF = baseDF.withColumn( "ADMSN_DT", F.col("CLM_ADMSN_DT"))
-    #elif ( (claim=="hosp") ):
-    #    baseDF = baseDF.withColumn( "ADMSN_DT", F.col("CLM_HOSPC_START_DT_ID") )
+    if ( (claim=="hha") ):
+        baseDF = baseDF.withColumn( "ADMSN_DT", F.col("CLM_ADMSN_DT"))
+    elif ( (claim=="hosp") ):
+        baseDF = baseDF.withColumn( "ADMSN_DT", F.col("HSPCSTRT") )
 
     baseDF = baseDF.withColumn( "ADMSN_DT_DAYOFYEAR", 
                                 F.date_format(
