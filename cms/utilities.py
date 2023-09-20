@@ -27,7 +27,7 @@ def get_filename_dicts(pathCMS, yearInitial, yearFinal):
     hospBaseFilenames = {}
     hospRevenueFilenames = {}
     carBaseFilenames = {}
-    carRevenueFilenames = {}
+    carLineFilenames = {}
 
     #all filenames will include their absolute paths
     for iYear in range(yearInitial,yearFinal+1): #remember range does not include the last point
@@ -43,14 +43,14 @@ def get_filename_dicts(pathCMS, yearInitial, yearFinal):
         hospBaseFilenames[f'{iYear}'] = pathHOSP + f"/hosp_claimsk_{iYear}.parquet"
         hospRevenueFilenames[f'{iYear}'] = pathHOSP + f"/hosp_revenuek_{iYear}.parquet"
         carBaseFilenames[f'{iYear}'] = pathCAR + f"/car_claimsk_{iYear}.parquet"
-        carRevenueFilenames[f'{iYear}'] = pathCAR + f"/car_linek_{iYear}.parquet"
+        carLineFilenames[f'{iYear}'] = pathCAR + f"/car_linek_{iYear}.parquet"
 
     return (mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames, snfBaseFilenames, snfRevenueFilenames,
-           hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames, carBaseFilenames, carRevenueFilenames)
+           hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames, carBaseFilenames, carLineFilenames)
 
 def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
              snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames,
-             carBaseFilenames, carRevenueFilenames):
+             carBaseFilenames, carLineFilenames):
 
     #assume the worst...that each type of file includes claims from different years
     opBaseYears = sorted(list(opBaseFilenames.keys()))
@@ -65,7 +65,7 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
     hospBaseYears = sorted(list(hospBaseFilenames.keys()))
     hospRevenueYears = sorted(list(hospRevenueFilenames.keys()))
     carBaseYears = sorted(list(carBaseFilenames.keys()))
-    carRevenueYears = sorted(list(carRevenueFilenames.keys()))
+    carLineYears = sorted(list(carLineFilenames.keys()))
 
     # PySpark defaults to reading and writing in the Parquet format
     # spark.read.parquet maps to spark.read.format('parquet').load()
@@ -83,7 +83,7 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
     hospBaseDict={}
     hospRevenueDict={}
     carBaseDict={}
-    carRevenueDict={}
+    carLineDict={}
 
     #read all data and put them in dictionary, 
     #parquet files have a built-in schema so I do not need to infer schema when reading parquet files
@@ -123,11 +123,11 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
     for iYear in hospRevenueYears:
         hospRevenueDict[f'{iYear}'] = spark.read.parquet(hospRevenueFilenames[f'{iYear}'])
     
-    #for iYear in carClaimsYears:
-    #    carClaimsDict[f'{iYear}'] = spark.read.parquet(carClaimsFilenames[f'{iYear}'])
+    for iYear in carBaseYears:
+        carBaseDict[f'{iYear}'] = spark.read.parquet(carBaseFilenames[f'{iYear}'])
 
-    #for iYear in hospRevenueYears:
-    #    carRevenueDict[f'{iYear}'] = spark.read.parquet(carRevenueFilenames[f'{iYear}'])
+    for iYear in carLineYears:
+        carLineDict[f'{iYear}'] = spark.read.parquet(carLineFilenames[f'{iYear}'])
 
     # merge all previous years in one dataframe
     opBase = opBaseDict[opBaseYears[0]] #initialize here
@@ -141,8 +141,8 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
     hhaRevenue = hhaRevenueDict[hhaRevenueYears[0]]
     hospBase = hospBaseDict[hospBaseYears[0]]
     hospRevenue = hospRevenueDict[hospRevenueYears[0]]
-    #carClaims = carClaimsDict[carClaimsYears[0]]
-    #carRevenue = carRevenueDict[carRevenueYears[0]]
+    carBase = carBaseDict[carBaseYears[0]]
+    carLine = carLineDict[carLineYears[0]]
 
     if (len(opBaseYears) > 1): 
         for iYear in opBaseYears[1:]: 
@@ -188,45 +188,43 @@ def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseF
        for iYear in hospRevenueYears[1:]:
            hospRevenue = hospRevenue.union(hospRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    #if (len(carClaimsYears) > 1):
-    #   for iYear in carClaimsYears[1:]:
-    #       carClaims = carClaims.union(carClaimsDict[f'{iYear}']) #and then do union with the rest
-    carBase=1
+    if (len(carBaseYears) > 1):
+       for iYear in carBaseYears[1:]:
+           carBase = carBase.union(carBaseDict[f'{iYear}']) #and then do union with the rest
 
-    #if (len(carRevenueYears) > 1):
-    #   for iYear in carRevenueYears[1:]:
-    #       carRevenue = carRevenue.union(carRevenueDict[f'{iYear}']) #and then do union with the rest
-    carRevenue=1
+    if (len(carLineYears) > 1):
+       for iYear in carLineYears[1:]:
+           carLine = carLine.union(carLineDict[f'{iYear}']) #and then do union with the rest
 
     return(mbsf, opBase, opRevenue, ipBase, ipRevenue, 
            snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, 
-           carBase, carRevenue)
+           carBase, carLine)
 
 def get_data(pathCMS, yearInitial, yearFinal, spark):
 
     (mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
     snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, 
     hospBaseFilenames, hospRevenueFilenames,
-    carBaseFilenames, carRevenueFilenames) = get_filename_dicts(pathCMS, yearInitial, yearFinal)
+    carBaseFilenames, carLineFilenames) = get_filename_dicts(pathCMS, yearInitial, yearFinal)
 
     (mbsf, opBase, opRevenue, ipBase, ipRevenue, 
     snfBase, snfRevenue, 
     hhaBase, hhaRevenue, 
     hospBase, hospRevenue,
-    carBase, carRevenue) = read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
+    carBase, carLine) = read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
                                                      snfBaseFilenames, snfRevenueFilenames, 
                                                      hhaBaseFilenames, hhaRevenueFilenames, 
                                                      hospBaseFilenames, hospRevenueFilenames,
-                                                     carBaseFilenames, carRevenueFilenames) 
+                                                     carBaseFilenames, carLineFilenames) 
 
     (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue,
     carBase, carRevenue) = prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue,
-                                    hospBase, hospRevenue, carBase, carRevenue) 
+                                    hospBase, hospRevenue, carBase, carLine) 
 
     return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue,
-            carBase, carRevenue)
+            carBase, carLine)
 
-def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carRevenue):
+def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carLine):
 
     ipBase = prep_baseDF(ipBase,claim="inpatient")
     opBase = prep_baseDF(opBase,claim="outpatient")
@@ -238,6 +236,6 @@ def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hh
     ipRevenue = prep_revenueDF(ipRevenue,claim="inpatient")
     opRevenue = prep_revenueDF(opRevenue,claim="outpatient")
 
-    return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carRevenue) 
+    return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carLine) 
 
 
