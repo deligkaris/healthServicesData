@@ -187,8 +187,8 @@ opRevenueSchema=StructType([
     StructField('REV_NCVR', DoubleType(), True), 
     StructField('REVSTIND', StringType(), True), 
     StructField('REV_CNTR_PRICNG_IND_CD', StringType(), True), 
-    StructField('REV_CNTR_RNDRNG_PHYSN_UPIN', IntegerType(), True), S
-    tructField('REV_CNTR_RNDRNG_PHYSN_NPI', IntegerType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_UPIN', IntegerType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_NPI', IntegerType(), True), 
     StructField('REV_CNTR_RNDRNG_PHYSN_SPCLTY_CD', IntegerType(), True), 
     StructField('REVDEDCD', StringType(), True), 
     StructField('THRPY_CAP_IND_CD1', StringType(), True), 
