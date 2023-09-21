@@ -7,6 +7,7 @@ from cms.SCHEMAS.op_schema import opBaseSchema
 from cms.SCHEMAS.snf_schema import snfBaseSchema, snfBaseLongToShortXW
 from cms.SCHEMAS.hha_schema import hhaBaseSchema, hhaBaseLongToShortXW
 from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
+from cms.SCHEMAS.car_schema import carBaseSchema, carBaseLongToShortXW
 
 def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
@@ -34,6 +35,9 @@ def cast_columns_as_string(baseDF, claim="outpatient"):
     elif ((claim=="hha") | (claim=="hosp") | (claim=="snf")):
         baseDF = (baseDF.withColumn("PRVDR_STATE_CD", F.lpad(F.col("PRVDR_STATE_CD").cast("string"),2,'0'))
                         .withColumn("BENE_STATE_CD", F.lpad(F.col("BENE_STATE_CD").cast("string"),2,'0'))
+                        .withColumn("BENE_CNTY_CD", F.lpad(F.col("BENE_CNTY_CD").cast("string"),3,'0')))
+    elif (claim=="car"):
+        baseDF = (baseDF.withColumn("BENE_STATE_CD", F.lpad(F.col("BENE_STATE_CD").cast("string"),2,'0'))
                         .withColumn("BENE_CNTY_CD", F.lpad(F.col("BENE_CNTY_CD").cast("string"),3,'0')))
         
     return baseDF
@@ -1408,7 +1412,7 @@ def clean_base(baseDF, claim="snf"):
 
     #mbsf, op, ip files were cleaned and this line was removed in them, but the rest of the files still include the first row
     #that essentially repeats the column names
-    if ( (claim=="snf") | (claim=="hha") | (claim=="hosp") ):
+    if ( (claim=="snf") | (claim=="hha") | (claim=="hosp") | (claim=="car") ):
         baseDF = baseDF.filter(~(F.col("DESY_SORT_KEY")=="DESY_SORT_KEY"))
 
     return baseDF
@@ -1556,6 +1560,8 @@ def enforce_schema(baseDF, claim="inpatient"):
         baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hhaBaseLongToShortXW[field.name]) for field in hhaBaseSchema.fields])
     elif claim=="hosp":
         baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hospBaseLongToShortXW[field.name]) for field in hospBaseSchema.fields])
+    elif claim=="car":
+        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(carBaseLongToShortXW[field.name]) for field in carBaseSchema.fields])
 
     return baseDF
 

@@ -1,5 +1,6 @@
 from .mbsf import prep_mbsfDF
 from cms.base import prep_baseDF
+from cms.line import prep_lineDF
 from cms.SCHEMAS.mbsf_schema import mbsfSchema
 from cms.revenue import prep_revenueDF
 
@@ -235,6 +236,9 @@ def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hh
 
     ipRevenue = prep_revenueDF(ipRevenue,claim="inpatient")
     opRevenue = prep_revenueDF(opRevenue,claim="outpatient")
+
+    carBase = prep_baseDF(carBase, claim="car")
+    carLine = prep_lineDF(carLine, claim="car")
 
     return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carLine) 
 
