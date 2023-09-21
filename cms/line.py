@@ -1,4 +1,4 @@
-from cms.SCHEMAS.car_schema.py import carLineSchema, carLineLongToShortXW
+from cms.SCHEMAS.car_schema import carLineSchema, carLineLongToShortXW
 
 def prep_lineDF(lineDF, claim="car"):
 
