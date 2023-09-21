@@ -1,4 +1,5 @@
 from cms.SCHEMAS.car_schema import carLineSchema, carLineLongToShortXW
+import pyspark.sql.functions as F
 
 def prep_lineDF(lineDF, claim="car"):
 
