@@ -926,31 +926,29 @@ def add_regional_info_from_ers(baseDF,ersPeopleDF, ersJobsDF, ersIncomeDF):
 
      return baseDF
 
-def get_aggregate_summary(baseDF, aggItems, aggBy = "ssaCounty"): #aggWhat must be an iterable of strings-column names
+def get_aggregate_summary(baseDF, aggItems, aggBy = ["ssaCounty"]): #aggWhat must be an iterable of strings-column names
 
     baseDF.persist() #since I will use this in a loop make it persist in memory
     baseDF.count()
 
     eachUnit = Window.partitionBy(aggBy)
 
-    baseDF = baseDF.withColumn("total", #find need to find total in unit
-                               F.count(F.col(aggBy)).over(eachUnit))
-    returnItems = [aggBy, "total"]
+    baseDF = baseDF.withColumn("total", #find total in unit
+                               F.count(F.col(aggBy[0])).over(eachUnit))
+    returnItems = aggBy + ["total"]
 
     for i in aggItems:
         baseDF = baseDF.withColumn(i+"InUnit", #add unit counts
-                                   F.sum(
-                                       F.col(i)).over(eachUnit))
+                                   F.sum(F.col(i)).over(eachUnit))
         returnItems = returnItems + [f'{i}InUnit']
 
         baseDF = baseDF.withColumn(i+"InUnitPerCent", #add unit percentage
-                                   F.round(
-                                       100.*F.col(i+"InUnit") / F.col("total"),1))
+                                   F.round(100.*F.col(i+"InUnit") / F.col("total"),1))
         returnItems = returnItems + [f'{i}InUnitPerCent']
 
     aggregateSummary = baseDF.select(returnItems).distinct() #returnWhat cannot be tuple, list works
 
-    aggregateSummary.persist() #since a loop was involved in calculating this make it persist in memory
+    aggregateSummary.persist() #since a loop was involved in calculating this, make it persist in memory
     aggregateSummary.count()
 
     return aggregateSummary
