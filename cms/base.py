@@ -926,7 +926,7 @@ def add_regional_info_from_ers(baseDF,ersPeopleDF, ersJobsDF, ersIncomeDF):
 
      return baseDF
 
-def get_aggregate_summary(baseDF, aggItems, aggBy = ["ssaCounty"]): #aggWhat must be an iterable of strings-column names
+def get_aggregate_summary(baseDF, aggItems, aggBy = ["ssaCounty"], alsoReturnItems=[]): #aggWhat must be an iterable of strings-column names
 
     baseDF.persist() #since I will use this in a loop make it persist in memory
     baseDF.count()
@@ -935,7 +935,7 @@ def get_aggregate_summary(baseDF, aggItems, aggBy = ["ssaCounty"]): #aggWhat mus
 
     baseDF = baseDF.withColumn("total", #find total in unit
                                F.count(F.col(aggBy[0])).over(eachUnit))
-    returnItems = aggBy + ["total"]
+    returnItems = aggBy + ["total"] + alsoReturnItems
 
     for i in aggItems:
         baseDF = baseDF.withColumn(i+"InUnit", #add unit counts
