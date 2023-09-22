@@ -1405,7 +1405,9 @@ def prep_baseDF(baseDF, claim="inpatient"):
         baseDF = add_ssaCounty(baseDF)
         #without a repartition, the dataframe is extremely skewed...
         #baseDF = baseDF.repartition(128, "DSYSRTKY")
-
+    elif ( claim=="car" ):
+        baseDF = add_denied(baseDF)
+ 
     return baseDF
 
 def clean_base(baseDF, claim="snf"):
@@ -1575,6 +1577,21 @@ def add_cAppalachiaResident(baseDF):
                                 .otherwise(0))
     return baseDF
    
+def add_denied(baseDF):
+
+    #this applies to the carrier base file, unsure if/how it can extend to other base files
+    #the code appears as either "0" or "00", I think it is a 2 character code
+    #https://www.cms.gov/priorities/innovation/files/x/bundled-payments-for-care-improvement-carrier-file.pdf
+    deniedCond = '(F.col("PMTDNLCD").isin(["0","00"]))' 
+
+    baseDF = baseDF.withColumn("denied",
+                               F.when( eval(deniedCond),1)
+                                .otherwise(0))
+    return baseDF
+
+
+
+
 
 
 

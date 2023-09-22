@@ -7,6 +7,7 @@ def prep_lineDF(lineDF, claim="car"):
     lineDF = clean_line(lineDF, claim=claim)
     lineDF = enforce_schema(lineDF, claim=claim)
     lineDF = add_level1HCPCS_CD(lineDF)
+    lineDF = add_allowed(lineDF)
 
     return lineDF
 
@@ -171,6 +172,24 @@ def add_neuropsychiatryOpVisit(lineDF):
 
     lineDF = lineDF.withColumn("neuropsychiatryOpVisit", F.col("neuropsychiatry")*F.col("opVisit"))
 
+    return lineDF
+
+def filter_claims(lineDF, baseDF):
+
+    #CLAIMNO resets every year, so I need CLAIMNO, DSYSRTKY and THRU_DT to uniquely link base and line files
+    lineDF = lineDF.join(baseDF.select(F.col("CLAIMNO"),F.col("DSYSRTKY"),F.col("THRU_DT")),
+                               on=["CLAIMNO","DSYSRTKY","THRU_DT"],
+                               how="left_semi")
+
+    return lineDF
+
+def add_allowed(lineDF):
+
+    allowedCond = '(F.col("PRCNGIND")=="A")'
+     
+    lineDF = lineDF.withColumn("allowed",
+                               F.when( eval(allowedCond), 1)
+                                .otherwise(0))
     return lineDF
 
 
