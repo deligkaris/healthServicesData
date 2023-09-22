@@ -1406,6 +1406,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
         #without a repartition, the dataframe is extremely skewed...
         #baseDF = baseDF.repartition(128, "DSYSRTKY")
     elif ( claim=="car" ):
+        baseDF = add_ssaCounty(baseDF)
         baseDF = add_denied(baseDF)
  
     return baseDF
