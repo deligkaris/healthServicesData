@@ -1565,7 +1565,15 @@ def enforce_schema(baseDF, claim="inpatient"):
 
     return baseDF
 
+def add_cAppalachiaResident(baseDF):  
 
+    #cAppalachia: central Appalachia, Kentucky, North Carolina, Ohio, Tennessee, Virginia, West Virginia)
+    cAppalachiaCond = 'F.col("STATE_CD").isin(["18","34","36","44","49","51"])'
+
+    baseDF = baseDF.withColumn("cAppalachiaResident",
+                               F.when( eval(cAppalachiaCond), 1)
+                                .otherwise(0))
+    return baseDF
    
 
 

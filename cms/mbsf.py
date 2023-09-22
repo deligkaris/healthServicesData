@@ -185,6 +185,16 @@ def add_ohResident(mbsfDF): #also used in base.py
 
     return mbsfDF
 
+def add_cAppalachiaResident(mbsfDF):  
+
+    #cAppalachia: central Appalachia, Kentucky, North Carolina, Ohio, Tennessee, Virginia, West Virginia)
+    cAppalachiaCond = 'F.col("STATE_CD").isin(["18","34","36","44","49","51"])'
+
+    mbsfDF = mbsfDF.withColumn("cAppalachiaResident",
+                               F.when( eval(cAppalachiaCond), 1)
+                                .otherwise(0))
+    return mbsfDF    
+
 def add_death_date_info(mbsfDF):
 
     #leapYears=[2016,2020,2024,2028]
