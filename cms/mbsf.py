@@ -347,3 +347,22 @@ def add_residentsInCounty(mbsfDF):
     mbsfDF = mbsfDF.withColumn("residentsInCounty", F.count(F.col("DSYSRTKY")).over(eachCounty))
 
     return mbsfDF
+
+def add_fipsCounty(mbsfDF, cbsaDF):
+
+    mbsfDF = mbsfDF.join(cbsaDF.select(F.col("ssaCounty"),F.col("fipsCounty")),
+                         on=["ssaCounty"],
+                         how="left_outer")
+
+    return mbsfDF
+
+def add_countyName(mbsfDF,cbsaDF):
+
+    mbsfDF = mbsfDF.join(cbsaDF.select(F.col("countyName"),F.col("ssaCounty")),
+                         on = ["ssaCounty"],
+                         how = "inner")
+
+    return(mbsfDF)
+
+
+
