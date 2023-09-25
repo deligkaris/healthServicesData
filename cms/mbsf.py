@@ -340,3 +340,10 @@ def clean_mbsf(mbsfDF, ipBaseDF, opBaseDF):
 
     return mbsfDF
 
+def add_residentsInCounty(mbsfDF):
+
+    eachCounty = Window.partitionBy(["ssaCounty","RFRNC_YR"])
+
+    mbsfDF = mbsfDF.withColumn("residentsInCounty", F.count(F.col("DSYSRTKY")).over(eachCounty))
+
+    return mbsfDF
