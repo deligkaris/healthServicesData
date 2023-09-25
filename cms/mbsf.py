@@ -308,7 +308,7 @@ def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on t
                    list(map(lambda x: "DUAL_" + f"{x}".zfill(2),range(1,13))) +
                    list(map(lambda x: f"BUYIN{x}",range(1,13))) +
                    list(map(lambda x: f"HMOIND{x}",range(1,13))) +
-                   ["SAMPLE_GROUP"])
+                   ["SAMPLE_GROUP","OREC","CREC","ESRD_IND","A_TRM_CD","B_TRM_CD","A_MO_CNT","B_MO_CNT","HMO_MO","BUYIN_MO"])
 
     mbsfDF = mbsfDF.drop(*dropColumns)
 
