@@ -270,7 +270,6 @@ def prep_mbsfDF(mbsfDF, ipBaseDF, opBaseDF):
     # add the death date of year, year, and day in order to calculate 90 day mortality rate when needed
     mbsfDF = add_death_date_info(mbsfDF)
  
-    #need to have ssa state+county code
     mbsfDF = add_ssaCounty(mbsfDF)
 
     #mbsfDF = clean_mbsf(mbsfDF, ipBaseDF, opBaseDF)

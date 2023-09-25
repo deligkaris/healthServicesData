@@ -35,6 +35,9 @@ def add_level1HCPCS_CD(lineDF):
 
     return lineDF
 
+#Two notes from a RESDAC tutorial:
+#provider specialty codes may or may not align with board certification of the provider
+#there is no requirement to pick the most specific specialty (eg can choose IM for a gastroenterologist)
 def add_pcp(lineDF):
 
     pcpCond = 'F.col("HCFASPCL").isin([1,8,11])'
@@ -71,7 +74,7 @@ def add_neurology(lineDF):
 
 def add_neuropsychiatry(lineDF):
 
-    neuropsychiatryCond = 'F.col("HCFASPCL")==86'
+    neuropsychiatryCond = 'F.col("HCFASPCL").isin([62,68,86])'
 
     lineDF = lineDF.withColumn("neuropsychiatry", F.when( eval(neuropsychiatryCond), 1).otherwise(0))
 
