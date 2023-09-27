@@ -2,6 +2,12 @@ from cms.SCHEMAS.car_schema import carLineSchema, carLineLongToShortXW
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
+#Notes from a RESDAC tutorial: https://youtu.be/dwWdZPnSNB4?si=5ChQr4fFMZ9yh_UE&t=2989
+#provider specialty codes may or may not align with board certification of the provider
+#there is no requirement to pick the most specific specialty (eg can choose IM for a gastroenterologist)
+#about 20% of carrier claims include at least one line item that CMS denied
+#denied codes can be found here: https://www.cms.gov/priorities/innovation/files/x/bundled-payments-for-care-improvement-carrier-file.pdf
+
 def prep_lineDF(lineDF, claim="car"):
 
     lineDF = clean_line(lineDF, claim=claim)
@@ -35,14 +41,19 @@ def add_level1HCPCS_CD(lineDF):
 
     return lineDF
 
-#Two notes from a RESDAC tutorial:
-#provider specialty codes may or may not align with board certification of the provider
-#there is no requirement to pick the most specific specialty (eg can choose IM for a gastroenterologist)
 def add_pcp(lineDF):
 
     pcpCond = 'F.col("HCFASPCL").isin([1,8,11])'
 
     lineDF = lineDF.withColumn("pcp", F.when( eval(pcpCond), 1).otherwise(0))
+
+    return lineDF
+
+def add_pcpFromTaxonomy(lineDF):
+
+    pcpCond = 'F.col("primaryTaxonomy").isin(["207Q00000X","208D00000X","207R00000X"])'
+
+    lineDF = lineDF.withColumn("pcpFromTaxonomy", F.when( eval(pcpCond), 1).otherwise(0))
 
     return lineDF
 
@@ -72,6 +83,14 @@ def add_neurology(lineDF):
 
     return lineDF
 
+def add_neurologyFromTaxonomy(lineDF):
+
+    neurologyCond = 'F.col("primaryTaxonomy")=="2084N0400X"'
+
+    lineDF = lineDF.withColumn("neurologyFromTaxonomy", F.when( eval(neurologyCond), 1).otherwise(0))
+    
+    return lineDF
+
 def add_neuropsychiatry(lineDF):
 
     neuropsychiatryCond = 'F.col("HCFASPCL").isin([62,68,86])'
@@ -80,11 +99,27 @@ def add_neuropsychiatry(lineDF):
 
     return lineDF
 
+def add_neuropsychiatryFromTaxonomy(lineDF):
+
+    neuropsychiatryCond = 'F.col("primaryTaxonomy")=="2084B0040X"'
+
+    lineDF = lineDF.withColumn("neuropsychiatryFromTaxonomy", F.when( eval(neuropsychiatryCond), 1).otherwise(0))
+
+    return lineDF
+
 def add_geriatric(lineDF):
 
     geriatricCond = 'F.col("HCFASPCL")==38'
 
     lineDF = lineDF.withColumn("geriatric", F.when( eval(geriatricCond), 1).otherwise(0))
+
+    return lineDF
+
+def add_geriatricFromTaxonomy(lineDF):
+
+    geriatricCond = 'F.col("primaryTaxonomy").isin(["207QG0300X","207RG0300X"])'
+
+    lineDF = lineDF.withColumn("geriatricFromTaxonomy", F.when( eval(geriatricCond), 1).otherwise(0))
 
     return lineDF
 
@@ -100,6 +135,8 @@ def add_neurologyOpVisit(lineDF):
                     .withColumn("neurologyOpVisit", F.max(F.col("neurologyOpVisit")).over(eachDsysrtkyAndClaim)))
                                 
     return lineDF
+
+
 
 def add_pcpOpVisit(lineDF):
 
@@ -212,6 +249,14 @@ def add_allowed(lineDF):
     allowedCond = '(F.col("PRCNGIND")=="A")'
      
     lineDF = lineDF.withColumn("allowed", F.when( eval(allowedCond), 1).otherwise(0))
+
+    return lineDF
+
+def add_primaryTaxonomy(lineDF,npiProvidersDF):
+
+    lineDF = lineDF.join(npiProvidersDF.select(F.col("NPI").alias("PRF_NPI"),F.col("primaryTaxonomy")),
+                         on=["PRF_NPI"],
+                         how="left_outer")
 
     return lineDF
 

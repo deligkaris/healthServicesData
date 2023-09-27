@@ -9,6 +9,21 @@ from cms.SCHEMAS.hha_schema import hhaBaseSchema, hhaBaseLongToShortXW
 from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
 from cms.SCHEMAS.car_schema import carBaseSchema, carBaseLongToShortXW
 
+#CMS DUA email on my question about LDS claim numbers:
+#"The Claim ID is set by a sequence. A Part A (Institutional) and a Part B (Professional) Claim could have the same ID. 
+#However, Claim Type would be unique.
+#The Claim ID is not reset by year or claim type. When a claim is added, the sequence is incremented."
+#RESDAC email: 
+#"CCW just got back to me - for the LDS claims, the CLAIMNO variable is reset to 1 each year.
+#We recommend that both the bene_id and claim_id are used together to identify unique claims"
+#my note:
+#this means that I need to be very careful when I use claims from multiple years and when I join
+#information from the revenue center and line files to base.
+#only RIFs will include unique claim numbers and I suspect the CMS DUA staff member that responded to my question did not realize
+#I was referring to LDS and not RIF, it seems that CCW is responsible for creating the LDS
+#a page with LDS, RIF differences: https://resdac.org/articles/differences-between-rif-lds-and-puf-data-files
+#they do not include the claimno reset in LDS though.....
+
 def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
     if (claim=="outpatient"):
