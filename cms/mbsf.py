@@ -2,6 +2,22 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from cms.SCHEMAS.mbsf_schema import mbsfSchema
 
+#notes from the Resdac tutorial: https://youtu.be/-nxGbTPVLo8?si=TsTNDXDpZlPTsvpX
+#demographic information is largely reliable and valid
+#age is the oldest they could be, age at the end of the calendar year, or age as the date of death
+#some deaths are missed by medicare (or SSA)
+#no standard way to remove the likely dead people but some options are:
+#delete anyone over 100 or 90 with no health care use in a year
+#delete anyone over 90 who has not part B coverage
+#delete anyone older than the oldest person in the US
+#non-validated death dates are assigned at the end of the month so
+#including non-validated death dates as actual death dates will over-estimate survival times
+#hispanic ethnicity code has a sensitivity of about 35%
+#denominator file indicates mailing address on when file is finalized so it may reflect changes after the end of the calendar year
+#mbsf indicates mailing address as of december 31 of the calendar year
+#data support the idea that those with A-only coverage probably have incomplete claims, even for part A services
+#state buy-in is not the same as poverty
+
 def add_allPartB(mbsfDF): #assumes add death date info
 
     #first approach, takes into account death date, does not take into account if this is the year beneficiary first became eligible for Medicare
