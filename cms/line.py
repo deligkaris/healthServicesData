@@ -325,6 +325,13 @@ def add_primaryTaxonomy(lineDF,npiProvidersDF):
 
     return lineDF
 
+def get_line_summary(lineDF):
+
+    #the only summary I think I typically need are the inClaim summaries, and those columns now end with InClaim
+    #include a few other columns so that I can link the summary to the base 
+    lineSummaryDF = lineDF.select("DSYSRTKY", "CLAIMNO", "THRU_DT", lineDF.colRegex("^[a-zA-Z]+InClaim$")).distinct()
+
+    return lineSummaryDF
 
 
 
