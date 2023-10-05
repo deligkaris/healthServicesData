@@ -7,6 +7,9 @@ from pyspark.sql.window import Window
 #there is no requirement to pick the most specific specialty (eg can choose IM for a gastroenterologist)
 #about 20% of carrier claims include at least one line item that CMS denied
 #denied codes can be found here: https://www.cms.gov/priorities/innovation/files/x/bundled-payments-for-care-improvement-carrier-file.pdf
+#RESDAC recommends using both DSYSRTKY and CLAIMNO to identify unique claims, and since CLAIMNO resets every year I also need
+#the THRU_DT (RESDAC videos refer to the use of CMS RIF not the LDS ones)
+#this is why every window over each claim I make, I include "DSYSRTKY","CLAIMNO","THRU_DT"
 
 def prep_lineDF(lineDF, claim="car"):
 
@@ -35,203 +38,265 @@ def enforce_schema(lineDF, claim="car"):
 
 def add_level1HCPCS_CD(lineDF):
 
+    #level 1 HCPCS codes do not include any characters, only numbers
     lineDF = lineDF.withColumn("level1HCPCS_CD",
                    F.when( (F.regexp_extract( F.col("HCPCS_CD"), '^[\d]{5}$',0) !=''), F.col("HCPCS_CD").cast('int'))
                     .otherwise( F.lit(None) ))
 
     return lineDF
 
-def add_pcp(lineDF):
+def add_pcp(lineDF, inClaim=False):
 
     pcpCond = 'F.col("HCFASPCL").isin([1,8,11])'
 
-    lineDF = lineDF.withColumn("pcp", F.when( eval(pcpCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("pcp", F.when( eval(pcpCond), 1).otherwise(0))
+                        .withColumn("pcpInClaim", F.max(F.col("pcp")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("pcp", F.when( eval(pcpCond), 1).otherwise(0))
 
     return lineDF
 
-def add_pcpFromTaxonomy(lineDF):
+def add_pcpFromTaxonomy(lineDF, inClaim=False):
 
     pcpCond = 'F.col("primaryTaxonomy").isin(["207Q00000X","208D00000X","207R00000X"])'
 
-    lineDF = lineDF.withColumn("pcpFromTaxonomy", F.when( eval(pcpCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("pcpFromTaxonomy", F.when( eval(pcpCond), 1).otherwise(0))
+                        .withColumn("pcpFromTaxonomyInClaim", F.max(F.col("pcpFromTaxonomy")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("pcpFromTaxonomy", F.when( eval(pcpCond), 1).otherwise(0))
 
     return lineDF
 
-def add_alfVisit(lineDF): #alf: assisted living facility
+def add_alfVisit(lineDF, inClaim=False): #alf: assisted living facility
 
     alfVisitCond = '''( ((F.col("level1HCPCS_CD")>=99324)&(F.col("level1HCPCS_CD")<=99328)) |
                         ((F.col("level1HCPCS_CD")>=99334)&(F.col("level1HCPCS_CD")<=99338)) )'''
 
-    lineDF = lineDF.withColumn("alfVisit", F.when( eval(alfVisitCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("alfVisit", F.when( eval(alfVisitCond), 1).otherwise(0))
+                        .withColumn("alfVisitInClaim", F.max(F.col("alfVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("alfVisit", F.when( eval(alfVisitCond), 1).otherwise(0))
 
     return lineDF
 
-def add_opVisit(lineDF):
+def add_opVisit(lineDF, inClaim=False):
 
     opVisitCond = '''( ((F.col("level1HCPCS_CD")>=99201)&(F.col("level1HCPCS_CD")<=99205)) |
                      ((F.col("level1HCPCS_CD")>=99211)&(F.col("level1HCPCS_CD")<=99215)) )'''
 
-    lineDF = lineDF.withColumn("opVisit", F.when( eval(opVisitCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("opVisit", F.when( eval(opVisitCond), 1).otherwise(0))
+                        .withColumn("opVisitInClaim", F.max(F.col("opVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("opVisit", F.when( eval(opVisitCond), 1).otherwise(0))
 
     return lineDF
 
-def add_neurology(lineDF):
+def add_neurology(lineDF, inClaim=False):
 
     neurologyCond = 'F.col("HCFASPCL")==13'
 
-    lineDF = lineDF.withColumn("neurology", F.when( eval(neurologyCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("neurology", F.when( eval(neurologyCond), 1).otherwise(0))
+                        .withColumn("neurologyInClaim", F.max(F.col("neurology")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("neurology", F.when( eval(neurologyCond), 1).otherwise(0))
 
     return lineDF
 
-def add_neurologyFromTaxonomy(lineDF):
+def add_neurologyFromTaxonomy(lineDF, inClaim=False):
 
     neurologyCond = 'F.col("primaryTaxonomy")=="2084N0400X"'
 
-    lineDF = lineDF.withColumn("neurologyFromTaxonomy", F.when( eval(neurologyCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("neurologyFromTaxonomy", F.when( eval(neurologyCond), 1).otherwise(0))
+                        .withColumn("neurologyFromTaxonomyInClaim", F.max(F.col("neurologyFromTaxonomy")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("neurologyFromTaxonomy", F.when( eval(neurologyCond), 1).otherwise(0))
     
     return lineDF
 
-def add_neuropsychiatry(lineDF):
+def add_neuropsychiatry(lineDF, inClaim=False):
 
     neuropsychiatryCond = 'F.col("HCFASPCL").isin([62,68,86])'
 
-    lineDF = lineDF.withColumn("neuropsychiatry", F.when( eval(neuropsychiatryCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("neuropsychiatry", F.when( eval(neuropsychiatryCond), 1).otherwise(0))
+                        .withColumn("neuropsychiatryInClaim", F.max(F.col("neuropsychiatry")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("neuropsychiatry", F.when( eval(neuropsychiatryCond), 1).otherwise(0))
 
     return lineDF
 
-def add_neuropsychiatryFromTaxonomy(lineDF):
+def add_neuropsychiatryFromTaxonomy(lineDF, inClaim=False):
 
     neuropsychiatryCond = 'F.col("primaryTaxonomy")=="2084B0040X"'
 
-    lineDF = lineDF.withColumn("neuropsychiatryFromTaxonomy", F.when( eval(neuropsychiatryCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("neuropsychiatryFromTaxonomy", F.when( eval(neuropsychiatryCond), 1).otherwise(0))
+                        .withColumn("neuropsychiatryFromTaxonomyInClaim", F.max(F.col("neuropsychiatryFromTaxonomy")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("neuropsychiatryFromTaxonomy", F.when( eval(neuropsychiatryCond), 1).otherwise(0))
 
     return lineDF
 
-def add_geriatric(lineDF):
+def add_geriatric(lineDF, inClaim=False):
 
     geriatricCond = 'F.col("HCFASPCL")==38'
 
-    lineDF = lineDF.withColumn("geriatric", F.when( eval(geriatricCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("geriatric", F.when( eval(geriatricCond), 1).otherwise(0))
+                        .withColumn("geriatricInClaim", F.max(F.col("geriatric")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("geriatric", F.when( eval(geriatricCond), 1).otherwise(0))
 
     return lineDF
 
-def add_geriatricFromTaxonomy(lineDF):
+def add_geriatricFromTaxonomy(lineDF, inClaim=False):
 
     geriatricCond = 'F.col("primaryTaxonomy").isin(["207QG0300X","207RG0300X"])'
 
-    lineDF = lineDF.withColumn("geriatricFromTaxonomy", F.when( eval(geriatricCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("geriatricFromTaxonomy", F.when( eval(geriatricCond), 1).otherwise(0))
+                        .withColumn("geriatricFromTaxonomyInClaim", F.max(F.col("geriatricFromTaxonomy")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("geriatricFromTaxonomy", F.when( eval(geriatricCond), 1).otherwise(0))
 
     return lineDF
 
-def add_neurologyOpVisit(lineDF):
+def add_neurologyOpVisit(lineDF, inClaim=False):
 
-    lineDF = add_neurology(lineDF)
-    lineDF = add_opVisit(lineDF)
+    lineDF = add_neurology(lineDF, inClaim=False)
+    lineDF = add_opVisit(lineDF, inClaim=False)
 
-    #unique claim is found with CLAIMNO and THRU_DT
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
-
-    lineDF = (lineDF.withColumn("neurologyOpVisit", F.col("neurology")*F.col("opVisit"))
-                    .withColumn("neurologyOpVisit", F.max(F.col("neurologyOpVisit")).over(eachDsysrtkyAndClaim)))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("neurologyOpVisit", F.col("neurology")*F.col("opVisit"))
+                        .withColumn("neurologyOpVisitInClaim", F.max(F.col("neurologyOpVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("neurologyOpVisit", F.col("neurology")*F.col("opVisit"))
                                 
     return lineDF
 
-
-
-def add_pcpOpVisit(lineDF):
+def add_pcpOpVisit(lineDF, inClaim=False):
 
     lineDF = add_pcp(lineDF)
     lineDF = add_opVisit(lineDF)
 
-    #unique claim is found with CLAIMNO and THRU_DT
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
-
-    lineDF = (lineDF.withColumn("pcpOpVisit", F.col("pcp")*F.col("opVisit"))
-                    .withColumn("pcpOpVisit", F.max(F.col("pcpOpVisit")).over(eachDsysrtkyAndClaim))) 
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("pcpOpVisit", F.col("pcp")*F.col("opVisit"))
+                        .withColumn("pcpOpVisitInClaim", F.max(F.col("pcpOpVisit")).over(eachClaim))) 
+    else:
+        lineDF = lineDF.withColumn("pcpOpVisit", F.col("pcp")*F.col("opVisit"))
 
     return lineDF
 
-def add_ct(lineDF):
+def add_ct(lineDF, inClaim=False):
 
     ctCond = 'F.col("level1HCPCS_CD").isin([70450,70460,70470])'
 
-    #unique claim is found with CLAIMNO and THRU_DT
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
-
-    lineDF = (lineDF.withColumn("ct", F.when( eval(ctCond), 1).otherwise(0))
-                    .withColumn("ct", F.max(F.col("ct")).over(eachDsysrtkyAndClaim)))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("ct", F.when( eval(ctCond), 1).otherwise(0))
+                        .withColumn("ctInClaim", F.max(F.col("ct")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("ct", F.when( eval(ctCond), 1).otherwise(0))
 
     return lineDF
 
-def add_mri(lineDF):
+def add_mri(lineDF, inClaim=False):
 
     mriCond = 'F.col("level1HCPCS_CD").isin([70551,70553])'
 
-    #unique claim is found with CLAIMNO and THRU_DT
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
-
-    lineDF = (lineDF.withColumn("mri", F.when( eval(mriCond), 1).otherwise(0))
-                    .withColumn("mri", F.max(F.col("mri")).over(eachDsysrtkyAndClaim)))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("mri", F.when( eval(mriCond), 1).otherwise(0))
+                        .withColumn("mriInClaim", F.max(F.col("mri")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("mri", F.when( eval(mriCond), 1).otherwise(0))
 
     return lineDF
 
-def add_homeVisit(lineDF):
+def add_homeVisit(lineDF, inClaim=False):
 
     homeVisitCond = '((F.col("level1HCPCS_CD")>=99342)&(F.col("level1HCPCS_CD")<=99350))' 
 
-    lineDF = lineDF.withColumn("homeVisit", F.when( eval(homeVisitCond), 1).otherwise(0))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("homeVisit", F.when( eval(homeVisitCond), 1).otherwise(0))
+                        .withColumn("homeVisitInClaim", F.max(F.col("homeVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("homeVisit", F.when( eval(homeVisitCond), 1).otherwise(0))
 
     return lineDF
 
-def add_pcpHomeVisit(lineDF):
+def add_pcpHomeVisit(lineDF, inClaim=False):
 
-    lineDF = add_pcp(lineDF)
-    lineDF = add_homeVisit(lineDF)
+    lineDF = add_pcp(lineDF, inClaim=False)
+    lineDF = add_homeVisit(lineDF, inClaim=False)
 
-    #unique claim is found with CLAIMNO and THRU_DT
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
-
-    lineDF = (lineDF.withColumn("pcpHomeVisit", F.col("pcp")*F.col("homeVisit"))
-                    .withColumn("pcpHomeVisit", F.max(F.col("pcpHomeVisit")).over(eachDsysrtkyAndClaim)))
-
-    return lineDF
-
-def add_pcpAlfVisit(lineDF):
-
-    lineDF = add_pcp(lineDF)
-    lineDF = add_alfVisit(lineDF)
-
-    #unique claim is found with CLAIMNO and THRU_DT
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
-
-    lineDF = (lineDF.withColumn("pcpAlfVisit", F.col("pcp")*F.col("alfVisit"))
-                    .withColumn("pcpAlfVisit", F.max(F.col("pcpAlfVisit")).over(eachDsysrtkyAndClaim)))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("pcpHomeVisit", F.col("pcp")*F.col("homeVisit"))
+                        .withColumn("pcpHomeVisitInClaim", F.max(F.col("pcpHomeVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("pcpHomeVisit", F.col("pcp")*F.col("homeVisit"))
 
     return lineDF
 
-def add_geriatricOpVisit(lineDF):
+def add_pcpAlfVisit(lineDF, inClaim=False):
 
-    lineDF = add_geriatric(lineDF)
-    lineDF = add_opVisit(lineDF)
+    lineDF = add_pcp(lineDF, inClaim=False)
+    lineDF = add_alfVisit(lineDF, inClaim=False)
 
-    #unique claim is found with CLAIMNO and THRU_DT
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
-
-    lineDF = (lineDF.withColumn("geriatricOpVisit", F.col("geriatric")*F.col("opVisit"))
-                    .withColumn("geriatricOpVisit", F.max(F.col("geriatricOpVisit")).over(eachDsysrtkyAndClaim)))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("pcpAlfVisit", F.col("pcp")*F.col("alfVisit"))
+                        .withColumn("pcpAlfVisitInClaim", F.max(F.col("pcpAlfVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("pcpAlfVisit", F.col("pcp")*F.col("alfVisit"))
 
     return lineDF
 
-def add_neuropsychiatryOpVisit(lineDF):
+def add_geriatricOpVisit(lineDF, inClaim=False):
 
-    lineDF = add_neuropsychiatry(lineDF)
-    lineDF = add_opVisit(lineDF)
+    lineDF = add_geriatric(lineDF, inClaim=False)
+    lineDF = add_opVisit(lineDF, inClaim=False)
 
-    #unique claim is found with CLAIMNO and THRU_DT
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("geriatricOpVisit", F.col("geriatric")*F.col("opVisit"))
+                        .withColumn("geriatricOpVisitInClaim", F.max(F.col("geriatricOpVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("geriatricOpVisit", F.col("geriatric")*F.col("opVisit"))
 
-    lineDF = (lineDF.withColumn("neuropsychiatryOpVisit", F.col("neuropsychiatry")*F.col("opVisit"))
-                    .withColumn("neuropsychiatryOpVisit", F.max(F.col("neuropsychiatryOpVisit")).over(eachDsysrtkyAndClaim)))
+    return lineDF
+
+def add_neuropsychiatryOpVisit(lineDF, inClaim=False):
+
+    lineDF = add_neuropsychiatry(lineDF, inClaim=False)
+    lineDF = add_opVisit(lineDF, inClaim=False)
+
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("neuropsychiatryOpVisit", F.col("neuropsychiatry")*F.col("opVisit"))
+                        .withColumn("neuropsychiatryOpVisitInClaim", F.max(F.col("neuropsychiatryOpVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("neuropsychiatryOpVisit", F.col("neuropsychiatry")*F.col("opVisit"))
 
     return lineDF
 

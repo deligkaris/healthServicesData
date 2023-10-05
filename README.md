@@ -3,7 +3,12 @@
 PySpark functions for CMS and other health services-related data management. 
 
 - Assumes that column names follow the CMS Field Short Name convention
-- Functions with name add_x  add 1 column with column name x (so that you do not have to guess the column name)
+- Base functions with name add_x  add 1 column with column name x (so that you do not have to guess the column name)
+- Revenue/Line functions with name add_x include an inClaim flag, because sometimes we are interested in determining 
+  something based on the line and sometimes we are interested in something claim-wide
+  - when inClaim=True, these functions add 1 column with name x and 1 column with name xInClaim
+  - when inClaim=False, these functions add 1 column with name x
+- Functions with complex names, eg add_pcpHomeVisit, implicitly assume an AND condition, eg pcp and home visit
 - Functions with name add_x_info add more than 1 column on the dataframe (you will need to do a printSchema to see what you added)
 - Functions with name get_x return x and the argument(s) of the function is/are not modified
 - When there is only one dataframe argument, then this is probably done using a withColumn pyspark command or a command 
