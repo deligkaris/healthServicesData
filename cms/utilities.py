@@ -6,48 +6,89 @@ from cms.revenue import prep_revenueDF
 
 def get_filename_dicts(pathCMS, yearInitial, yearFinal):
 
+    yearJKTransition = 2016 #year CMS switched from J to K format
+
     #assume all data is organized with folders INP, OUT, Denom, SNF, HHA, HOSP within the CMS folder
-    pathIp = pathCMS +'/INP' #inpatient data folder
-    pathOp = pathCMS + '/OUT' #outpatient data folder
-    pathDenom = pathCMS + '/Denom' #demographic and enrollment data folder
-    pathSNF = pathCMS + '/SAF/SNF' #skilled nursing facilities
-    pathHHA = pathCMS + '/SAF/HHA' #home health agency
-    pathHOSP = pathCMS + '/SAF/HOSP' #hospice care
-    pathCAR = pathCMS + '/SAF/CAR' #carrier 
+    #pathIp = pathCMS +'/INP' #inpatient data folder
+    #pathOp = pathCMS + '/OUT' #outpatient data folder
+    #pathDenom = pathCMS + '/Denom' #demographic and enrollment data folder
+    #pathSNF = pathCMS + '/SAF/SNF' #skilled nursing facilities
+    #pathHHA = pathCMS + '/SAF/HHA' #home health agency
+    #pathHOSP = pathCMS + '/SAF/HOSP' #hospice care
+    #pathCAR = pathCMS + '/SAF/CAR' #carrier 
+
+    paths = {"ip": pathCMS + '/INP',
+             "op": pathCMS + '/OUT',
+             "mbsf": pathCMS + 'Denom',
+             "snf": pathCMS + '/SAF/SNF',
+             "hha": pathCMS + '/SAF/HHA',
+             "hosp": pathCMS + '/SAF/HOSP',
+             "car": pathCMS + '/SAF/CAR'}
 
     #because there are several CMS files, put them in a dictionary
-    opBaseFilenames = {}
-    opRevenueFilenames = {}
-    ipBaseFilenames = {}
-    ipRevenueFilenames = {}
-    mbsfFilenames = {}
-    snfBaseFilenames = {}
-    snfRevenueFilenames = {}
-    hhaBaseFilenames = {}
-    hhaRevenueFilenames = {}
-    hospBaseFilenames = {}
-    hospRevenueFilenames = {}
-    carBaseFilenames = {}
-    carLineFilenames = {}
+    #opBaseFilenames = {}
+    #opRevenueFilenames = {}
+    #ipBaseFilenames = {}
+    #ipRevenueFilenames = {}
+    #mbsfFilenames = {}
+    #snfBaseFilenames = {}
+    #snfRevenueFilenames = {}
+    #hhaBaseFilenames = {}
+    #hhaRevenueFilenames = {}
+    #hospBaseFilenames = {}
+    #hospRevenueFilenames = {}
+    #carBaseFilenames = {}
+    #carLineFilenames = {}
 
+    # j format lists will be empty if yearInitial > yearJKTransition
+    # k format lists include max function in case yearInitial > yearJKTransitio 
+    filenames = {"opBase": [paths["op"]+f"/out_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] + 
+                           [paths["op"]+f"/out_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
+                 "opRevenue": [paths["op"]+f"/out_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                              [paths["op"]+f"/out_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],      
+                 "ipBase": [paths["ip"]+f"/inp_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                           [paths["ip"]+f"/inp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],           
+                 "ipRevenue": [paths["ip"]+f"/inp_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                              [paths["ip"]+f"/inp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
+                 "mbsf": [paths["mbsf"]+f"/mbsf_{year}.parquet" for year in range(yearInitial, yearFinal)], 
+                 "snfBase": [paths["snf"]+f"/snf_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                            [paths["snf"]+f"/snf_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
+                 "snfRevenue": [paths["snf"]+f"/snf_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                               [paths["snf"]+f"/snf_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
+                 "hhaBase": [paths["hha"]+f"/hha_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                            [paths["hha"]+f"/hha_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
+                 "hhaRevenue": [paths["hha"]+f"/hha_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                               [paths["hha"]+f"/hha_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
+                 "hospBase": [paths["hosp"]+f"/hosp_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                             [paths["hosp"]+f"/hosp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
+                 "hospRevenue": [paths["hosp"]+f"/hosp_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                               [paths["hosp"]+f"/hosp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
+                 "carBase": [paths["car"]+f"/car_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                            [paths["car"]+f"/car_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
+                 "carLine": [paths["car"]+f"/car_linej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
+                            [paths["car"]+f"/car_linek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)]}
+
+ 
     #all filenames will include their absolute paths
-    for iYear in range(yearInitial,yearFinal+1): #remember range does not include the last point
-        opBaseFilenames[f'{iYear}'] = pathOp + f"/out_claimsk_{iYear}.parquet"
-        opRevenueFilenames[f'{iYear}'] = pathOp + f"/out_revenuek_{iYear}.parquet"
-        ipBaseFilenames[f'{iYear}'] = pathIp + f"/inp_claimsk_{iYear}.parquet" 
-        ipRevenueFilenames[f'{iYear}'] = pathIp + f"/inp_revenuek_{iYear}.parquet"
-        mbsfFilenames[f'{iYear}'] = pathDenom + f"/mbsf_{iYear}.parquet"       
-        snfBaseFilenames[f'{iYear}'] = pathSNF + f"/snf_claimsk_{iYear}.parquet"      
-        snfRevenueFilenames[f'{iYear}'] = pathSNF + f"/snf_revenuek_{iYear}.parquet"
-        hhaBaseFilenames[f'{iYear}'] = pathHHA + f"/hha_claimsk_{iYear}.parquet"
-        hhaRevenueFilenames[f'{iYear}'] = pathHHA + f"/hha_revenuek_{iYear}.parquet"
-        hospBaseFilenames[f'{iYear}'] = pathHOSP + f"/hosp_claimsk_{iYear}.parquet"
-        hospRevenueFilenames[f'{iYear}'] = pathHOSP + f"/hosp_revenuek_{iYear}.parquet"
-        carBaseFilenames[f'{iYear}'] = pathCAR + f"/car_claimsk_{iYear}.parquet"
-        carLineFilenames[f'{iYear}'] = pathCAR + f"/car_linek_{iYear}.parquet"
+    #for iYear in range(yearInitial,yearFinal+1): #remember range does not include the last point
+    #    opBaseFilenames[f'{iYear}'] = pathOp + f"/out_claimsk_{iYear}.parquet"
+    #    opRevenueFilenames[f'{iYear}'] = pathOp + f"/out_revenuek_{iYear}.parquet"
+    #    ipBaseFilenames[f'{iYear}'] = pathIp + f"/inp_claimsk_{iYear}.parquet" 
+    #    ipRevenueFilenames[f'{iYear}'] = pathIp + f"/inp_revenuek_{iYear}.parquet"
+    #    mbsfFilenames[f'{iYear}'] = pathDenom + f"/mbsf_{iYear}.parquet"       
+    #    snfBaseFilenames[f'{iYear}'] = pathSNF + f"/snf_claimsk_{iYear}.parquet"      
+    #    snfRevenueFilenames[f'{iYear}'] = pathSNF + f"/snf_revenuek_{iYear}.parquet"
+    #    hhaBaseFilenames[f'{iYear}'] = pathHHA + f"/hha_claimsk_{iYear}.parquet"
+    #    hhaRevenueFilenames[f'{iYear}'] = pathHHA + f"/hha_revenuek_{iYear}.parquet"
+    #    hospBaseFilenames[f'{iYear}'] = pathHOSP + f"/hosp_claimsk_{iYear}.parquet"
+    #    hospRevenueFilenames[f'{iYear}'] = pathHOSP + f"/hosp_revenuek_{iYear}.parquet"
+    #    carBaseFilenames[f'{iYear}'] = pathCAR + f"/car_claimsk_{iYear}.parquet"
+    #    carLineFilenames[f'{iYear}'] = pathCAR + f"/car_linek_{iYear}.parquet"
 
-    return (mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames, snfBaseFilenames, snfRevenueFilenames,
-           hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames, carBaseFilenames, carLineFilenames)
+    return (filenames)
+
+    #return (mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames, snfBaseFilenames, snfRevenueFilenames,
+    #       hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames, carBaseFilenames, carLineFilenames)
 
 def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
              snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames,
