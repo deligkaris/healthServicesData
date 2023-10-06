@@ -3,11 +3,23 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import re
 
-#Notes from a RESDAC tutorial: https://youtu.be/dwWdZPnSNB4?si=5ChQr4fFMZ9yh_UE&t=2989
+#Notes from a RESDAC tutorial: https://youtu.be/dwWdZPnSNB4?si=5ChQr4fFMZ9yh_UE&t=2989 and from communication with RESDAC
+#
 #provider specialty codes may or may not align with board certification of the provider
 #there is no requirement to pick the most specific specialty (eg can choose IM for a gastroenterologist)
+#Unfortunately, there’s no gold standard for provider specialty as far as Medicare goes. 
+#Provider specialty codes are self-reported codes that the provider gives when applying to Medicare - we know these codes can and do change.
+#You could explore purchasing the AMA database - I believe that has provider specialty. Although I’m not certain the accuracy of that database.
+#The MAC provider specialty should match the NPPES data.
+#the provider specialty is self-reported when the physician applies for an NPI via NPPES. 
+#The NPPES database does allow for physicians to update their taxonomy, but I don’t believe it’s required 
+#and thus it’s not clear how often physicians do.
+#The PRVDR_SPCLTY variable is populated by the Medicare Administrative Contractor (MAC) based on the corresponding 
+#provider identification number (performing NPI or UPIN), which is pulled from NPPES.
+#
 #about 20% of carrier claims include at least one line item that CMS denied
 #denied codes can be found here: https://www.cms.gov/priorities/innovation/files/x/bundled-payments-for-care-improvement-carrier-file.pdf
+#
 #RESDAC recommends using both DSYSRTKY and CLAIMNO to identify unique claims, and since CLAIMNO resets every year I also need
 #the THRU_DT (RESDAC videos refer to the use of CMS RIF not the LDS ones)
 #this is why every window over each claim I make, I include "DSYSRTKY","CLAIMNO","THRU_DT"
