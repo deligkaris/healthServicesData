@@ -4,9 +4,13 @@ from cms.line import prep_lineDF
 from cms.SCHEMAS.mbsf_schema import mbsfSchema
 from cms.revenue import prep_revenueDF
 
-def get_filename_dicts(pathCMS, yearInitial, yearFinal):
+from functools import reduce
 
-    yearJKTransition = 2016 #year CMS switched from J to K format
+yearJKTransition = 2016 #year CMS switched from J to K format
+#inputs: path to the central CMS directory, yearInitial, yearFinal
+#outputs: full path filenames that need to be read by spark
+
+def get_filenames(pathCMS, yearI, yearF):
 
     #assume all data is organized with folders INP, OUT, Denom, SNF, HHA, HOSP within the CMS folder
     #pathIp = pathCMS +'/INP' #inpatient data folder
@@ -42,31 +46,31 @@ def get_filename_dicts(pathCMS, yearInitial, yearFinal):
 
     # j format lists will be empty if yearInitial > yearJKTransition
     # k format lists include max function in case yearInitial > yearJKTransitio 
-    filenames = {"opBase": [paths["op"]+f"/out_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] + 
-                           [paths["op"]+f"/out_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
-                 "opRevenue": [paths["op"]+f"/out_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                              [paths["op"]+f"/out_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],      
-                 "ipBase": [paths["ip"]+f"/inp_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                           [paths["ip"]+f"/inp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],           
-                 "ipRevenue": [paths["ip"]+f"/inp_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                              [paths["ip"]+f"/inp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
-                 "mbsf": [paths["mbsf"]+f"/mbsf_{year}.parquet" for year in range(yearInitial, yearFinal)], 
-                 "snfBase": [paths["snf"]+f"/snf_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                            [paths["snf"]+f"/snf_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
-                 "snfRevenue": [paths["snf"]+f"/snf_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                               [paths["snf"]+f"/snf_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
-                 "hhaBase": [paths["hha"]+f"/hha_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                            [paths["hha"]+f"/hha_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
-                 "hhaRevenue": [paths["hha"]+f"/hha_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                               [paths["hha"]+f"/hha_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
-                 "hospBase": [paths["hosp"]+f"/hosp_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                             [paths["hosp"]+f"/hosp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
-                 "hospRevenue": [paths["hosp"]+f"/hosp_revenuej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                               [paths["hosp"]+f"/hosp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
-                 "carBase": [paths["car"]+f"/car_claimsj_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                            [paths["car"]+f"/car_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)],
-                 "carLine": [paths["car"]+f"/car_linej_{year}.parquet" for year in range(yearInitial, yearJKTransition)] +
-                            [paths["car"]+f"/car_linek_{year}.parquet" for year in range(max(yearJKTransition,yearInitial), yearFinal+1)]}
+    filenames = {"opBase": [paths["op"]+f"/out_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] + 
+                           [paths["op"]+f"/out_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "opRevenue": [paths["op"]+f"/out_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                              [paths["op"]+f"/out_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],      
+                 "ipBase": [paths["ip"]+f"/inp_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                           [paths["ip"]+f"/inp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],           
+                 "ipRevenue": [paths["ip"]+f"/inp_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                              [paths["ip"]+f"/inp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "mbsf": [paths["mbsf"]+f"/mbsf_{year}.parquet" for year in range(yearI, yearF+1)], 
+                 "snfBase": [paths["snf"]+f"/snf_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                            [paths["snf"]+f"/snf_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "snfRevenue": [paths["snf"]+f"/snf_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                               [paths["snf"]+f"/snf_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "hhaBase": [paths["hha"]+f"/hha_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                            [paths["hha"]+f"/hha_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "hhaRevenue": [paths["hha"]+f"/hha_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                               [paths["hha"]+f"/hha_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "hospBase": [paths["hosp"]+f"/hosp_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                             [paths["hosp"]+f"/hosp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "hospRevenue": [paths["hosp"]+f"/hosp_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                               [paths["hosp"]+f"/hosp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "carBase": [paths["car"]+f"/car_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                            [paths["car"]+f"/car_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "carLine": [paths["car"]+f"/car_linej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                            [paths["car"]+f"/car_linek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)]}
 
  
     #all filenames will include their absolute paths
@@ -85,202 +89,245 @@ def get_filename_dicts(pathCMS, yearInitial, yearFinal):
     #    carBaseFilenames[f'{iYear}'] = pathCAR + f"/car_claimsk_{iYear}.parquet"
     #    carLineFilenames[f'{iYear}'] = pathCAR + f"/car_linek_{iYear}.parquet"
 
-    return (filenames)
+    return (filenames, yearI, yearF)
 
     #return (mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames, snfBaseFilenames, snfRevenueFilenames,
     #       hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames, carBaseFilenames, carLineFilenames)
 
-def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
-             snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames,
-             carBaseFilenames, carLineFilenames):
+#def read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
+#             snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames,
+#             carBaseFilenames, carLineFilenames):
+def read_data(spark, filenames, yearI, yearF):
+
+    #these columns are the ones that were added during the transition from the J format to the K format
+    #for now I assume that I do not need them
+    dropColumns = {"opBase": [],
+                   "opRevenue": [],
+                   "ipBase": [],
+                   "ipRevenue": [],
+                   "mbsf": [],
+                   "snfBase": [],
+                   "snfRevenue": [],
+                   "hospBase": [],
+                   "hospRevenue": [],
+                   "hhaBase": [],
+                   "hhaRevenue": [],
+                   "carBase": [],
+                   "carLine": []}
+
+    dataframes = dict()
+    for claimSubtype in list(filenames.keys()):
+        dataframes[claimSubtype] = map(lambda x: spark.read.parquet(x).drop(*dropColumns[claimSubtype]), filenames[claimSubtype])
+        dataframes[claimSubtype] = reduce(DataFrame.union, dataframes[claimSubtype])
 
     #assume the worst...that each type of file includes claims from different years
-    opBaseYears = sorted(list(opBaseFilenames.keys()))
-    opRevenueYears = sorted(list(opRevenueFilenames.keys()))
-    ipBaseYears = sorted(list(ipBaseFilenames.keys()))
-    ipRevenueYears = sorted(list(ipRevenueFilenames.keys()))
-    mbsfYears = sorted(list(mbsfFilenames.keys()))
-    snfBaseYears = sorted(list(snfBaseFilenames.keys()))
-    snfRevenueYears = sorted(list(snfRevenueFilenames.keys()))
-    hhaBaseYears = sorted(list(hhaBaseFilenames.keys()))
-    hhaRevenueYears = sorted(list(hhaRevenueFilenames.keys()))
-    hospBaseYears = sorted(list(hospBaseFilenames.keys()))
-    hospRevenueYears = sorted(list(hospRevenueFilenames.keys()))
-    carBaseYears = sorted(list(carBaseFilenames.keys()))
-    carLineYears = sorted(list(carLineFilenames.keys()))
+    #opBaseYears = sorted(list(opBaseFilenames.keys()))
+    #opRevenueYears = sorted(list(opRevenueFilenames.keys()))
+    #ipBaseYears = sorted(list(ipBaseFilenames.keys()))
+    #ipRevenueYears = sorted(list(ipRevenueFilenames.keys()))
+    #mbsfYears = sorted(list(mbsfFilenames.keys()))
+    #snfBaseYears = sorted(list(snfBaseFilenames.keys()))
+    #snfRevenueYears = sorted(list(snfRevenueFilenames.keys()))
+    #hhaBaseYears = sorted(list(hhaBaseFilenames.keys()))
+    #hhaRevenueYears = sorted(list(hhaRevenueFilenames.keys()))
+    #hospBaseYears = sorted(list(hospBaseFilenames.keys()))
+    #hospRevenueYears = sorted(list(hospRevenueFilenames.keys()))
+    #carBaseYears = sorted(list(carBaseFilenames.keys()))
+    #carLineYears = sorted(list(carLineFilenames.keys()))
 
     # PySpark defaults to reading and writing in the Parquet format
     # spark.read.parquet maps to spark.read.format('parquet').load()
     
     #one dictionary for each type of file
-    opBaseDict={}
-    opRevenueDict={}
-    ipBaseDict={}
-    ipRevenueDict={}
-    mbsfDict={}
-    snfBaseDict={}
-    snfRevenueDict={}
-    hhaBaseDict={}
-    hhaRevenueDict={}
-    hospBaseDict={}
-    hospRevenueDict={}
-    carBaseDict={}
-    carLineDict={}
+    #opBaseDict={}
+    #opRevenueDict={}
+    #ipBaseDict={}
+    #ipRevenueDict={}
+    #mbsfDict={}
+    #snfBaseDict={}
+    #snfRevenueDict={}
+    #hhaBaseDict={}
+    #hhaRevenueDict={}
+    #hospBaseDict={}
+    #hospRevenueDict={}
+    #carBaseDict={}
+    #carLineDict={}
 
     #read all data and put them in dictionary, 
     #parquet files have a built-in schema so I do not need to infer schema when reading parquet files
-    for iYear in opBaseYears:
-        opBaseDict[f'{iYear}'] = spark.read.parquet(opBaseFilenames[f'{iYear}'])
+    #for iYear in opBaseYears:
+    #    opBaseDict[f'{iYear}'] = spark.read.parquet(opBaseFilenames[f'{iYear}'])
 
-    for iYear in opRevenueYears:
-        opRevenueDict[f'{iYear}'] = spark.read.parquet(opRevenueFilenames[f'{iYear}'])
+    #for iYear in opRevenueYears:
+    #    opRevenueDict[f'{iYear}'] = spark.read.parquet(opRevenueFilenames[f'{iYear}'])
 
-    for iYear in ipBaseYears:
-        ipBaseDict[f'{iYear}'] = spark.read.parquet(ipBaseFilenames[f'{iYear}'])
+    #for iYear in ipBaseYears:
+    #    ipBaseDict[f'{iYear}'] = spark.read.parquet(ipBaseFilenames[f'{iYear}'])
 
-    for iYear in ipRevenueYears:
-        ipRevenueDict[f'{iYear}'] = spark.read.parquet(ipRevenueFilenames[f'{iYear}'])
+    #for iYear in ipRevenueYears:
+    #    ipRevenueDict[f'{iYear}'] = spark.read.parquet(ipRevenueFilenames[f'{iYear}'])
 
-    for iYear in mbsfYears:
+    #for iYear in mbsfYears:
         #ideally the schema will be enforced when the reading of the file takes place, run into issues doing that though
         #so for now the schema will be enforced during the dataframe prep functions
         #mbsfDict[f'{iYear}'] = spark.read.schema(mbsfSchema).parquet(mbsfFilenames[f'{iYear}'])
-        mbsfDict[f'{iYear}'] = spark.read.parquet(mbsfFilenames[f'{iYear}'])
+    #    mbsfDict[f'{iYear}'] = spark.read.parquet(mbsfFilenames[f'{iYear}'])
 
-    for iYear in snfBaseYears:
-        snfBaseDict[f'{iYear}'] = spark.read.parquet(snfBaseFilenames[f'{iYear}'])
+    #for iYear in snfBaseYears:
+    #    snfBaseDict[f'{iYear}'] = spark.read.parquet(snfBaseFilenames[f'{iYear}'])
 
-    for iYear in snfRevenueYears:
-        snfRevenueDict[f'{iYear}'] = spark.read.parquet(snfRevenueFilenames[f'{iYear}'])
+    #for iYear in snfRevenueYears:
+    #    snfRevenueDict[f'{iYear}'] = spark.read.parquet(snfRevenueFilenames[f'{iYear}'])
 
-    for iYear in hhaBaseYears:
-        hhaBaseDict[f'{iYear}'] = spark.read.parquet(hhaBaseFilenames[f'{iYear}'])
+    #for iYear in hhaBaseYears:
+    #    hhaBaseDict[f'{iYear}'] = spark.read.parquet(hhaBaseFilenames[f'{iYear}'])
 
-    for iYear in hhaRevenueYears:
-        hhaRevenueDict[f'{iYear}'] = spark.read.parquet(hhaRevenueFilenames[f'{iYear}'])
+    #for iYear in hhaRevenueYears:
+    #    hhaRevenueDict[f'{iYear}'] = spark.read.parquet(hhaRevenueFilenames[f'{iYear}'])
 
-    for iYear in hospBaseYears:
-        hospBaseDict[f'{iYear}'] = spark.read.parquet(hospBaseFilenames[f'{iYear}'])
+    #for iYear in hospBaseYears:
+    #    hospBaseDict[f'{iYear}'] = spark.read.parquet(hospBaseFilenames[f'{iYear}'])
 
-    for iYear in hospRevenueYears:
-        hospRevenueDict[f'{iYear}'] = spark.read.parquet(hospRevenueFilenames[f'{iYear}'])
+    #for iYear in hospRevenueYears:
+    #    hospRevenueDict[f'{iYear}'] = spark.read.parquet(hospRevenueFilenames[f'{iYear}'])
     
-    for iYear in carBaseYears:
-        carBaseDict[f'{iYear}'] = spark.read.parquet(carBaseFilenames[f'{iYear}'])
+    #for iYear in carBaseYears:
+    #    carBaseDict[f'{iYear}'] = spark.read.parquet(carBaseFilenames[f'{iYear}'])
 
-    for iYear in carLineYears:
-        carLineDict[f'{iYear}'] = spark.read.parquet(carLineFilenames[f'{iYear}'])
+    #for iYear in carLineYears:
+    #    carLineDict[f'{iYear}'] = spark.read.parquet(carLineFilenames[f'{iYear}'])
 
     # merge all previous years in one dataframe
-    opBase = opBaseDict[opBaseYears[0]] #initialize here
-    opRevenue = opRevenueDict[opRevenueYears[0]]
-    ipBase = ipBaseDict[ipBaseYears[0]]
-    ipRevenue = ipRevenueDict[ipRevenueYears[0]]
-    mbsf = mbsfDict[mbsfYears[0]]
-    snfBase = snfBaseDict[snfBaseYears[0]]
-    snfRevenue = snfRevenueDict[snfRevenueYears[0]]
-    hhaBase = hhaBaseDict[hhaBaseYears[0]]
-    hhaRevenue = hhaRevenueDict[hhaRevenueYears[0]]
-    hospBase = hospBaseDict[hospBaseYears[0]]
-    hospRevenue = hospRevenueDict[hospRevenueYears[0]]
-    carBase = carBaseDict[carBaseYears[0]]
-    carLine = carLineDict[carLineYears[0]]
+    #opBase = opBaseDict[opBaseYears[0]] #initialize here
+    #opRevenue = opRevenueDict[opRevenueYears[0]]
+    #ipBase = ipBaseDict[ipBaseYears[0]]
+    #ipRevenue = ipRevenueDict[ipRevenueYears[0]]
+    #mbsf = mbsfDict[mbsfYears[0]]
+    #snfBase = snfBaseDict[snfBaseYears[0]]
+    #snfRevenue = snfRevenueDict[snfRevenueYears[0]]
+    #hhaBase = hhaBaseDict[hhaBaseYears[0]]
+    #hhaRevenue = hhaRevenueDict[hhaRevenueYears[0]]
+    #hospBase = hospBaseDict[hospBaseYears[0]]
+    #hospRevenue = hospRevenueDict[hospRevenueYears[0]]
+    #carBase = carBaseDict[carBaseYears[0]]
+    #carLine = carLineDict[carLineYears[0]]
 
-    if (len(opBaseYears) > 1): 
-        for iYear in opBaseYears[1:]: 
-            opBase = opBase.union(opBaseDict[f'{iYear}']) #and then do union with the rest
+    #if (len(opBaseYears) > 1): 
+    #    for iYear in opBaseYears[1:]: 
+    #        opBase = opBase.union(opBaseDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(opRevenueYears) > 1):
-        for iYear in opRevenueYears[1:]: 
-            opRevenue = opRevenue.union(opRevenueDict[f'{iYear}']) #and then do union with the rest
+    #if (len(opRevenueYears) > 1):
+    #    for iYear in opRevenueYears[1:]: 
+    #        opRevenue = opRevenue.union(opRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(ipBaseYears) > 1):
-        for iYear in ipBaseYears[1:]: 
-            ipBase = ipBase.union(ipBaseDict[f'{iYear}']) #and then do union with the rest
+    #if (len(ipBaseYears) > 1):
+    #    for iYear in ipBaseYears[1:]: 
+    #        ipBase = ipBase.union(ipBaseDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(ipRevenueYears) > 1):
-       for iYear in ipRevenueYears[1:]:
-           ipRevenue = ipRevenue.union(ipRevenueDict[f'{iYear}']) #and then do union with the rest
+    #if (len(ipRevenueYears) > 1):
+    #   for iYear in ipRevenueYears[1:]:
+    #       ipRevenue = ipRevenue.union(ipRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(mbsfYears) > 1):
-       for iYear in mbsfYears[1:]:
-           mbsf = mbsf.union(mbsfDict[f'{iYear}']) #and then do union with the rest
+    #if (len(mbsfYears) > 1):
+    #   for iYear in mbsfYears[1:]:
+    #       mbsf = mbsf.union(mbsfDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(snfBaseYears) > 1):
-        for iYear in snfBaseYears[1:]:
-            snfBase = snfBase.union(snfBaseDict[f'{iYear}']) #and then do union with the rest
+    #if (len(snfBaseYears) > 1):
+    #    for iYear in snfBaseYears[1:]:
+    #        snfBase = snfBase.union(snfBaseDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(snfRevenueYears) > 1):
-       for iYear in snfRevenueYears[1:]:
-           snfRevenue = snfRevenue.union(snfRevenueDict[f'{iYear}']) #and then do union with the rest
+    #if (len(snfRevenueYears) > 1):
+    #   for iYear in snfRevenueYears[1:]:
+    #       snfRevenue = snfRevenue.union(snfRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(hhaBaseYears) > 1):
-        for iYear in hhaBaseYears[1:]:
-            hhaBase = hhaBase.union(hhaBaseDict[f'{iYear}']) #and then do union with the rest
+    #if (len(hhaBaseYears) > 1):
+    #    for iYear in hhaBaseYears[1:]:
+    #        hhaBase = hhaBase.union(hhaBaseDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(hhaRevenueYears) > 1):
-       for iYear in hhaRevenueYears[1:]:
-            hhaRevenue = hhaRevenue.union(hhaRevenueDict[f'{iYear}']) #and then do union with the rest
+    #if (len(hhaRevenueYears) > 1):
+    #   for iYear in hhaRevenueYears[1:]:
+    #        hhaRevenue = hhaRevenue.union(hhaRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(hospBaseYears) > 1):
-       for iYear in hospBaseYears[1:]:
-           hospBase = hospBase.union(hospBaseDict[f'{iYear}']) #and then do union with the rest
+    #if (len(hospBaseYears) > 1):
+    #   for iYear in hospBaseYears[1:]:
+    #       hospBase = hospBase.union(hospBaseDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(hospRevenueYears) > 1):
-       for iYear in hospRevenueYears[1:]:
-           hospRevenue = hospRevenue.union(hospRevenueDict[f'{iYear}']) #and then do union with the rest
+    #if (len(hospRevenueYears) > 1):
+    #   for iYear in hospRevenueYears[1:]:
+    #       hospRevenue = hospRevenue.union(hospRevenueDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(carBaseYears) > 1):
-       for iYear in carBaseYears[1:]:
-           carBase = carBase.union(carBaseDict[f'{iYear}']) #and then do union with the rest
+    #if (len(carBaseYears) > 1):
+    #   for iYear in carBaseYears[1:]:
+    #       carBase = carBase.union(carBaseDict[f'{iYear}']) #and then do union with the rest
 
-    if (len(carLineYears) > 1):
-       for iYear in carLineYears[1:]:
-           carLine = carLine.union(carLineDict[f'{iYear}']) #and then do union with the rest
+    #if (len(carLineYears) > 1):
+    #   for iYear in carLineYears[1:]:
+    #       carLine = carLine.union(carLineDict[f'{iYear}']) #and then do union with the rest
 
-    return(mbsf, opBase, opRevenue, ipBase, ipRevenue, 
-           snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, 
-           carBase, carLine)
+    return dataframes
+    #return(mbsf, opBase, opRevenue, ipBase, ipRevenue, 
+    #       snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, 
+    #       carBase, carLine)
 
-def get_data(pathCMS, yearInitial, yearFinal, spark):
+def get_data(pathCMS, yearI, yearF, spark):
 
-    (mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
-    snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, 
-    hospBaseFilenames, hospRevenueFilenames,
-    carBaseFilenames, carLineFilenames) = get_filename_dicts(pathCMS, yearInitial, yearFinal)
+    #(mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
+    #snfBaseFilenames, snfRevenueFilenames, hhaBaseFilenames, hhaRevenueFilenames, 
+    #hospBaseFilenames, hospRevenueFilenames,
+    #carBaseFilenames, carLineFilenames) = get_filename_dicts(pathCMS, yearInitial, yearFinal)
+    filenames = get_filenames(pathCMS, yearI, yearF)
 
-    (mbsf, opBase, opRevenue, ipBase, ipRevenue, 
-    snfBase, snfRevenue, 
-    hhaBase, hhaRevenue, 
-    hospBase, hospRevenue,
-    carBase, carLine) = read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
-                                                     snfBaseFilenames, snfRevenueFilenames, 
-                                                     hhaBaseFilenames, hhaRevenueFilenames, 
-                                                     hospBaseFilenames, hospRevenueFilenames,
-                                                     carBaseFilenames, carLineFilenames) 
+    dataframes = read_data(spark, filenames)
 
-    (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue,
-    carBase, carLine) = prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue,
-                                    hospBase, hospRevenue, carBase, carLine) 
+    dataframes = prep_dfs(dataframes)
 
-    return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue,
-            carBase, carLine)
+    return dataframes
 
-def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carLine):
+    #(mbsf, opBase, opRevenue, ipBase, ipRevenue, 
+    #snfBase, snfRevenue, 
+    #hhaBase, hhaRevenue, 
+    #hospBase, hospRevenue,
+    #carBase, carLine) = read_data(spark, mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames,
+    #                                                 snfBaseFilenames, snfRevenueFilenames, 
+    #                                                 hhaBaseFilenames, hhaRevenueFilenames, 
+    #                                                 hospBaseFilenames, hospRevenueFilenames,
+    #                                                 carBaseFilenames, carLineFilenames) 
 
-    ipBase = prep_baseDF(ipBase,claim="inpatient")
-    opBase = prep_baseDF(opBase,claim="outpatient")
-    mbsf = prep_mbsfDF(mbsf, ipBase, opBase)
-    snfBase = prep_baseDF(snfBase,claim="snf")
-    hospBase = prep_baseDF(hospBase,claim="hosp")
-    hhaBase = prep_baseDF(hhaBase,claim="hha")
+    #(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue,
+    #carBase, carLine) = prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue,
+    #                                hospBase, hospRevenue, carBase, carLine) 
 
-    ipRevenue = prep_revenueDF(ipRevenue,claim="inpatient")
-    opRevenue = prep_revenueDF(opRevenue,claim="outpatient")
+    #return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue,hhaBase, hhaRevenue, hospBase, hospRevenue,
+    #        carBase, carLine)
 
-    carBase = prep_baseDF(carBase, claim="car")
-    carLine = prep_lineDF(carLine, claim="car")
+#def prep_dfs(mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carLine):
+def prep_dfs(dataframes):
 
-    return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carLine) 
+    #claimSubtype eg opBase, opRevenue, ipBase....claimType eg op, ip, car....
+    for claimSubtype in list(dataframes.keys()):
+        claimType = re.match(r'^[a-z]+', claimSubtype).group()
+        if (re.match(r'Base$', claimSubtype): 
+            dataframes[claimSubtype] = prep_baseDF(dataframes[claimSubtype], claim=claimType)
+        elif (re.match(r'Revenue$', claimSubtype):
+            dataframes[claimSubtype] = prep_revenueDF(dataframes[claimSubtype], claim=claimType)  
+        elif (re.match(r'Line$', claimSubtype):
+            dataframes[claimSubtype] = prep_lineDF(dataframes[claimSubtype], claim=claimType)
+
+    return dataframes
+
+    #ipBase = prep_baseDF(ipBase,claim="inpatient")
+    #opBase = prep_baseDF(opBase,claim="outpatient")
+    #mbsf = prep_mbsfDF(mbsf, ipBase, opBase)
+    #snfBase = prep_baseDF(snfBase,claim="snf")
+    #hospBase = prep_baseDF(hospBase,claim="hosp")
+    #hhaBase = prep_baseDF(hhaBase,claim="hha")
+
+    #ipRevenue = prep_revenueDF(ipRevenue,claim="inpatient")
+    #opRevenue = prep_revenueDF(opRevenue,claim="outpatient")
+
+    #carBase = prep_baseDF(carBase, claim="car")
+    #carLine = prep_lineDF(carLine, claim="car")
+
+    #return (mbsf, opBase, opRevenue, ipBase, ipRevenue, snfBase, snfRevenue, hhaBase, hhaRevenue, hospBase, hospRevenue, carBase, carLine) 
 
 

@@ -24,11 +24,11 @@ from cms.SCHEMAS.car_schema import carBaseSchema, carBaseLongToShortXW
 #a page with LDS, RIF differences: https://resdac.org/articles/differences-between-rif-lds-and-puf-data-files
 #they do not include the claimno reset in LDS though.....
 
-def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset must be interpreted as integers (and not as floats)
+def cast_columns_as_int(baseDF, claim="op"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
-    if (claim=="outpatient"):
+    if (claim=="op"):
        columns = ["THRU_DT", "DSYSRTKY"]
-    elif (claim=="inpatient"):
+    elif (claim=="ip"):
        columns = ["THRU_DT", "DSCHRGDT", "ADMSN_DT", "DSYSRTKY"]
     # SNF: DSCHRG DT is either NULL (quite frequently) or the same as THRU_DT, so for SNF claims use the THRU_DT when you need DSCHRG_DT
     elif ( (claim=="snf") | (claim=="hha") ):
@@ -41,9 +41,9 @@ def cast_columns_as_int(baseDF, claim="outpatient"): #date fields in the dataset
 
     return baseDF
 
-def cast_columns_as_string(baseDF, claim="outpatient"):
+def cast_columns_as_string(baseDF, claim="op"):
 
-    if ((claim=="outpatient") | (claim=="inpatient")):
+    if ((claim=="op") | (claim=="ip")):
         baseDF = (baseDF.withColumn("PRSTATE", F.lpad(F.col("PRSTATE").cast("string"),2,'0'))
                         .withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast("string"),2,'0'))
                         .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast("string"),3,'0')))
@@ -57,7 +57,7 @@ def cast_columns_as_string(baseDF, claim="outpatient"):
         
     return baseDF
 
-def add_admission_date_info(baseDF, claim="outpatient"):
+def add_admission_date_info(baseDF, claim="op"):
 
     #leapYears=[2016,2020,2024,2028]
    
@@ -97,7 +97,7 @@ def add_admission_date_info(baseDF, claim="outpatient"):
 
     return baseDF
 
-def add_through_date_info(baseDF, claim="outpatient"):
+def add_through_date_info(baseDF, claim="op"):
 
     #unfortunately, SNF claims have a different column name for claim through date
     #if ( (claim=="hha") | (claim=="hosp") ):
@@ -132,7 +132,7 @@ def add_through_date_info(baseDF, claim="outpatient"):
 
     return baseDF
 
-def add_discharge_date_info(baseDF, claim="outpatient"):
+def add_discharge_date_info(baseDF, claim="op"):
 
     #unfortunately, SNF claims have a different column name for discharge date
     if (claim=="snf"):         
@@ -1393,7 +1393,7 @@ def add_teachingHospital(baseDF, aamcHospitalsDF, acgmeProgramsDF):
 
     return baseDF
   
-def prep_baseDF(baseDF, claim="inpatient"):
+def prep_baseDF(baseDF, claim="ip"):
 
     #add some date-related info
     #baseDF = cast_columns_as_int(baseDF,claim=claim)
@@ -1402,7 +1402,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
     baseDF = add_through_date_info(baseDF,claim=claim)
     #baseDF = cast_columns_as_string(baseDF,claim=claim)
 
-    if (claim=="inpatient"):
+    if (claim=="ip"):
         baseDF = add_discharge_date_info(baseDF,claim=claim)
         baseDF = add_admission_date_info(baseDF,claim=claim)
         #add SSA county of beneficiaries
@@ -1413,7 +1413,7 @@ def prep_baseDF(baseDF, claim="inpatient"):
         baseDF = add_admission_date_info(baseDF,claim=claim)
         #without a repartition, the dataframe is extremely skewed...
         #baseDF = baseDF.repartition(128, "DESY_SORT_KEY")
-    elif ( claim=="outpatient" ):
+    elif ( claim=="op" ):
         #add SSA county of beneficiaries
         baseDF = add_ssaCounty(baseDF)
         #without a repartition, the dataframe is extremely skewed...
@@ -1560,15 +1560,15 @@ def filter_beneficiaries(baseDF, mbsfDF):
 
     return baseDF
 
-def enforce_schema(baseDF, claim="inpatient"):
+def enforce_schema(baseDF, claim="ip"):
 
     #some columns are read as double or int but they are strings and include leading zeros, so fix this
     baseDF = cast_columns_as_string(baseDF,claim=claim)
 
     #now enforce the schema set for base df
-    if claim=="inpatient":
+    if claim=="ip":
         baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in ipBaseSchema.fields])
-    elif claim=="outpatient":
+    elif claim=="op":
         baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in opBaseSchema.fields])
     elif claim=="snf":
         baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
