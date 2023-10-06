@@ -331,7 +331,11 @@ def get_line_summary(lineDF):
     #include a few other columns so that I can link the summary to the base 
     lineSummaryDF = lineDF.select("DSYSRTKY", "CLAIMNO", "THRU_DT", lineDF.colRegex("`^[a-zA-Z]+(InClaim)$`")).distinct()
 
-    return lineSummaryDF
+    #the summary will be joined to base, so the InClaim is no longer needed
+    namesWithoutInClaim = [re.sub("InClaim","",x) for x in lineSummaryDF.columns]
 
+    lineSummaryDF = lineSummaryDF.toDF(*namesWithoutInClaim)
+
+    return lineSummaryDF
 
 
