@@ -4,6 +4,7 @@ from cms.line import prep_lineDF
 from cms.SCHEMAS.mbsf_schema import mbsfSchema
 from cms.revenue import prep_revenueDF
 
+import re
 from functools import reduce
 
 yearJKTransition = 2016 #year CMS switched from J to K format
