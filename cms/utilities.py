@@ -118,7 +118,7 @@ def read_data(spark, filenames, yearI, yearF):
     dataframes = dict()
     for claimSubtype in list(filenames.keys()):
         dataframes[claimSubtype] = map(lambda x: spark.read.parquet(x).drop(*dropColumns[claimSubtype]), filenames[claimSubtype])
-        dataframes[claimSubtype] = reduce(DataFrame.union, dataframes[claimSubtype])
+        dataframes[claimSubtype] = reduce(lambda x,y: x.union(y), dataframes[claimSubtype])
 
     #assume the worst...that each type of file includes claims from different years
     #opBaseYears = sorted(list(opBaseFilenames.keys()))
