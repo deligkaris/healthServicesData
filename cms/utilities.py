@@ -306,11 +306,11 @@ def prep_dfs(dataframes):
     #claimSubtype eg opBase, opRevenue, ipBase....claimType eg op, ip, car....
     for claimSubtype in list(dataframes.keys()):
         claimType = re.match(r'^[a-z]+', claimSubtype).group()
-        if (re.match(r'Base$', claimSubtype): 
+        if (re.match(r'Base$', claimSubtype)): 
             dataframes[claimSubtype] = prep_baseDF(dataframes[claimSubtype], claim=claimType)
-        elif (re.match(r'Revenue$', claimSubtype):
+        elif (re.match(r'Revenue$', claimSubtype)):
             dataframes[claimSubtype] = prep_revenueDF(dataframes[claimSubtype], claim=claimType)  
-        elif (re.match(r'Line$', claimSubtype):
+        elif (re.match(r'Line$', claimSubtype)):
             dataframes[claimSubtype] = prep_lineDF(dataframes[claimSubtype], claim=claimType)
 
     return dataframes
