@@ -277,7 +277,7 @@ def get_data(pathCMS, yearI, yearF, spark):
     #carBaseFilenames, carLineFilenames) = get_filename_dicts(pathCMS, yearInitial, yearFinal)
     filenames = get_filenames(pathCMS, yearI, yearF)
 
-    dataframes = read_data(spark, filenames)
+    dataframes = read_data(spark, filenames, yearI, yearF)
 
     dataframes = prep_dfs(dataframes)
 
