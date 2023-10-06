@@ -23,7 +23,7 @@ def get_filenames(pathCMS, yearI, yearF):
 
     paths = {"ip": pathCMS + '/INP',
              "op": pathCMS + '/OUT',
-             "mbsf": pathCMS + 'Denom',
+             "mbsf": pathCMS + '/Denom',
              "snf": pathCMS + '/SAF/SNF',
              "hha": pathCMS + '/SAF/HHA',
              "hosp": pathCMS + '/SAF/HOSP',
