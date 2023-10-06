@@ -1,6 +1,7 @@
 from cms.SCHEMAS.car_schema import carLineSchema, carLineLongToShortXW
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
+import re
 
 #Notes from a RESDAC tutorial: https://youtu.be/dwWdZPnSNB4?si=5ChQr4fFMZ9yh_UE&t=2989
 #provider specialty codes may or may not align with board certification of the provider
