@@ -89,7 +89,7 @@ def get_filenames(pathCMS, yearI, yearF):
     #    carBaseFilenames[f'{iYear}'] = pathCAR + f"/car_claimsk_{iYear}.parquet"
     #    carLineFilenames[f'{iYear}'] = pathCAR + f"/car_linek_{iYear}.parquet"
 
-    return (filenames, yearI, yearF)
+    return filenames
 
     #return (mbsfFilenames, opBaseFilenames, opRevenueFilenames, ipBaseFilenames, ipRevenueFilenames, snfBaseFilenames, snfRevenueFilenames,
     #       hhaBaseFilenames, hhaRevenueFilenames, hospBaseFilenames, hospRevenueFilenames, carBaseFilenames, carLineFilenames)
