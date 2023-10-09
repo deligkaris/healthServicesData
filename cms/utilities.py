@@ -97,7 +97,7 @@ def read_data(spark, filenames, yearI, yearF):
 def read_dataframe(filename, claimTypePart):
 
     claimType = re.match(r'^[a-z]+', claimTypePart).group()
-    claimPart = re.match(r'[A-Z][a-z]*'), claimTypePart).group()
+    claimPart = re.match(r'[A-Z][a-z]*', claimTypePart).group()
     df = spark.read.parquet(filename)
     aliasFlag = True if ("DESY_SORT_KEY" in df.columns) else False
     if claimPart == "Base":
