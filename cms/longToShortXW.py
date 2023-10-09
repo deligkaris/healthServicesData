@@ -131,7 +131,7 @@ longToShortXW["carLine"] = {'DESY_SORT_KEY':"DSYSRTKY",
  'CLM_NEXT_GNRTN_ACO_IND_CD5':"CLM_NEXT_GNRTN_ACO_IND_CD5"}
 
 
-longToShort["hhaBase"] = {'DESY_SORT_KEY': "DSYSRTKY",
+longToShortXW["hhaBase"] = {'DESY_SORT_KEY': "DSYSRTKY",
  'CLAIM_NO': "CLAIMNO",
  'PRVDR_NUM': "PROVIDER",
  'CLM_THRU_DT': "THRU_DT",
@@ -225,7 +225,7 @@ longToShort["hhaBase"] = {'DESY_SORT_KEY': "DSYSRTKY",
  'ACO_ID_NUM': 'ACO_ID_NUM'}
 
 
-longToShort["hospBase"] = {'DESY_SORT_KEY': "DSYSRTKY",
+longToShortXW["hospBase"] = {'DESY_SORT_KEY': "DSYSRTKY",
  'CLAIM_NO': "CLAIMNO",
  'PRVDR_NUM': "PROVIDER",
  'CLM_THRU_DT': "THRU_DT",
