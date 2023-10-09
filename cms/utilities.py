@@ -7,7 +7,7 @@ from cms.SCHEMAS.op_schema import opBaseSchema, opRevenueSchema
 from cms.SCHEMAS.snf_schema import snfBaseSchema,  snfBaseLongToShortXW
 from cms.SCHEMAS.hha_schema import hhaBaseSchema,  hhaBaseLongToShortXW
 from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
-from cms.SCHEMAS.car_schema import carBaseSchema, carLineSchema, carBaseLongToShortXW
+from cms.SCHEMAS.car_schema import carBaseSchema, carLineSchema, carBaseLongToShortXW, carLineLongToShortXW
 from cms.revenue import prep_revenueDF
 from cms.schemas import schemas
 from cms.longToShortXW import longToShortXW
