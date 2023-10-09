@@ -99,7 +99,7 @@ def read_data(spark, filenames, yearI, yearF):
 def read_dataframe(filename, claimTypePart, spark):
 
     claimType = re.match(r'^[a-z]+', claimTypePart).group()
-    claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2)
+    claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2) if (claimType!="mbsf") else None
     df = spark.read.parquet(filename)
     aliasFlag = True if ("DESY_SORT_KEY" in df.columns) else False
     if claimPart == "Base":
@@ -108,6 +108,8 @@ def read_dataframe(filename, claimTypePart, spark):
         df = enforce_schema_on_revenue(df, claimType=claimType, aliasFlag=aliasFlag)
     elif claimPart == "Line":
         df = enforce_schema_on_line(df, claimType=claimType, aliasFlag=aliasFlag)
+    else: 
+        pass
 
     return df
 
