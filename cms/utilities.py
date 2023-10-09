@@ -101,11 +101,11 @@ def read_dataframe(filename, claimTypePart, spark):
     df = spark.read.parquet(filename)
     aliasFlag = True if ("DESY_SORT_KEY" in df.columns) else False
     if claimPart == "Base":
-        df = enforce_schema_on_base(df, claim=claimType, aliasFlag=aliasFlag)
+        df = enforce_schema_on_base(df, claimType=claimType, aliasFlag=aliasFlag)
     elif claimPart == "Revenue":
-        df = enforce_schema_on_revenue(df, claim=claimType, aliasFlag=aliasFlag)
+        df = enforce_schema_on_revenue(df, claimType=claimType, aliasFlag=aliasFlag)
     elif claimPart == "Line":
-        df = enforce_schema_on_line(df, claim=claimType, aliasFlag=aliasFlag)
+        df = enforce_schema_on_line(df, claimType=claimType, aliasFlag=aliasFlag)
 
     return df
 
