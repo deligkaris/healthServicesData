@@ -9,6 +9,8 @@ from cms.SCHEMAS.hha_schema import hhaBaseSchema, hhaBaseLongToShortXW
 from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
 from cms.SCHEMAS.car_schema import carBaseSchema, carBaseLongToShortXW
 from cms.revenue import prep_revenueDF
+from cms.schemas import schemas
+from cms.longToShortXW import longToShortXW
 
 import re
 from functools import reduce
@@ -113,11 +115,12 @@ def enforce_schema_on_base(baseDF, claimType, aliasFlag):
 
     #some columns are read as double or int but they are strings and include leading zeros, so fix this
     #baseDF = cast_columns_as_string(baseDF,claim=claim)
-    exec(f"schema = {claimType}BaseSchema")
-    schema
+    #exec(f"schema = {claimType}BaseSchema")
+    schema = schemas[f"{claimType}Base"]
 
     if (aliasFlag):
-        exec(f"xw = {claimType}BaseLongToShortXW")
+        #exec(f"xw = {claimType}BaseLongToShortXW")
+        xw = longToShortXW[f"{claimType}Base"]
         baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(xw[field.name]) for field in schema.fields])
     else:
         baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in schema.fields])
