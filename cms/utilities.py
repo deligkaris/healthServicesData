@@ -2,6 +2,12 @@ from .mbsf import prep_mbsfDF
 from cms.base import prep_baseDF
 from cms.line import prep_lineDF
 from cms.SCHEMAS.mbsf_schema import mbsfSchema
+from cms.SCHEMAS.ip_schema import ipBaseSchema
+from cms.SCHEMAS.op_schema import opBaseSchema
+from cms.SCHEMAS.snf_schema import snfBaseSchema, snfBaseLongToShortXW
+from cms.SCHEMAS.hha_schema import hhaBaseSchema, hhaBaseLongToShortXW
+from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
+from cms.SCHEMAS.car_schema import carBaseSchema, carBaseLongToShortXW
 from cms.revenue import prep_revenueDF
 
 import re
@@ -11,7 +17,6 @@ yearJKTransition = 2016 #year CMS switched from J to K format
 
 #inputs: path to the central CMS directory, yearInitial, yearFinal
 #outputs: full path filenames that need to be read by spark
-
 def get_filenames(pathCMS, yearI, yearF):
 
     paths = {"ip": pathCMS + '/INP',
@@ -55,7 +60,6 @@ def get_filenames(pathCMS, yearI, yearF):
 def read_data(spark, filenames, yearI, yearF):
 
     #these columns are the ones that were added during the transition from the J format to the K format
-    #for now I am going to try without dropping them (leave this empty)
     dropColumns = {"opBase": [],
                    "opRevenue": [],
                    "ipBase": [],
@@ -67,29 +71,96 @@ def read_data(spark, filenames, yearI, yearF):
                    "hospRevenue": [],
                    "hhaBase": [],
                    "hhaRevenue": [],
-                   "carBase": [],
-                   "carLine": []}
+                   "carBase": ['CLM_BENE_PD_AMT', 'CPO_PRVDR_NUM', 'CPO_ORG_NPI_NUM', 'CARR_CLM_BLG_NPI_NUM', 'ACO_ID_NUM'],
+                   "carLine": ['CARR_LINE_CL_CHRG_AMT', 'LINE_OTHR_APLD_IND_CD1', 'LINE_OTHR_APLD_IND_CD2', 'LINE_OTHR_APLD_IND_CD3', 
+                               'LINE_OTHR_APLD_IND_CD4', 'LINE_OTHR_APLD_IND_CD5', 'LINE_OTHR_APLD_IND_CD6', 'LINE_OTHR_APLD_IND_CD7',
+                               'LINE_OTHR_APLD_AMT1', 'LINE_OTHR_APLD_AMT2', 'LINE_OTHR_APLD_AMT3', 'LINE_OTHR_APLD_AMT4',
+                               'LINE_OTHR_APLD_AMT5', 'LINE_OTHR_APLD_AMT6', 'LINE_OTHR_APLD_AMT7', 'THRPY_CAP_IND_CD1',
+                               'THRPY_CAP_IND_CD2', 'THRPY_CAP_IND_CD3', 'THRPY_CAP_IND_CD4', 'THRPY_CAP_IND_CD5', 'CLM_NEXT_GNRTN_ACO_IND_CD1',
+                               'CLM_NEXT_GNRTN_ACO_IND_CD2', 'CLM_NEXT_GNRTN_ACO_IND_CD3', 'CLM_NEXT_GNRTN_ACO_IND_CD4', 'CLM_NEXT_GNRTN_ACO_IND_CD5']}
 
+    #claimType refers to ip, op, snf, etc...claimPart refers to base, revenue, line...claimTypePart includes both of these, opBase, carLine, etc
     dataframes = dict()
-    for claimSubtype in list(filenames.keys()):
-        #the drop function could be used to drop the difference between formats J and K, if that is needed
-        dataframes[claimSubtype] = map(lambda x: spark.read.parquet(x).drop(*dropColumns[claimSubtype]), filenames[claimSubtype])
+    for claimTypePart in list(filenames.keys()):
+        #the drop function could be used to drop the difference between formats J and K, otherwise the union cannot take place
+        #an alternative to the drop, would be to keep all columns, enforce the same schema on the dfs and then do 
+        #unionByName with allowMissingColumns=True to fill in with nulls
+        #dataframes[claimTypePart] = map(lambda x: spark.read.parquet(x).drop(*dropColumns[claimSubtype]), filenames[claimTypePart])
+        dataframes[claimTypePart] = map(lambda x: read_dataframe(x,claimTypePart), filenames[claimTypePart])
 
         #using reduce might utilize more memory than necessary since it is creating a dataframe with every single union
-        #could find a way to do all unions and then at the end return the result
-        dataframes[claimSubtype] = reduce(lambda x,y: x.union(y), dataframes[claimSubtype])
+        #could find a way to do all unions (eg make the string with all unions and then eval) and then at the end return the result
+        dataframes[claimTypePart] = reduce(lambda x,y: x.union(y), dataframes[claimTypePart])
 
     return dataframes
 
-def get_data(pathCMS, yearI, yearF, spark):
+def read_dataframe(filename, claimTypePart):
 
-    filenames = get_filenames(pathCMS, yearI, yearF)
+    claimType = re.match(r'^[a-z]+', claimTypePart).group()
+    claimPart = re.match(r'[A-Z][a-z]*'), claimTypePart).group()
+    df = spark.read.parquet(filename)
+    aliasFlag = True if ("DESY_SORT_KEY" in df.columns) else False
+    if claimPart == "Base":
+        df = enforce_schema_on_base(df, claim=claimType, aliasFlag=aliasFlag)
+    elif claimPart == "Revenue":
+        df = enforce_schema_on_revenue(df, claim=claimType, aliasFlag=aliasFlag)
+    elif claimPart == "Line":
+        df = enforce_schema_on_line(df, claim=claimType, aliasFlag=aliasFlag)
 
-    dataframes = read_data(spark, filenames, yearI, yearF)
+    return df
 
-    dataframes = prep_dfs(dataframes)
+def enforce_schema_on_base(baseDF, claimType, aliasFlag):
 
-    return dataframes
+    #some columns are read as double or int but they are strings and include leading zeros, so fix this
+    #baseDF = cast_columns_as_string(baseDF,claim=claim)
+    eval(f"schema = {claimType}BaseSchema")
+    eval(f"xw = {claimType}BaseLongToShortXW")
+
+    if (aliasFlag):
+        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(xw[field.name]) for field in schema.fields])
+    else:
+        baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in schema.fields])
+
+    #now enforce the schema set for base df
+    #if claimType=="ip":
+    #    baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in ipBaseSchema.fields])
+    #elif claimType=="op":
+    #    baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in opBaseSchema.fields])
+    #elif claimType=="snf":
+    #    baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
+    #elif claimType=="hha":
+    #    baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hhaBaseLongToShortXW[field.name]) for field in hhaBaseSchema.fields])
+    #elif claimType=="hosp":
+    #    baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hospBaseLongToShortXW[field.name]) for field in hospBaseSchema.fields])
+    #elif claimType=="car":
+    #    baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(carBaseLongToShortXW[field.name]) for field in carBaseSchema.fields])
+
+    return baseDF
+
+def enforce_schema_on_revenue(revenueDF, claimType, aliasFlag):
+
+    if claimType=="ip":
+        if (aliasFlag):
+            revenueDF = revenueDF.select([(F.col(field.name).cast(field.dataType)).alias(ipRevenueLongToShortXW[field.name]) for field in ipRevenueSchema.fields])
+        else:
+            revenueDF = revenueDF.select([revenueDF[field.name].cast(field.dataType) for field in ipRevenueSchema.fields])
+    elif claimType=="op":
+        if (aliasFlag):
+            revenueDF = revenueDF.select([(F.col(field.name).cast(field.dataType)).alias(opRevenueLongToShortXW[field.name]) for field in opRevenueSchema.fields])
+        else:
+            revenueDF = revenueDF.select([revenueDF[field.name].cast(field.dataType) for field in opRevenueSchema.fields])
+
+    return revenueDF
+
+def enforce_schema_on_line(lineDF, claimType, aliasFlag):
+
+    if (claimType=="car"):
+        if (aliasFlag):   
+            lineDF = lineDF.select([ (F.col(field.name).cast(field.dataType)).alias(carLineLongToShortXW[field.name]) for field in carLineSchema.fields])
+        else:
+            lineDF = lineDF.select([ (F.col(field.name).cast(field.dataType)) for field in carLineSchema.fields])
+
+    return lineDF
 
 def prep_dfs(dataframes):
 
@@ -105,5 +176,11 @@ def prep_dfs(dataframes):
 
     return dataframes
 
+def get_data(pathCMS, yearI, yearF, spark):
 
+    filenames = get_filenames(pathCMS, yearI, yearF)
+    dataframes = read_data(spark, filenames, yearI, yearF)
+    #dataframes = prep_dfs(dataframes)
+
+    return dataframes
 

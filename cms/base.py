@@ -2,12 +2,12 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip
-from cms.SCHEMAS.ip_schema import ipBaseSchema
-from cms.SCHEMAS.op_schema import opBaseSchema
-from cms.SCHEMAS.snf_schema import snfBaseSchema, snfBaseLongToShortXW
-from cms.SCHEMAS.hha_schema import hhaBaseSchema, hhaBaseLongToShortXW
-from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
-from cms.SCHEMAS.car_schema import carBaseSchema, carBaseLongToShortXW
+#from cms.SCHEMAS.ip_schema import ipBaseSchema
+#from cms.SCHEMAS.op_schema import opBaseSchema
+#from cms.SCHEMAS.snf_schema import snfBaseSchema, snfBaseLongToShortXW
+#from cms.SCHEMAS.hha_schema import hhaBaseSchema, hhaBaseLongToShortXW
+#from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
+#from cms.SCHEMAS.car_schema import carBaseSchema, carBaseLongToShortXW
 
 #CMS DUA email on my question about LDS claim numbers:
 #"The Claim ID is set by a sequence. A Part A (Institutional) and a Part B (Professional) Claim could have the same ID. 
@@ -1398,7 +1398,7 @@ def prep_baseDF(baseDF, claim="ip"):
     #add some date-related info
     #baseDF = cast_columns_as_int(baseDF,claim=claim)
     baseDF = clean_base(baseDF, claim=claim)
-    baseDF = enforce_schema(baseDF, claim=claim)
+    #baseDF = enforce_schema(baseDF, claim=claim)
     baseDF = add_through_date_info(baseDF,claim=claim)
     #baseDF = cast_columns_as_string(baseDF,claim=claim)
 
@@ -1560,26 +1560,26 @@ def filter_beneficiaries(baseDF, mbsfDF):
 
     return baseDF
 
-def enforce_schema(baseDF, claim="ip"):
+#def enforce_schema(baseDF, claim="ip"):
 
     #some columns are read as double or int but they are strings and include leading zeros, so fix this
-    baseDF = cast_columns_as_string(baseDF,claim=claim)
+#    baseDF = cast_columns_as_string(baseDF,claim=claim)
 
     #now enforce the schema set for base df
-    if claim=="ip":
-        baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in ipBaseSchema.fields])
-    elif claim=="op":
-        baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in opBaseSchema.fields])
-    elif claim=="snf":
-        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
-    elif claim=="hha":
-        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hhaBaseLongToShortXW[field.name]) for field in hhaBaseSchema.fields])
-    elif claim=="hosp":
-        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hospBaseLongToShortXW[field.name]) for field in hospBaseSchema.fields])
-    elif claim=="car":
-        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(carBaseLongToShortXW[field.name]) for field in carBaseSchema.fields])
+#    if claim=="ip":
+#        baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in ipBaseSchema.fields])
+#    elif claim=="op":
+#        baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in opBaseSchema.fields])
+#    elif claim=="snf":
+#        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
+#    elif claim=="hha":
+#        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hhaBaseLongToShortXW[field.name]) for field in hhaBaseSchema.fields])
+#    elif claim=="hosp":
+#        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hospBaseLongToShortXW[field.name]) for field in hospBaseSchema.fields])
+#    elif claim=="car":
+#        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(carBaseLongToShortXW[field.name]) for field in carBaseSchema.fields])
 
-    return baseDF
+#    return baseDF
 
 def add_cAppalachiaResident(baseDF):  
 

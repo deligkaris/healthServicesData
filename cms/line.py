@@ -1,4 +1,4 @@
-from cms.SCHEMAS.car_schema import carLineSchema, carLineLongToShortXW
+#from cms.SCHEMAS.car_schema import carLineSchema, carLineLongToShortXW
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import re
@@ -27,7 +27,7 @@ import re
 def prep_lineDF(lineDF, claim="car"):
 
     lineDF = clean_line(lineDF, claim=claim)
-    lineDF = enforce_schema(lineDF, claim=claim)
+    #lineDF = enforce_schema(lineDF, claim=claim)
     lineDF = add_level1HCPCS_CD(lineDF)
     lineDF = add_allowed(lineDF)
 
@@ -42,12 +42,12 @@ def clean_line(lineDF, claim="car"):
 
     return lineDF
 
-def enforce_schema(lineDF, claim="car"):
+#def enforce_schema(lineDF, claim="car"):
 
-    if claim=="car":
-        lineDF = lineDF.select([ (F.col(field.name).cast(field.dataType)).alias(carLineLongToShortXW[field.name]) for field in carLineSchema.fields])
+#    if claim=="car":
+#        lineDF = lineDF.select([ (F.col(field.name).cast(field.dataType)).alias(carLineLongToShortXW[field.name]) for field in carLineSchema.fields])
 
-    return lineDF
+#    return lineDF
 
 def add_level1HCPCS_CD(lineDF):
 
