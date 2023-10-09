@@ -108,14 +108,7 @@ def read_dataframe(filename, claimTypePart, spark):
     aliasFlag = True if ("DESY_SORT_KEY" in df.columns) else False
     #enforce the schema and the column names now before doing the unions
     df = enforce_schema(df, claimType=claimType, claimPart=claimPart, aliasFlag=aliasFlag)
-    #if claimPart == "Base":
-    #    df = enforce_schema_on_base(df, claimType=claimType, aliasFlag=aliasFlag)
-    #elif claimPart == "Revenue":
-    #    df = enforce_schema_on_revenue(df, claimType=claimType, aliasFlag=aliasFlag)
-    #elif claimPart == "Line":
-    #    df = enforce_schema_on_line(df, claimType=claimType, aliasFlag=aliasFlag)
-    #else: 
-    #    pass
+
     return df
 
 def enforce_schema(df, claimType, claimPart, aliasFlag):
