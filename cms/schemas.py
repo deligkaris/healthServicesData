@@ -698,6 +698,30 @@ schemas["snfBase"] = StructType([
     StructField('CLM_NEXT_GNRTN_ACO_IND_CD5', IntegerType(), True), 
     StructField('ACO_ID_NUM', IntegerType(), True)])
 
+schemas["snfRevenue"] = StructType([
+    StructField('DSYSRTKY', IntegerType(), True), 
+    StructField('CLAIMNO', IntegerType(), True), 
+    StructField('CLM_LN', IntegerType(), True), 
+    StructField('THRU_DT', IntegerType(), True), 
+    StructField('CLM_TYPE', IntegerType(), True), 
+    StructField('REV_CNTR', IntegerType(), True),  
+    StructField('HCPCS_CD', StringType(), True), 
+    StructField('MDFR_CD1', StringType(), True), 
+    StructField('MDFR_CD2', StringType(), True), 
+    StructField('MDFR_CD3', StringType(), True), 
+    StructField('REV_UNIT', IntegerType(), True), 
+    StructField('REV_RATE', DoubleType(), True), 
+    StructField('REV_CHRG', DoubleType(), True), 
+    StructField('REV_NCVR', DoubleType(), True), 
+    StructField('REVDEDCD', StringType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_UPIN', StringType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_NPI', StringType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_SPCLTY_CD', StringType(), True), 
+    StructField('IDENDC', LongType(), True), 
+    StructField('REV_CNTR_PRCNG_IND_CD', StringType(), True), 
+    StructField('THRPY_CAP_IND_CD1', StringType(), True), 
+    StructField('THRPY_CAP_IND_CD2', StringType(), True)])
+
 schemas["hhaBase"] = StructType([
     StructField('DESY_SORT_KEY', IntegerType(), True), 
     StructField('CLAIM_NO', IntegerType(), True), 
@@ -792,6 +816,38 @@ schemas["hhaBase"] = StructType([
     StructField('CLM_NEXT_GNRTN_ACO_IND_CD5', IntegerType(), True), 
     StructField('ACO_ID_NUM', StringType(), True)])
 
+schemas["hhaRevenue"] = StructType([
+    StructField('DSYSRTKY', IntegerType(), True), 
+    StructField('CLAIMNO', IntegerType(), True), 
+    StructField('CLM_LN', IntegerType(), True), 
+    StructField('THRU_DT', IntegerType(), True), 
+    StructField('CLM_TYPE', IntegerType(), True), 
+    StructField('REV_CNTR', IntegerType(), True), 
+    StructField('REV_DT', IntegerType(), True), 
+    StructField('APCHIPPS', StringType(), True), 
+    StructField('HCPCS_CD', StringType(), True), 
+    StructField('MDFR_CD1', StringType(), True), 
+    StructField('MDFR_CD2', StringType(), True), 
+    StructField('MDFR_CD3', StringType(), True), 
+    StructField('PMTMTHD', IntegerType(), True), 
+    StructField('REV_UNIT', IntegerType(), True), 
+    StructField('REV_RATE', DoubleType(), True), 
+    StructField('REVPMT', DoubleType(), True), 
+    StructField('REV_CHRG', DoubleType(), True), 
+    StructField('REV_NCVR', DoubleType(), True), 
+    StructField('REVDEDCD', StringType(), True), 
+    StructField('REVSTIND', StringType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_UPIN', StringType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_NPI', IntegerType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_SPCLTY_CD', IntegerType(), True), 
+    StructField('DSCNTIND', IntegerType(), True), 
+    StructField('IDENDC', LongType(), True), 
+    StructField('RPRVDPMT', DoubleType(), True), 
+    StructField('PTNTRESP', DoubleType(), True), 
+    StructField('REV_CNTR_PRCNG_IND_CD', StringType(), True), 
+    StructField('THRPY_CAP_IND_CD1', StringType(), True), 
+    StructField('THRPY_CAP_IND_CD2', StringType(), True)])
+
 schemas["hospBase"] = StructType([
     StructField('DESY_SORT_KEY', IntegerType(), True), 
     StructField('CLAIM_NO', IntegerType(), True), 
@@ -883,6 +939,35 @@ schemas["hospBase"] = StructType([
     StructField('CLM_NEXT_GNRTN_ACO_IND_CD4', IntegerType(), True), 
     StructField('CLM_NEXT_GNRTN_ACO_IND_CD5', IntegerType(), True), 
     StructField('ACO_ID_NUM', IntegerType(), True)])
+
+schemas["hospRevenue"] = StructType([
+    StructField('DSYSRTKY', IntegerType(), True), 
+    StructField('CLAIMNO', IntegerType(), True), 
+    StructField('CLM_LN', IntegerType(), True), 
+    StructField('THRU_DT', IntegerType(), True), 
+    StructField('CLM_TYPE', IntegerType(), True), 
+    StructField('REV_CNTR', IntegerType(), True), 
+    StructField('REV_DT', IntegerType(), True), 
+    StructField('HCPCS_CD', StringType(), True), 
+    StructField('MDFR_CD1', StringType(), True), 
+    StructField('MDFR_CD2', StringType(), True), 
+    StructField('MDFR_CD3', StringType(), True), 
+    StructField('REV_UNIT', IntegerType(), True), 
+    StructField('REV_RATE', DoubleType(), True), 
+    StructField('RPRVDPMT', DoubleType(), True), 
+    StructField('RBENEPMT', DoubleType(), True), 
+    StructField('REVPMT', DoubleType(), True), 
+    StructField('REV_CHRG', DoubleType(), True), 
+    StructField('REV_NCVR', DoubleType(), True), 
+    StructField('REVDEDCD', StringType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_UPIN', StringType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_NPI', LongType(), True), 
+    StructField('REV_CNTR_RNDRNG_PHYSN_SPCLTY_CD', IntegerType(), True), 
+    StructField('IDENDC', StringType(), True), 
+    StructField('REVSTIND', StringType(), True), 
+    StructField('REV_CNTR_PRCNG_IND_CD', StringType(), True), 
+    StructField('THRPY_CAP_IND_CD1', StringType(), True), 
+    StructField('THRPY_CAP_IND_CD2', StringType(), True)])
 
 schemas["carBase"] = StructType([
     StructField('DESY_SORT_KEY', IntegerType(), True), 
