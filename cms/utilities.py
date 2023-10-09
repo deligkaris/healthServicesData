@@ -99,19 +99,37 @@ def read_data(spark, filenames, yearI, yearF):
 
 def read_dataframe(filename, claimTypePart, spark):
 
+    #claimType refers to ip, op, snf, etc
     claimType = re.match(r'^[a-z]+', claimTypePart).group()
+    #claimPart refers to base, revenue, line (does not apply to mbsf claimTypes)
     claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2) if (claimType!="mbsf") else None
     df = spark.read.parquet(filename)
+    #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long SAS column names
     aliasFlag = True if ("DESY_SORT_KEY" in df.columns) else False
-    if claimPart == "Base":
-        df = enforce_schema_on_base(df, claimType=claimType, aliasFlag=aliasFlag)
-    elif claimPart == "Revenue":
-        df = enforce_schema_on_revenue(df, claimType=claimType, aliasFlag=aliasFlag)
-    elif claimPart == "Line":
-        df = enforce_schema_on_line(df, claimType=claimType, aliasFlag=aliasFlag)
-    else: 
-        pass
+    #enforce the schema and the column names now before doing the unions
+    df = enforce_schema(df, claimType=claimType, claimPart=claimPart, aliasFlag=aliasFlag)
+    #if claimPart == "Base":
+    #    df = enforce_schema_on_base(df, claimType=claimType, aliasFlag=aliasFlag)
+    #elif claimPart == "Revenue":
+    #    df = enforce_schema_on_revenue(df, claimType=claimType, aliasFlag=aliasFlag)
+    #elif claimPart == "Line":
+    #    df = enforce_schema_on_line(df, claimType=claimType, aliasFlag=aliasFlag)
+    #else: 
+    #    pass
+    return df
 
+def enforce_schema(df, claimType, claimPart, aliasFlag):
+
+    #get the right schema
+    schema = schemas[f"{claimType}{claimPart}"] if (claimType!="mbsf") else schemas["mbsf"]
+    if (aliasFlag):
+        #get the right xw
+        xw = longToShortXW[f"{claimType}{claimPart}"] if (claimType!="mbsf") else longToShortXW["mbsf"]
+        #cast right schema and rename
+        df = df.select([(F.col(field.name).cast(field.dataType)).alias(xw[field.name]) for field in schema.fields])
+    else:
+        #cast right schema
+        df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])
     return df
 
 def enforce_schema_on_base(baseDF, claimType, aliasFlag):
