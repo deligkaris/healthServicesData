@@ -114,6 +114,7 @@ def enforce_schema_on_base(baseDF, claimType, aliasFlag):
     #some columns are read as double or int but they are strings and include leading zeros, so fix this
     #baseDF = cast_columns_as_string(baseDF,claim=claim)
     exec(f"schema = {claimType}BaseSchema")
+    schema
 
     if (aliasFlag):
         exec(f"xw = {claimType}BaseLongToShortXW")
