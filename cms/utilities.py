@@ -2,8 +2,8 @@ from .mbsf import prep_mbsfDF
 from cms.base import prep_baseDF
 from cms.line import prep_lineDF
 from cms.SCHEMAS.mbsf_schema import mbsfSchema
-from cms.SCHEMAS.ip_schema import ipBaseSchema
-from cms.SCHEMAS.op_schema import opBaseSchema
+from cms.SCHEMAS.ip_schema import ipBaseSchema, ipRevenueSchema
+from cms.SCHEMAS.op_schema import opBaseSchema, opRevenueSchema
 from cms.SCHEMAS.snf_schema import snfBaseSchema, snfBaseLongToShortXW
 from cms.SCHEMAS.hha_schema import hhaBaseSchema, hhaBaseLongToShortXW
 from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
