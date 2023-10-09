@@ -12,6 +12,7 @@ from cms.revenue import prep_revenueDF
 from cms.schemas import schemas
 from cms.longToShortXW import longToShortXW
 
+import pyspark.sql.functions as F
 import re
 from functools import reduce
 
