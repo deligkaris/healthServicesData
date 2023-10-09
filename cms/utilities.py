@@ -86,7 +86,7 @@ def read_data(spark, filenames, yearI, yearF):
         #an alternative to the drop, would be to keep all columns, enforce the same schema on the dfs and then do 
         #unionByName with allowMissingColumns=True to fill in with nulls
         #dataframes[claimTypePart] = map(lambda x: spark.read.parquet(x).drop(*dropColumns[claimSubtype]), filenames[claimTypePart])
-        dataframes[claimTypePart] = map(lambda x: read_dataframe(x,claimTypePart), filenames[claimTypePart])
+        dataframes[claimTypePart] = map(lambda x: read_dataframe(x,claimTypePart, spark), filenames[claimTypePart])
 
         #using reduce might utilize more memory than necessary since it is creating a dataframe with every single union
         #could find a way to do all unions (eg make the string with all unions and then eval) and then at the end return the result
@@ -94,7 +94,7 @@ def read_data(spark, filenames, yearI, yearF):
 
     return dataframes
 
-def read_dataframe(filename, claimTypePart):
+def read_dataframe(filename, claimTypePart, spark):
 
     claimType = re.match(r'^[a-z]+', claimTypePart).group()
     claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2)
