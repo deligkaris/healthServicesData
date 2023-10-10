@@ -548,7 +548,7 @@ schemas["snfBase"] = StructType([
     StructField('FI_NUM', IntegerType(), True), 
     StructField('NOPAY_CD', StringType(), True), 
     StructField('PMT_AMT', StringType(), True), 
-    StructField('PRPAYAM', DoubleType(), True), 
+    StructField('PRPAYAMT', DoubleType(), True), 
     StructField('PRPAY_CD', StringType(), True), 
     StructField('ACTIONCD', IntegerType(), True), 
     StructField('PRSTATE', StringType(), True), 
