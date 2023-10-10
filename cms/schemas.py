@@ -1047,7 +1047,7 @@ schemas["carLine"] = StructType([
     StructField('TYPSRVCB', StringType(), True), 
     StructField('PLCSRVC', StringType(), True), 
     StructField('LCLTY_CD', IntegerType(), True), 
-    StructField('EXPNSD2T', IntegerType(), True), 
+    StructField('EXPNSDT2', IntegerType(), True), 
     StructField('HCPCS_CD', StringType(), True), 
     StructField('MDFR_CD1', StringType(), True), 
     StructField('MDFR_CD2', StringType(), True),
