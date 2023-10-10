@@ -535,7 +535,7 @@ schemas["ipRevenue"]=StructType([
     StructField('THRPY_CAP_IND_CD2', StringType(), True)])
 
 schemas["snfBase"] = StructType([
-    StructField('DSYSRTK', IntegerType(), True), 
+    StructField('DSYSRTKY', IntegerType(), True), 
     StructField('CLAIMNO', IntegerType(), True), 
     StructField('PROVIDER', StringType(), True), 
     StructField('THRU_DT', IntegerType(), True), 
