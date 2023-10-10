@@ -87,7 +87,7 @@ def read_data(spark, filenames, yearI, yearF):
 
         #using reduce might utilize more memory than necessary since it is creating a dataframe with every single union
         #could find a way to do all unions (eg make the string with all unions and then eval) and then at the end return the result
-        dataframes[claimTypePart] = reduce(lambda x,y: x.union(y), dataframes[claimTypePart])
+        dataframes[claimTypePart] = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=True), dataframes[claimTypePart])
 
     return dataframes
 
@@ -110,6 +110,7 @@ def enforce_short_names(df, claimType, claimPart):
 
     #get the right xw
     xw = longToShortXW[f"{claimType}{claimPart}"] if (claimType!="mbsf") else longToShortXW["mbsf"]
+    print(claimType, claimPart)
     #rename
     df = df.select( [(F.col(c).alias(xw[c])) for c in df.columns] )
     return df 
