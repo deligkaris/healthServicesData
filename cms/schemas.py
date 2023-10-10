@@ -930,7 +930,7 @@ schemas["hospBase"] = StructType([
     StructField('STATE_CD', StringType(), True), 
     StructField('CWF_BENE_MDCR_STUS_CD', IntegerType(), True), 
     StructField('QUERY_CD', IntegerType(), True), 
-    StructField('ACTION_CD', IntegerType(), True), 
+    StructField('ACTIONCD', IntegerType(), True), 
     StructField('CLM_TRTMT_AUTHRZTN_NUM', IntegerType(), True), 
     StructField('CLM_PRCR_RTRN_CD', IntegerType(), True),
     StructField('CLM_NEXT_GNRTN_ACO_IND_CD1', IntegerType(), True), 
