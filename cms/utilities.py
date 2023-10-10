@@ -56,33 +56,12 @@ def get_filenames(pathCMS, yearI, yearF):
 
 def read_data(spark, filenames, yearI, yearF):
 
-    #these columns are the ones that were added during the transition from the J format to the K format
-    dropColumns = {"opBase": [],
-                   "opRevenue": [],
-                   "ipBase": [],
-                   "ipRevenue": [],
-                   "mbsf": [],
-                   "snfBase": [],
-                   "snfRevenue": [],
-                   "hospBase": [],
-                   "hospRevenue": [],
-                   "hhaBase": [],
-                   "hhaRevenue": [],
-                   "carBase": ['CLM_BENE_PD_AMT', 'CPO_PRVDR_NUM', 'CPO_ORG_NPI_NUM', 'CARR_CLM_BLG_NPI_NUM', 'ACO_ID_NUM'],
-                   "carLine": ['CARR_LINE_CL_CHRG_AMT', 'LINE_OTHR_APLD_IND_CD1', 'LINE_OTHR_APLD_IND_CD2', 'LINE_OTHR_APLD_IND_CD3', 
-                               'LINE_OTHR_APLD_IND_CD4', 'LINE_OTHR_APLD_IND_CD5', 'LINE_OTHR_APLD_IND_CD6', 'LINE_OTHR_APLD_IND_CD7',
-                               'LINE_OTHR_APLD_AMT1', 'LINE_OTHR_APLD_AMT2', 'LINE_OTHR_APLD_AMT3', 'LINE_OTHR_APLD_AMT4',
-                               'LINE_OTHR_APLD_AMT5', 'LINE_OTHR_APLD_AMT6', 'LINE_OTHR_APLD_AMT7', 'THRPY_CAP_IND_CD1',
-                               'THRPY_CAP_IND_CD2', 'THRPY_CAP_IND_CD3', 'THRPY_CAP_IND_CD4', 'THRPY_CAP_IND_CD5', 'CLM_NEXT_GNRTN_ACO_IND_CD1',
-                               'CLM_NEXT_GNRTN_ACO_IND_CD2', 'CLM_NEXT_GNRTN_ACO_IND_CD3', 'CLM_NEXT_GNRTN_ACO_IND_CD4', 'CLM_NEXT_GNRTN_ACO_IND_CD5']}
-
-    #claimType refers to ip, op, snf, etc...claimPart refers to base, revenue, line...claimTypePart includes both of these, opBase, carLine, etc
+    #claimType refers to ip, op, snf, etc...claimPart refers to Base, Revenue, Line...claimTypePart includes both of these, opBase, carLine, etc
     dataframes = dict()
     for claimTypePart in list(filenames.keys()):
-        #the drop function could be used to drop the difference between formats J and K, otherwise the union cannot take place
-        #an alternative to the drop, would be to keep all columns, enforce the same schema on the dfs and then do 
-        #unionByName with allowMissingColumns=True to fill in with nulls
-        #dataframes[claimTypePart] = map(lambda x: spark.read.parquet(x).drop(*dropColumns[claimSubtype]), filenames[claimTypePart])
+
+        #idea is to enforce the same schema on the dfs (so same column names for the same type of data) 
+        #and then do unionByName with allowMissingColumns=True to fill in with nulls
         dataframes[claimTypePart] = map(lambda x: read_dataframe(x,claimTypePart, spark), filenames[claimTypePart])
 
         #using reduce might utilize more memory than necessary since it is creating a dataframe with every single union
@@ -108,18 +87,17 @@ def read_dataframe(filename, claimTypePart, spark):
 
 def enforce_short_names(df, claimType, claimPart):
 
-    #get the right xw
+    #get the right xw, the xws are a superset of all column names from both versions J and K
     xw = longToShortXW[f"{claimType}{claimPart}"] if (claimType!="mbsf") else longToShortXW["mbsf"]
-    print(claimType, claimPart)
     #rename
     df = df.select( [(F.col(c).alias(xw[c])) for c in df.columns] )
     return df 
 
 def enforce_schema(df, claimType, claimPart):
 
-    #get the right schema for version K
+    #get the schema, this schema is a superset of the schemas for versions J and K 
     schema = schemas[f"{claimType}{claimPart}"] if (claimType!="mbsf") else schemas["mbsf"]
-    #I assume that the version J schema is a subset of the version K schema, so adjust the schema for version J
+    #the schema for this df is a subset of the one I just loaded, so adjust it
     schema = StructType( [field for field in schema.fields if field.name in df.columns] )
     #cast right schema
     df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])

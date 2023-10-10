@@ -1,5 +1,11 @@
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType, DoubleType
 
+#note 1: these schemas are designed to be a superset of schemas of the different CMS file versions J and K
+#the code selects the parts of the schemas that are relevant to each dataframe
+#so if there is a new version, say L, simply append these dictionaries
+#note 2: I created a schema for each type and part of claim, it is possible that a single schema for all claims and parts
+#would work as well (with a smaller possibility for discrepancies between claim types)
+
 schemas = dict()
 
 schemas["mbsf"] = StructType(

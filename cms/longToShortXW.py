@@ -1,4 +1,11 @@
 
+#note 1: these dictionaries are designed to be supersets of all columns from versions J and K
+#if CMS creates a new version, say L, simply append these dictionaries
+#note 2: a single dictionary was created for each claim type and part 
+#if the assumption that CMS uses the same short name for the same long name across claim types is true
+#then a single dictionary that includes all of these keys would work too
+#but I do not know if this assumption is true and if it is, it is unclear if it will continue to be true
+
 longToShortXW = dict()
 
 longToShortXW["carBase"] = {'DESY_SORT_KEY': "DSYSRTKY",
