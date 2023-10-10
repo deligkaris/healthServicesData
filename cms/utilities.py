@@ -120,7 +120,7 @@ def enforce_short_names(df, claimType, claimPart):
     df = df.select( [(F.col(c).alias(xw[c])) for c in df.columns] )
     return df 
 
-def enforce_schema(df, claimType, claimPart, aliasFlag):
+def enforce_schema(df, claimType, claimPart):
 
     #get the right schema
     schema = schemas[f"{claimType}{claimPart}"] if (claimType!="mbsf") else schemas["mbsf"]
