@@ -1,18 +1,12 @@
 from .mbsf import prep_mbsfDF
 from cms.base import prep_baseDF
 from cms.line import prep_lineDF
-from cms.SCHEMAS.mbsf_schema import mbsfSchema
-from cms.SCHEMAS.ip_schema import ipBaseSchema, ipRevenueSchema
-from cms.SCHEMAS.op_schema import opBaseSchema, opRevenueSchema
-from cms.SCHEMAS.snf_schema import snfBaseSchema,  snfBaseLongToShortXW
-from cms.SCHEMAS.hha_schema import hhaBaseSchema,  hhaBaseLongToShortXW
-from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
-from cms.SCHEMAS.car_schema import carBaseSchema, carLineSchema, carBaseLongToShortXW, carLineLongToShortXW
 from cms.revenue import prep_revenueDF
 from cms.schemas import schemas
 from cms.longToShortXW import longToShortXW
 
 import pyspark.sql.functions as F
+from pyspark.sql.types import StructType
 import re
 from functools import reduce
 
@@ -101,13 +95,13 @@ def read_dataframe(filename, claimTypePart, spark):
 
     #claimType refers to ip, op, snf, etc
     claimType = re.match(r'^[a-z]+', claimTypePart).group()
-    #claimPart refers to base, revenue, line (does not apply to mbsf claimTypes)
+    #claimPart refers to Base, Revenue, Line (does not apply to mbsf claimTypes)
     claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2) if (claimType!="mbsf") else None
     df = spark.read.parquet(filename)
-    #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long SAS column names
+    #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long column names
     if ("DESY_SORT_KEY" in df.columns):
         df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
-    #enforce the schema and the column names now before doing the unions
+    #enforce the schema now before doing the unions
     df = enforce_schema(df, claimType=claimType, claimPart=claimPart)
 
     return df
@@ -122,75 +116,14 @@ def enforce_short_names(df, claimType, claimPart):
 
 def enforce_schema(df, claimType, claimPart):
 
-    #get the right schema
+    #get the right schema for version K
     schema = schemas[f"{claimType}{claimPart}"] if (claimType!="mbsf") else schemas["mbsf"]
+    #I assume that the version J schema is a subset of the version K schema, so adjust the schema for version J
+    schema = StructType( [field for field in schema.fields if field.name in df.columns] )
     #cast right schema
     df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])
 
-    #if (aliasFlag):
-    #    #get the right xw
-    #    xw = longToShortXW[f"{claimType}{claimPart}"] if (claimType!="mbsf") else longToShortXW["mbsf"]
-    #    #cast right schema and rename
-    #    df = df.select([(F.col(field.name).cast(field.dataType)).alias(xw[field.name]) for field in schema.fields])
-    #else:
-    #    #cast right schema
-    #    df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])
     return df
-
-def enforce_schema_on_base(baseDF, claimType, aliasFlag):
-
-    #some columns are read as double or int but they are strings and include leading zeros, so fix this
-    #baseDF = cast_columns_as_string(baseDF,claim=claim)
-    #exec(f"schema = {claimType}BaseSchema")
-    schema = schemas[f"{claimType}Base"]
-
-    if (aliasFlag):
-        #exec(f"xw = {claimType}BaseLongToShortXW")
-        xw = longToShortXW[f"{claimType}Base"]
-        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(xw[field.name]) for field in schema.fields])
-    else:
-        baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in schema.fields])
-
-    #now enforce the schema set for base df
-    #if claimType=="ip":
-    #    baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in ipBaseSchema.fields])
-    #elif claimType=="op":
-    #    baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in opBaseSchema.fields])
-    #elif claimType=="snf":
-    #    baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
-    #elif claimType=="hha":
-    #    baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hhaBaseLongToShortXW[field.name]) for field in hhaBaseSchema.fields])
-    #elif claimType=="hosp":
-    #    baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hospBaseLongToShortXW[field.name]) for field in hospBaseSchema.fields])
-    #elif claimType=="car":
-    #    baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(carBaseLongToShortXW[field.name]) for field in carBaseSchema.fields])
-
-    return baseDF
-
-def enforce_schema_on_revenue(revenueDF, claimType, aliasFlag):
-
-    if claimType=="ip":
-        if (aliasFlag):
-            revenueDF = revenueDF.select([(F.col(field.name).cast(field.dataType)).alias(ipRevenueLongToShortXW[field.name]) for field in ipRevenueSchema.fields])
-        else:
-            revenueDF = revenueDF.select([revenueDF[field.name].cast(field.dataType) for field in ipRevenueSchema.fields])
-    elif claimType=="op":
-        if (aliasFlag):
-            revenueDF = revenueDF.select([(F.col(field.name).cast(field.dataType)).alias(opRevenueLongToShortXW[field.name]) for field in opRevenueSchema.fields])
-        else:
-            revenueDF = revenueDF.select([revenueDF[field.name].cast(field.dataType) for field in opRevenueSchema.fields])
-
-    return revenueDF
-
-def enforce_schema_on_line(lineDF, claimType, aliasFlag):
-
-    if (claimType=="car"):
-        if (aliasFlag):   
-            lineDF = lineDF.select([ (F.col(field.name).cast(field.dataType)).alias(carLineLongToShortXW[field.name]) for field in carLineSchema.fields])
-        else:
-            lineDF = lineDF.select([ (F.col(field.name).cast(field.dataType)) for field in carLineSchema.fields])
-
-    return lineDF
 
 def prep_dfs(dataframes):
 
