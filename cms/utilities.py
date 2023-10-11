@@ -81,12 +81,12 @@ def read_and_prep_dataframe(filename, claimTypePart, spark):
     claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2) if (claimType!="mbsf") else None
     df = spark.read.parquet(filename)
     #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long column names
-    if ("DESY_SORT_KEY" in df.columns):
-        df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
+    #if ("DESY_SORT_KEY" in df.columns):
+    #    df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
     #enforce the schema now, dataframes need to have the same schema before doing the unions
     #in some dataframes the first row is a copy of the header, enforce_schema has made the "DSYSRTKY" string of that first row a null value
     #so I need to remove that row, assumes that the DSYSRTKY col is cast to an int in schema.py
-    df = enforce_schema(df, claimType=claimType, claimPart=claimPart).filter(~(F.col("DSYSRTKY").isNull()))
+    #df = enforce_schema(df, claimType=claimType, claimPart=claimPart).filter(~(F.col("DSYSRTKY").isNull()))
     
     return df
 
