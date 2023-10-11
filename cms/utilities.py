@@ -13,7 +13,7 @@ from functools import reduce
 yearJKTransition = 2016 #year CMS switched from J to K format
 
 #inputs: path to the central CMS directory, yearInitial, yearFinal
-#outputs: full path filenames that need to be read by spark
+#outputs: full path filenames that will be read by spark, a dictionary
 def get_filenames(pathCMS, yearI, yearF):
 
     paths = {"ip": pathCMS + '/INP',
@@ -25,7 +25,7 @@ def get_filenames(pathCMS, yearI, yearF):
              "car": pathCMS + '/SAF/CAR'}
 
     # j format lists will be empty if yearInitial > yearJKTransition
-    # k format lists include max function in case yearInitial > yearJKTransitio 
+    # k format lists include max function in case yearInitial > yearJKTransition 
     filenames = {"opBase": [paths["op"]+f"/out_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] + 
                            [paths["op"]+f"/out_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
                  "opRevenue": [paths["op"]+f"/out_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
@@ -54,15 +54,17 @@ def get_filenames(pathCMS, yearI, yearF):
 
     return filenames
 
+#inputs: spark instance, filenames dictionary, initial year, final year
+#outputs: dataframes dictionary, each value is a spark dataframe that holds rows from yearI to yearF
 def read_data(spark, filenames, yearI, yearF):
 
-    #claimType refers to ip, op, snf, etc...claimPart refers to Base, Revenue, Line...claimTypePart includes both of these, opBase, carLine, etc
     dataframes = dict()
+    #claimType refers to ip, op, snf, etc...claimPart refers to Base, Revenue, Line...claimTypePart includes both of these, opBase, carLine, etc
     for claimTypePart in list(filenames.keys()):
 
         #idea is to enforce the same schema on the dfs (so same column names for the same type of data) 
         #and then do unionByName with allowMissingColumns=True to fill in with nulls
-        dataframes[claimTypePart] = map(lambda x: read_dataframe(x,claimTypePart, spark), filenames[claimTypePart])
+        dataframes[claimTypePart] = map(lambda x: read_and_prep_dataframe(x,claimTypePart, spark), filenames[claimTypePart])
 
         #using reduce might utilize more memory than necessary since it is creating a dataframe with every single union
         #could find a way to do all unions (eg make the string with all unions and then eval) and then at the end return the result
@@ -70,21 +72,24 @@ def read_data(spark, filenames, yearI, yearF):
 
     return dataframes
 
-def read_dataframe(filename, claimTypePart, spark):
+#inputs: single filename of specific claim type and part (eg opBase), and spark instance
+#outputs: single dataframe with consistent schema and the short column names
+def read_and_prep_dataframe(filename, claimTypePart, spark):
 
-    #claimType refers to ip, op, snf, etc
-    claimType = re.match(r'^[a-z]+', claimTypePart).group()
+    claimType = re.match(r'^[a-z]+', claimTypePart).group() #claimType refers to ip, op, snf, etc
     #claimPart refers to Base, Revenue, Line (does not apply to mbsf claimTypes)
     claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2) if (claimType!="mbsf") else None
     df = spark.read.parquet(filename)
     #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long column names
     if ("DESY_SORT_KEY" in df.columns):
         df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
-    #enforce the schema now before doing the unions
+    #enforce the schema now, dataframes need to have the same schema before doing the unions
     df = enforce_schema(df, claimType=claimType, claimPart=claimPart)
 
     return df
 
+#inputs: dataframe that uses long column names
+#outputs: dataframe with short column names
 def enforce_short_names(df, claimType, claimPart):
 
     #get the right xw, the xws are a superset of all column names from both versions J and K
@@ -93,6 +98,8 @@ def enforce_short_names(df, claimType, claimPart):
     df = df.select( [(F.col(c).alias(xw[c])) for c in df.columns] )
     return df 
 
+#inputs: dataframe with inferred schema by spark
+#outputs: dataframe with schema defined in schema.py
 def enforce_schema(df, claimType, claimPart):
 
     #get the schema, this schema is a superset of the schemas for versions J and K 
@@ -104,7 +111,9 @@ def enforce_schema(df, claimType, claimPart):
 
     return df
 
-def prep_dfs(dataframes):
+#inputs: original CMS dataframes
+#outputs: input dataframes with additional columns appended that are needed almost always
+def add_preliminary_info(dataframes):
 
     #claimSubtype eg opBase, opRevenue, ipBase....claimType eg op, ip, car....
     for claimSubtype in list(dataframes.keys()):
@@ -122,7 +131,7 @@ def get_data(pathCMS, yearI, yearF, spark):
 
     filenames = get_filenames(pathCMS, yearI, yearF)
     dataframes = read_data(spark, filenames, yearI, yearF)
-    #dataframes = prep_dfs(dataframes)
+    #dataframes = add_preliminary_info(dataframes)
 
     return dataframes
 
