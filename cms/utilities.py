@@ -84,7 +84,7 @@ def read_and_prep_dataframe(filename, claimTypePart, spark):
     if ("DESY_SORT_KEY" in df.columns):
         df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
     #in some dataframes the first row is a copy of the header, I need to remove it, otherwise enforce_schema will introduce nulls (eg cast string to int) 
-    df = df.filter(~( (F.col("DSYSRTKY")=="DESY_SORT_KEY") | (F.col("DSYSRTKY")=="DSYSRTKY") ))
+    df = df.filter(~(F.col("DSYSRTKY")=="DESY_SORT_KEY")).filter(~(F.col("DSYSRTKY")=="DSYSRTKY"))
     #enforce the schema now, dataframes need to have the same schema before doing the unions
     df = enforce_schema(df, claimType=claimType, claimPart=claimPart)
 
