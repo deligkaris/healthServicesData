@@ -5,6 +5,7 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 #so if there is a new version, say L, simply append these dictionaries
 #note 2: I created a schema for each type and part of claim, it is possible that a single schema for all claims and parts
 #would work as well (with a smaller possibility for discrepancies between claim types)
+#note 3: cms.utilities.py assumes that DSYSRTKY is cast to int
 
 schemas = dict()
 
