@@ -88,7 +88,7 @@ def read_data(spark, filenames, yearI, yearF):
 #outputs: single dataframe with consistent schema and the short column names
 def read_and_prep_dataframe(filename, claimTypePart, spark):
 
-    (claimType, claimPart = get_claimType_claimPart(claimTypePart)
+    (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
 
     df = spark.read.parquet(filename)
     #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long column names
