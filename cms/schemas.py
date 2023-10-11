@@ -988,7 +988,7 @@ schemas["carBase"] = StructType([
     StructField('PMT_AMT', DoubleType(), True), 
     StructField('PRPAYAMT', DoubleType(), True), 
     StructField('RFR_UPIN', StringType(), True), 
-    StructField('RFR_NPI', IntegerType(), True), 
+    StructField('RFR_NPI', StringType(), True), 
     StructField('ASGMNTCD', StringType(), True),
     StructField('PROV_PMT', DoubleType(), True), 
     StructField('BENE_PMT', DoubleType(), True), 
@@ -1032,7 +1032,7 @@ schemas["carBase"] = StructType([
     StructField('CLM_BENE_PD_AMT', DoubleType(), True), 
     StructField('CPO_PRVDR_NUM', IntegerType(), True), 
     StructField('CPO_ORG_NPI_NUM', IntegerType(), True), 
-    StructField('CARR_CLM_BLG_NPI_NUM', IntegerType(), True), 
+    StructField('CARR_CLM_BLG_NPI_NUM', StringType(), True), 
     StructField('ACO_ID_NUM', StringType(), True)])
 
 schemas["carLine"] = StructType([
