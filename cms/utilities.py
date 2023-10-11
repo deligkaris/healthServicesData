@@ -135,7 +135,11 @@ def add_preliminary_info(dataframes):
         elif (re.match(r'Revenue$', claimSubtype)):
             dataframes[claimSubtype] = prep_revenueDF(dataframes[claimSubtype], claim=claimType)  
         elif (re.match(r'Line$', claimSubtype)):
-            dataframes[claimSubtype] = prep_lineDF(dataframes[claimSubtype], claim=claimType)
+            dataframes[claimTypePart] = prep_lineDF(dataframes[claimSubtype], claim=claimType)
+        elif (claimTypePart == "carLine"):
+             = lineF.add_level1HCPCS_CD(lineDF)
+             = lineF.add_allowed(lineDF)
+
 
     return dataframes
 

@@ -109,18 +109,4 @@ def filter_claims(revenueDF, baseDF):
                                how="left_semi")
     return revenueDF
 
-def prep_revenueDF(revenueDF, claim="inpatient"):
-
-    revenueDF = enforce_schema(revenueDF, claim=claim)
-
-    return revenueDF
-
-#def enforce_schema(revenueDF, claim="inpatient"):
-
-#    if claim=="inpatient":
-#        revenueDF = revenueDF.select([revenueDF[field.name].cast(field.dataType) for field in ipRevenueSchema.fields])
-#    elif claim=="outpatient":
-#        revenueDF = revenueDF.select([revenueDF[field.name].cast(field.dataType) for field in opRevenueSchema.fields])
-
-#    return revenueDF
 
