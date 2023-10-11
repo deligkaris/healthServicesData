@@ -12,6 +12,18 @@ from functools import reduce
 
 yearJKTransition = 2016 #year CMS switched from J to K format
 
+#inputs: claimTypePart eg opBase, snfRevenue etc
+#outputs: claimType eg op, snf, etc and claimPart eg Base, Revenue, Line
+def get_claimType_claimPart(claimTypePart):
+
+    #claimType refers to ip, op, snf, etc
+    claimType = re.match(r'^[a-z]+', claimTypePart).group()
+
+    #claimPart refers to Base, Revenue, Line (does not apply to mbsf claimTypes)
+    claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2) if (claimType!="mbsf") else None
+
+    return (claimType, claimPart)
+
 #inputs: path to the central CMS directory, yearInitial, yearFinal
 #outputs: full path filenames that will be read by spark, a dictionary
 def get_filenames(pathCMS, yearI, yearF):
@@ -76,17 +88,16 @@ def read_data(spark, filenames, yearI, yearF):
 #outputs: single dataframe with consistent schema and the short column names
 def read_and_prep_dataframe(filename, claimTypePart, spark):
 
-    claimType = re.match(r'^[a-z]+', claimTypePart).group() #claimType refers to ip, op, snf, etc
-    #claimPart refers to Base, Revenue, Line (does not apply to mbsf claimTypes)
-    claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2) if (claimType!="mbsf") else None
+    (claimType, claimPart = get_claimType_claimPart(claimTypePart)
+
     df = spark.read.parquet(filename)
     #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long column names
-    #if ("DESY_SORT_KEY" in df.columns):
-    #    df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
+    if ("DESY_SORT_KEY" in df.columns):
+        df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
     #enforce the schema now, dataframes need to have the same schema before doing the unions
     #in some dataframes the first row is a copy of the header, enforce_schema has made the "DSYSRTKY" string of that first row a null value
     #so I need to remove that row, assumes that the DSYSRTKY col is cast to an int in schema.py
-    #df = enforce_schema(df, claimType=claimType, claimPart=claimPart).filter(~(F.col("DSYSRTKY").isNull()))
+    df = enforce_schema(df, claimType=claimType, claimPart=claimPart).filter(~(F.col("DSYSRTKY").isNull()))
     
     return df
 
@@ -117,9 +128,8 @@ def enforce_schema(df, claimType, claimPart):
 #outputs: input dataframes with additional columns appended that are needed almost always
 def add_preliminary_info(dataframes):
 
-    #claimSubtype eg opBase, opRevenue, ipBase....claimType eg op, ip, car....
-    for claimSubtype in list(dataframes.keys()):
-        claimType = re.match(r'^[a-z]+', claimSubtype).group()
+    for claimTypePart in list(dataframes.keys()):
+        (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
         if (re.match(r'Base$', claimSubtype)): 
             dataframes[claimSubtype] = prep_baseDF(dataframes[claimSubtype], claim=claimType)
         elif (re.match(r'Revenue$', claimSubtype)):
