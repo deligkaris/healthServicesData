@@ -1033,7 +1033,7 @@ schemas["carBase"] = StructType([
     StructField('CPO_PRVDR_NUM', IntegerType(), True), 
     StructField('CPO_ORG_NPI_NUM', IntegerType(), True), 
     StructField('CARR_CLM_BLG_NPI_NUM', IntegerType(), True), 
-    StructField('ACO_ID_NUM', IntegerType(), True)])
+    StructField('ACO_ID_NUM', StringType(), True)])
 
 schemas["carLine"] = StructType([
     StructField('DSYSRTKY', IntegerType(), True), 

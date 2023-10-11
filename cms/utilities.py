@@ -1,7 +1,9 @@
-from .mbsf import prep_mbsfDF
 from cms.schemas import schemas
 from cms.longToShortXW import longToShortXW
-
+import cms.line as lineF
+import cms.base as baseF
+import cms.revenue as revenueF
+import cms.mbsf as mbsfF
 import pyspark.sql.functions as F
 from pyspark.sql.types import StructType
 import re
@@ -89,12 +91,12 @@ def read_and_prep_dataframe(filename, claimTypePart, spark):
 
     df = spark.read.parquet(filename)
     #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long column names
-    if ("DESY_SORT_KEY" in df.columns):
-        df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
+    #if ("DESY_SORT_KEY" in df.columns):
+    #    df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
     #enforce the schema now, dataframes need to have the same schema before doing the unions
     #in some dataframes the first row is a copy of the header, enforce_schema has made the "DSYSRTKY" string of that first row a null value
     #so I need to remove that row, assumes that the DSYSRTKY col is cast to an int in schema.py
-    df = enforce_schema(df, claimType=claimType, claimPart=claimPart).filter(~(F.col("DSYSRTKY").isNull()))
+    #df = enforce_schema(df, claimType=claimType, claimPart=claimPart).filter(~(F.col("DSYSRTKY").isNull()))
     
     return df
 
@@ -125,18 +127,28 @@ def enforce_schema(df, claimType, claimPart):
 #outputs: input dataframes with additional columns appended that are needed almost always
 def add_preliminary_info(dataframes):
 
+    #logic for op, ip, snf, hha, hosp, car
     for claimTypePart in list(dataframes.keys()):
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
-        if (re.match(r'Base$', claimSubtype)): 
-            dataframes[claimSubtype] = prep_baseDF(dataframes[claimSubtype], claim=claimType)
-        elif (re.match(r'Revenue$', claimSubtype)):
-            dataframes[claimSubtype] = prep_revenueDF(dataframes[claimSubtype], claim=claimType)  
-        elif (re.match(r'Line$', claimSubtype)):
-            dataframes[claimTypePart] = prep_lineDF(dataframes[claimSubtype], claim=claimType)
-        elif (claimTypePart == "carLine"):
-            dataframes[claimTypePart]  = lineF.add_level1HCPCS_CD(lineDF)
-            dataframes[claimTypePart]  = lineF.add_allowed(lineDF)
 
+        if (claimPart=="Base"):
+            dataframes[claimTypePart] = baseF.add_through_date_info(dataframes[claimTypePart], claimType=claimType)
+            dataframes[claimTypePart] = baseF.add_ssaCounty(dataframes[claimTypePart])
+            if (claimType in ["ip","snf","hosp","hha"]):
+                dataframes[claimTypePart] = baseF.add_admission_date_info(dataframes[claimTypePart],claimType=claimType)
+            if (claimType=="ip"):
+                dataframes[claimTypePart] = baseF.add_discharge_date_info(dataframes[claimTypePart],claimType=claimType)
+            if (claimType=="car"):
+                 dataframes[claimTypePart] = baseF.add_denied(dataframes[claimTypePart])
+        elif (claimPart=="Line"): 
+            dataframes[claimTypePart] = lineF.add_level1HCPCS_CD(dataframes[claimTypePart])
+            dataframes[claimTypePart] = lineF.add_allowed(dataframes[claimTypePart])
+        elif (claimPart=="Revenue"):
+            pass
+
+    #logic for mbsf
+    dataframes["mbsf"] = mbsfF.add_death_date_info(dataframes["mbsf"])
+    dataframes["mbsf"] = mbsfF.add_ssaCounty(dataframes["mbsf"])
 
     return dataframes
 

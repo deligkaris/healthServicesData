@@ -24,22 +24,22 @@ from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgram
 #a page with LDS, RIF differences: https://resdac.org/articles/differences-between-rif-lds-and-puf-data-files
 #they do not include the claimno reset in LDS though.....
 
-def cast_columns_as_int(baseDF, claim="op"): #date fields in the dataset must be interpreted as integers (and not as floats)
+#def cast_columns_as_int(baseDF, claim="op"): #date fields in the dataset must be interpreted as integers (and not as floats)
 
-    if (claim=="op"):
-       columns = ["THRU_DT", "DSYSRTKY"]
-    elif (claim=="ip"):
-       columns = ["THRU_DT", "DSCHRGDT", "ADMSN_DT", "DSYSRTKY"]
-    # SNF: DSCHRG DT is either NULL (quite frequently) or the same as THRU_DT, so for SNF claims use the THRU_DT when you need DSCHRG_DT
-    elif ( (claim=="snf") | (claim=="hha") ):
-       columns = ["CLM_THRU_DT", "NCH_BENE_DSCHRG_DT", "CLM_ADMSN_DT", "DESY_SORT_KEY"]
-    elif ( (claim=="hosp") ):
-       columns = ["CLM_THRU_DT", "CLM_HOSPC_START_DT_ID", "DESY_SORT_KEY"]
+#    if (claim=="op"):
+#       columns = ["THRU_DT", "DSYSRTKY"]
+#    elif (claim=="ip"):
+#       columns = ["THRU_DT", "DSCHRGDT", "ADMSN_DT", "DSYSRTKY"]
+#    # SNF: DSCHRG DT is either NULL (quite frequently) or the same as THRU_DT, so for SNF claims use the THRU_DT when you need DSCHRG_DT
+#    elif ( (claim=="snf") | (claim=="hha") ):
+#       columns = ["CLM_THRU_DT", "NCH_BENE_DSCHRG_DT", "CLM_ADMSN_DT", "DESY_SORT_KEY"]
+#    elif ( (claim=="hosp") ):
+#       columns = ["CLM_THRU_DT", "CLM_HOSPC_START_DT_ID", "DESY_SORT_KEY"]
 
-    for iColumns in columns:
-        baseDF = baseDF.withColumn( iColumns, F.col(iColumns).cast('int'))
+#    for iColumns in columns:
+#        baseDF = baseDF.withColumn( iColumns, F.col(iColumns).cast('int'))
 
-    return baseDF
+#    return baseDF
 
 def cast_columns_as_string(baseDF, claim="op"):
 
@@ -57,15 +57,15 @@ def cast_columns_as_string(baseDF, claim="op"):
         
     return baseDF
 
-def add_admission_date_info(baseDF, claim="op"):
+def add_admission_date_info(baseDF, claimType="op"):
 
     #leapYears=[2016,2020,2024,2028]
    
     #unfortunately, SNF claims have a different column name for admission date
     #admissionColName = "CLM_ADMSN_DT" if claim=="snf" else "ADMSN_DT"
-    if ( (claim=="hha") ):
+    if ( (claimType=="hha") ):
         baseDF = baseDF.withColumn( "ADMSN_DT", F.col("HHSTRTDT"))
-    elif ( (claim=="hosp") ):
+    elif ( (claimType=="hosp") ):
         baseDF = baseDF.withColumn( "ADMSN_DT", F.col("HSPCSTRT") )
 
     baseDF = baseDF.withColumn( "ADMSN_DT_DAYOFYEAR", 
@@ -97,11 +97,7 @@ def add_admission_date_info(baseDF, claim="op"):
 
     return baseDF
 
-def add_through_date_info(baseDF, claim="op"):
-
-    #unfortunately, SNF claims have a different column name for claim through date
-    #if ( (claim=="hha") | (claim=="hosp") ):
-    #    baseDF = baseDF.withColumn( "THRU_DT", F.col("CLM_THRU_DT"))
+def add_through_date_info(baseDF, claimType="op"):
 
     baseDF = baseDF.withColumn( "THRU_DT_DAYOFYEAR", 
                                 F.date_format(
@@ -132,10 +128,10 @@ def add_through_date_info(baseDF, claim="op"):
 
     return baseDF
 
-def add_discharge_date_info(baseDF, claim="op"):
+def add_discharge_date_info(baseDF, claimType="op"):
 
     #unfortunately, SNF claims have a different column name for discharge date
-    if (claim=="snf"):         
+    if (claimType=="snf"):         
         baseDF = baseDF.withColumn( "DSCHRGDT", F.col("NCH_BENE_DSCHRG_DT"))
 
     baseDF = baseDF.withColumn( "DSCHRGDT_DAYOFYEAR",
