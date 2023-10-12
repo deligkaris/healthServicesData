@@ -2,7 +2,7 @@
 
 PySpark functions for CMS and other health services-related data management. 
 
-- Assumes that column names follow the CMS Field Short Name convention
+- All functions assume that column names follow the CMS Field Short Name convention 
 - Base functions with name add_x  add 1 column with column name x (so that you do not have to guess the column name)
 - Revenue/Line functions with name add_x include an inClaim flag, because sometimes we are interested in determining 
   something based on the line and sometimes we are interested in something claim-wide
