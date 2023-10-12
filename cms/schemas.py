@@ -10,8 +10,9 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 #        eg by introducing nulls, so even when there may have been typos that introduced a character to what was supposed to be a number
 #        StringType was used in the schema in order to preserve the original data
 #        exception: carLine included 4 rows where 'SRVC_CNT' was found to not be an integer in 2016
-#        exception: hhaBase included 1 row where ORGNPINM was found to not be an integer in 2016
+#        exception: hhaBase included 1 row where ORGNPINM was found to not be an integer in 2016 and 1 row in 2015
 #        exception: hospBase included 1 row where ORGNPINM was found to not be an integer in 2016
+#        exception: snfBase included 2 rows ORGNPINM was not an int in 2015, and 1 row for AT_NPI
 
 schemas = dict()
 
