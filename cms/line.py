@@ -1,4 +1,3 @@
-#from cms.SCHEMAS.car_schema import carLineSchema, carLineLongToShortXW
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import re
@@ -23,13 +22,6 @@ import re
 #RESDAC recommends using both DSYSRTKY and CLAIMNO to identify unique claims, and since CLAIMNO resets every year I also need
 #the THRU_DT (RESDAC videos refer to the use of CMS RIF not the LDS ones)
 #this is why every window over each claim I make, I include "DSYSRTKY","CLAIMNO","THRU_DT"
-
-def prep_lineDF(lineDF, claim="car"):
-
-    lineDF = add_level1HCPCS_CD(lineDF)
-    lineDF = add_allowed(lineDF)
-
-    return lineDF
 
 def add_level1HCPCS_CD(lineDF):
 

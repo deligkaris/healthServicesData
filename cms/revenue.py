@@ -1,7 +1,5 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
-#from cms.SCHEMAS.ip_schema import ipRevenueSchema
-#from cms.SCHEMAS.op_schema import opRevenueSchema
 
 #I think for now I prefer not implementing any filters on revenue records because I am doing an inner join of base with revenue summaries
 #maybe I should rethink how to to do the base and revenue summary join
@@ -14,16 +12,13 @@ def add_ed(revenueDF):
     # values of 0450-0459 (Emergency room) or 0981 (Professional fees-Emergency room).
 
     revenueDF = revenueDF.withColumn("ed",
-                                     F.when( 
-                                        (F.col("REV_CNTR")>= 450) & (F.col("REV_CNTR") <= 459) ,1)
-                                      .when( 
-                                        F.col("REV_CNTR")==981 ,1)
+                                     F.when( (F.col("REV_CNTR")>= 450) & (F.col("REV_CNTR") <= 459) ,1)
+                                      .when( F.col("REV_CNTR")==981 ,1)
                                       .otherwise(0))
 
     eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
 
-    revenueDF = revenueDF.withColumn("ed",
-                                     F.max(F.col("ed")).over(eachDsysrtkyAndClaim))
+    revenueDF = revenueDF.withColumn("ed", F.max(F.col("ed")).over(eachDsysrtkyAndClaim))
 
     # this is another approach where I summarize the records and then return a summary, for now I prefer to do the summary in the notebook as needed
     # here we collapse all revenue center records that are part of the same claim to a single revenue center 
@@ -43,13 +38,13 @@ def add_ed(revenueDF):
 
 def add_mri(revenueDF):
 
-    revenueDF = revenueDF.withColumn("mri",
+    revenueDF = revenueDF.withColumn("mri", 
                                      F.when( (F.col("REV_CNTR")>= 610) & (F.col("REV_CNTR") <= 619) ,1)
                                       .otherwise(0))
 
     eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
 
-    revenueDF = revenueDF.withColumn("mri",
+    revenueDF = revenueDF.withColumn("mri", 
                                      F.max(F.col("mri")).over(eachDsysrtkyAndClaim))
 
     #revenueSummaryDF = (revenueDF

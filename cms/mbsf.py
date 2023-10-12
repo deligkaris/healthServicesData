@@ -1,6 +1,5 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
-from cms.SCHEMAS.mbsf_schema import mbsfSchema
 
 #notes from the Resdac tutorial: https://youtu.be/-nxGbTPVLo8?si=TsTNDXDpZlPTsvpX
 #demographic information is largely reliable and valid
@@ -279,42 +278,26 @@ def add_ssaCounty(mbsfDF):
 
     return mbsfDF
 
-def prep_mbsfDF(mbsfDF, ipBaseDF, opBaseDF):
-
-    mbsfDF = enforce_schema(mbsfDF)
-
-    # add the death date of year, year, and day in order to calculate 90 day mortality rate when needed
-    mbsfDF = add_death_date_info(mbsfDF)
- 
-    mbsfDF = add_ssaCounty(mbsfDF)
-
-    #mbsfDF = clean_mbsf(mbsfDF, ipBaseDF, opBaseDF)
-
-    #without a repartition, the dataframe is extremely skewed...
-    #mbsfDF = mbsfDF.repartition(128, "DSYSRTKY")
-
-    return mbsfDF
-
-def enforce_schema(mbsfDF):
+#def enforce_schema(mbsfDF):
 
     #some columns need to be converted to ints first (the ones that are now double and that will be converted to strings at the end)
-    stCntFipsColList = [f"STATE_CNTY_FIPS_CD_{x:02d}" for x in range(1,13)]
-    castToIntColList = stCntFipsColList + ["STATE_CD"]
-    mbsfDF = mbsfDF.select([F.col(c).cast('int') if c in castToIntColList else F.col(c) for c in mbsfDF.columns])
+#    stCntFipsColList = [f"STATE_CNTY_FIPS_CD_{x:02d}" for x in range(1,13)]
+#    castToIntColList = stCntFipsColList + ["STATE_CD"]
+#    mbsfDF = mbsfDF.select([F.col(c).cast('int') if c in castToIntColList else F.col(c) for c in mbsfDF.columns])
 
     #some columns need to be formatted independently because there may be leading 0s
-    mbsfDF = (mbsfDF.withColumn("STATE_CD", 
-                                F.when( F.col("STATE_CD").isNull(), F.col("STATE_CD") )
-                                 .otherwise( F.format_string("%02d",F.col("STATE_CD"))))
-                    .withColumn("CNTY_CD", 
-                                F.when( F.col("CNTY_CD").isNull(), F.col("CNTY_CD") )
-                                 .otherwise( F.format_string("%03d",F.col("CNTY_CD"))))
-                    .select([ F.when( ~F.col(c).isNull(), F.format_string("%05d",F.col(c))).alias(c)  if c in stCntFipsColList else F.col(c) for c in mbsfDF.columns ]))
+#    mbsfDF = (mbsfDF.withColumn("STATE_CD", 
+#                                F.when( F.col("STATE_CD").isNull(), F.col("STATE_CD") )
+#                                 .otherwise( F.format_string("%02d",F.col("STATE_CD"))))
+#                    .withColumn("CNTY_CD", 
+#                                F.when( F.col("CNTY_CD").isNull(), F.col("CNTY_CD") )
+#                                 .otherwise( F.format_string("%03d",F.col("CNTY_CD"))))
+#                    .select([ F.when( ~F.col(c).isNull(), F.format_string("%05d",F.col(c))).alias(c)  if c in stCntFipsColList else F.col(c) for c in mbsfDF.columns ]))
 
     #now enforce the schema set for mbsf
-    mbsfDF = mbsfDF.select([mbsfDF[field.name].cast(field.dataType) for field in mbsfSchema.fields])
+#    mbsfDF = mbsfDF.select([mbsfDF[field.name].cast(field.dataType) for field in mbsfSchema.fields])
 
-    return mbsfDF
+#    return mbsfDF
 
 def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on the code I no longer need these...
 

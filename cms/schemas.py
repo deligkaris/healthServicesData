@@ -9,6 +9,9 @@ from pyspark.sql.types import StructType, StructField, StringType, IntegerType, 
 #note 4: goal of these schemas is to use IntegerType as much as possible (to speed processing up) without compromising the data
 #        eg by introducing nulls, so even when there may have been typos that introduced a character to what was supposed to be a number
 #        StringType was used in the schema in order to preserve the original data
+#        exception: carLine included 4 rows where 'SRVC_CNT' was found to not be an integer in 2016
+#        exception: hhaBase included 1 row where ORGNPINM was found to not be an integer in 2016
+#        exception: hospBase included 1 row where ORGNPINM was found to not be an integer in 2016
 
 schemas = dict()
 
@@ -115,7 +118,7 @@ schemas["opBase"] = StructType([
     StructField('AT_UPIN', StringType(), True), 
     StructField('AT_NPI', StringType(), True), 
     StructField('AT_PHYSN_SPCLTY_CD', StringType(), True), 
-    StructField('OP_UPIN', IntegerType(), True), 
+    StructField('OP_UPIN', StringType(), True), 
     StructField('OP_NPI', IntegerType(), True), 
     StructField('OP_PHYSN_SPCLTY_CD', StringType(), True), 
     StructField('OT_UPIN', IntegerType(), True), 
@@ -307,10 +310,10 @@ schemas["ipBase"] = StructType([
     StructField('ACTIONCD', IntegerType(), True), 
     StructField('PRSTATE', StringType(), True), 
     StructField('ORGNPINM', IntegerType(), True), 
-    StructField('AT_UPIN', IntegerType(), True), 
+    StructField('AT_UPIN', StringType(), True), 
     StructField('AT_NPI', IntegerType(), True), 
     StructField('AT_PHYSN_SPCLTY_CD', StringType(), True), 
-    StructField('OP_UPIN', IntegerType(), True), 
+    StructField('OP_UPIN', StringType(), True), 
     StructField('OP_NPI', IntegerType(), True), 
     StructField('OP_PHYSN_SPCLTY_CD', StringType(), True), 
     StructField('OT_UPIN', IntegerType(), True), 
@@ -563,7 +566,7 @@ schemas["snfBase"] = StructType([
     StructField('ACTIONCD', IntegerType(), True), 
     StructField('PRSTATE', StringType(), True), 
     StructField('ORGNPINM', IntegerType(), True), 
-    StructField('AT_UPIN', IntegerType(), True), 
+    StructField('AT_UPIN', StringType(), True), 
     StructField('AT_NPI', IntegerType(), True), 
     StructField('AT_PHYSN_SPCLTY_CD', StringType(), True), 
     StructField('OP_UPIN', IntegerType(), True), 
@@ -876,7 +879,7 @@ schemas["hospBase"] = StructType([
     StructField('PRSTATE', StringType(), True), 
     StructField('ORGNPINM', IntegerType(), True), 
     StructField('SRVC_LOC_NPI_NUM', IntegerType(), True), 
-    StructField('AT_UPIN', IntegerType(), True), 
+    StructField('AT_UPIN', StringType(), True), 
     StructField('AT_NPI', IntegerType(), True), 
     StructField('AT_PHYSN_SPCLTY_CD', StringType(), True), 
     StructField('OP_NPI', IntegerType(), True), 

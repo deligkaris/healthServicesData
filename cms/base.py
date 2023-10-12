@@ -2,12 +2,6 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip
-#from cms.SCHEMAS.ip_schema import ipBaseSchema
-#from cms.SCHEMAS.op_schema import opBaseSchema
-#from cms.SCHEMAS.snf_schema import snfBaseSchema, snfBaseLongToShortXW
-#from cms.SCHEMAS.hha_schema import hhaBaseSchema, hhaBaseLongToShortXW
-#from cms.SCHEMAS.hosp_schema import hospBaseSchema, hospBaseLongToShortXW
-#from cms.SCHEMAS.car_schema import carBaseSchema, carBaseLongToShortXW
 
 #CMS DUA email on my question about LDS claim numbers:
 #"The Claim ID is set by a sequence. A Part A (Institutional) and a Part B (Professional) Claim could have the same ID. 
@@ -41,21 +35,21 @@ from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgram
 
 #    return baseDF
 
-def cast_columns_as_string(baseDF, claim="op"):
+#def cast_columns_as_string(baseDF, claim="op"):
 
-    if ((claim=="op") | (claim=="ip")):
-        baseDF = (baseDF.withColumn("PRSTATE", F.lpad(F.col("PRSTATE").cast("string"),2,'0'))
-                        .withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast("string"),2,'0'))
-                        .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast("string"),3,'0')))
-    elif ((claim=="hha") | (claim=="hosp") | (claim=="snf")):
-        baseDF = (baseDF.withColumn("PRVDR_STATE_CD", F.lpad(F.col("PRVDR_STATE_CD").cast("string"),2,'0'))
-                        .withColumn("BENE_STATE_CD", F.lpad(F.col("BENE_STATE_CD").cast("string"),2,'0'))
-                        .withColumn("BENE_CNTY_CD", F.lpad(F.col("BENE_CNTY_CD").cast("string"),3,'0')))
-    elif (claim=="car"):
-        baseDF = (baseDF.withColumn("BENE_STATE_CD", F.lpad(F.col("BENE_STATE_CD").cast("string"),2,'0'))
-                        .withColumn("BENE_CNTY_CD", F.lpad(F.col("BENE_CNTY_CD").cast("string"),3,'0')))
+#    if ((claim=="op") | (claim=="ip")):
+#        baseDF = (baseDF.withColumn("PRSTATE", F.lpad(F.col("PRSTATE").cast("string"),2,'0'))
+#                        .withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast("string"),2,'0'))
+#                        .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast("string"),3,'0')))
+#    elif ((claim=="hha") | (claim=="hosp") | (claim=="snf")):
+#        baseDF = (baseDF.withColumn("PRVDR_STATE_CD", F.lpad(F.col("PRVDR_STATE_CD").cast("string"),2,'0'))
+#                        .withColumn("BENE_STATE_CD", F.lpad(F.col("BENE_STATE_CD").cast("string"),2,'0'))
+#                        .withColumn("BENE_CNTY_CD", F.lpad(F.col("BENE_CNTY_CD").cast("string"),3,'0')))
+#    elif (claim=="car"):
+#        baseDF = (baseDF.withColumn("BENE_STATE_CD", F.lpad(F.col("BENE_STATE_CD").cast("string"),2,'0'))
+#                        .withColumn("BENE_CNTY_CD", F.lpad(F.col("BENE_CNTY_CD").cast("string"),3,'0')))
         
-    return baseDF
+#    return baseDF
 
 def add_admission_date_info(baseDF, claimType="op"):
 

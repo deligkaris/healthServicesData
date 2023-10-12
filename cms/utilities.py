@@ -93,6 +93,8 @@ def read_and_prep_dataframe(filename, claimTypePart, spark):
     #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long column names
     if ("DESY_SORT_KEY" in df.columns):
         df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
+    #some columns need to have zeros padded (state and county codes)
+    df = pad_zeros(df, claimType=claimType, claimPart=claimPart)
     #enforce the schema now, dataframes need to have the same schema before doing the unions
     #in some dataframes the first row is a copy of the header, enforce_schema has made the "DSYSRTKY" string of that first row a null value
     #so I need to remove that row, assumes that the DSYSRTKY col is cast to an int in schema.py
@@ -109,6 +111,34 @@ def enforce_short_names(df, claimType, claimPart):
     #rename
     df = df.select( [(F.col(c).alias(xw[c])) for c in df.columns] )
     return df 
+
+#inputs: dataframe with inferred schema by spark
+#outputs: dataframe with state and county codes properly formatted
+def pad_zeros(df, claimType, claimPart):
+
+    #note: it is not clear to me why I used a different approach for mbsf and the rest of the files
+
+    #logic for op, ip, snf, hha, hosp, car   
+    if (claimPart=="Base"):
+        df = (df.withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast("string"),2,'0'))
+                .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast("string"),3,'0')))
+        if (claimType in ["op","ip","snf","hha","hosp"]):
+            df = df.withColumn("PRSTATE", F.lpad(F.col("PRSTATE").cast("string"),2,'0'))
+
+    #logic for mbsf
+    #some columns need to be converted to ints first (the ones that are now double and that will be converted to strings at the end)
+    if (claimType=="mbsf"):
+        stCntCols = [f"STATE_CNTY_FIPS_CD_{x:02d}" for x in range(1,13)]
+        castToIntCols = stCntCols + ["STATE_CD"]
+        df = (df.select([F.col(c).cast('int') if c in castToIntCols else F.col(c) for c in df.columns])
+                .withColumn("STATE_CD", 
+                            F.when( F.col("STATE_CD").isNull(), F.col("STATE_CD") )
+                             .otherwise( F.format_string("%02d",F.col("STATE_CD"))))
+                .withColumn("CNTY_CD", 
+                            F.when( F.col("CNTY_CD").isNull(), F.col("CNTY_CD") )
+                             .otherwise( F.format_string("%03d",F.col("CNTY_CD"))))
+                .select([ F.when( ~F.col(c).isNull(), F.format_string("%05d",F.col(c))).alias(c)  if c in stCntCols else F.col(c) for c in df.columns ]))
+    return df  
 
 #inputs: dataframe with inferred schema by spark
 #outputs: dataframe with schema defined in schema.py
