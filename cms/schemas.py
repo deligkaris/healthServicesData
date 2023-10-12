@@ -727,7 +727,7 @@ schemas["snfRevenue"] = StructType([
     StructField('REV_CNTR_RNDRNG_PHYSN_UPIN', StringType(), True), 
     StructField('REV_CNTR_RNDRNG_PHYSN_NPI', StringType(), True), 
     StructField('REV_CNTR_RNDRNG_PHYSN_SPCLTY_CD', StringType(), True), 
-    StructField('IDENDC', LongType(), True), 
+    StructField('IDENDC', StringType(), True), 
     StructField('REV_CNTR_PRCNG_IND_CD', StringType(), True), 
     StructField('THRPY_CAP_IND_CD1', StringType(), True), 
     StructField('THRPY_CAP_IND_CD2', StringType(), True)])
@@ -851,7 +851,7 @@ schemas["hhaRevenue"] = StructType([
     StructField('REV_CNTR_RNDRNG_PHYSN_NPI', IntegerType(), True), 
     StructField('REV_CNTR_RNDRNG_PHYSN_SPCLTY_CD', StringType(), True), 
     StructField('DSCNTIND', IntegerType(), True), 
-    StructField('IDENDC', LongType(), True), 
+    StructField('IDENDC', StringType(), True), 
     StructField('RPRVDPMT', DoubleType(), True), 
     StructField('PTNTRESP', DoubleType(), True), 
     StructField('REV_CNTR_PRCNG_IND_CD', StringType(), True), 
