@@ -1,11 +1,14 @@
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, LongType, DoubleType
 
 #note 1: these schemas are designed to be a superset of schemas of the different CMS file versions J and K
-#the code selects the parts of the schemas that are relevant to each dataframe
-#so if there is a new version, say L, simply append these dictionaries
+#        the code selects the parts of the schemas that are relevant to each dataframe
+#        so if there is a new version, say L, simply append these dictionaries
 #note 2: I created a schema for each type and part of claim, it is possible that a single schema for all claims and parts
-#would work as well (with a smaller possibility for discrepancies between claim types)
-#note 3: cms.utilities.py assumes that DSYSRTKY is cast to int
+#        would work as well (with a smaller possibility for discrepancies between claim types)
+#note 3: cms.utilities.py assumes that DSYSRTKY is cast to int (it may break if it is not cast to int)
+#note 4: goal of these schemas is to use IntegerType as much as possible (to speed processing up) without compromising the data
+#        eg by introducing nulls, so even when there may have been typos that introduced a character to what was supposed to be a number
+#        StringType was used in the schema in order to preserve the original data
 
 schemas = dict()
 
@@ -109,8 +112,8 @@ schemas["opBase"] = StructType([
     StructField('PRSTATE', StringType(), True), 
     StructField('ORGNPINM', IntegerType(), True), 
     StructField('SRVC_LOC_NPI_NUM', IntegerType(), True), 
-    StructField('AT_UPIN', IntegerType(), True), 
-    StructField('AT_NPI', IntegerType(), True), 
+    StructField('AT_UPIN', StringType(), True), 
+    StructField('AT_NPI', StringType(), True), 
     StructField('AT_PHYSN_SPCLTY_CD', StringType(), True), 
     StructField('OP_UPIN', IntegerType(), True), 
     StructField('OP_NPI', IntegerType(), True), 
