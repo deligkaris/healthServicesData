@@ -750,7 +750,7 @@ schemas["hhaBase"] = StructType([
     StructField('PRSTATE', StringType(), True), 
     StructField('ORGNPINM', IntegerType(), True), 
     StructField('SRVC_LOC_NPI_NUM', IntegerType(), True), 
-    StructField('AT_UPIN', IntegerType(), True), 
+    StructField('AT_UPIN', StringType(), True), 
     StructField('AT_NPI', IntegerType(), True), 
     StructField('AT_PHYSN_SPCLTY_CD', StringType(), True), 
     StructField('OP_NPI', IntegerType(), True), 
