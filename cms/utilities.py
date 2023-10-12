@@ -131,7 +131,7 @@ def pad_zeros(df, claimType, claimPart):
         stCntCols = [f"STATE_CNTY_FIPS_CD_{x:02d}" for x in range(1,13)]
         df = (df.withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast('int').cast("string"),2,'0'))
                 .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast('int').cast("string"),3,'0'))
-                .select( [F.lpad(F.col(c).cast('int').cast("string"),5,'0') if c in stCntCols else F.col(c) for c in df.columns] ))
+                .select( [F.lpad(F.col(c).cast('int').cast("string"),5,'0').alias(c) if c in stCntCols else F.col(c) for c in df.columns] ))
                 #old approach, using format_string, I doubt when-otherwise was needed, I think I was trying to be explicit....
                 #.withColumn("STATE_CD", 
                 #            F.when( F.col("STATE_CD").isNull(), F.col("STATE_CD") )
