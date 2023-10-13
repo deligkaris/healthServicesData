@@ -181,7 +181,7 @@ def add_ohResident(mbsfDF): #also used in base.py
     #annual residency codes are finalized on end of december of the calendar year
     #residency is determined based on mailing address for official correspondence
     #https://www.youtube.com/watch?v=-nxGbTPVLo8
-    ohResidencyCondition = '(F.col("STATE_CD")==36)'
+    ohResidencyCondition = '(F.col("STATE_CD")=="36")'
 
     # keep mbsf data for Ohio residents only
     #mbsf = mbsf.filter(eval(ohResidencyCondition))
@@ -358,7 +358,7 @@ def add_countyName(mbsfDF,cbsaDF):
 
     mbsfDF = mbsfDF.join(cbsaDF.select(F.col("countyName"),F.col("ssaCounty")),
                          on = ["ssaCounty"],
-                         how = "inner")
+                         how = "left_outer")
 
     return(mbsfDF)
 
