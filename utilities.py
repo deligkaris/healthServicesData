@@ -2,6 +2,23 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from urllib.request import urlopen
 import json
+from itertools import chain
+
+#yearMin and yearMax are limits, the code is designed to operate within these limits
+#create a map from year to number of days in all previous years (assume there is a year that is year 0)
+#this helps with finding the day number an event has occured (Jan 1 of year 0 is day 1 eg)
+leapYears = [2012, 2016, 2020, 2024, 2028]
+yearMin = min(leapYears)-2
+yearMax = max(leapYears)+2
+years = [y for y in range(yearMin,yearMax)]  
+nonLeapYears = list( set(years)^set(leapYears) )
+daysInYearsPriorDict = dict()
+for year in range(min(years),max(years)):
+    nLeapYears = sum( [year>x for x in leapYears] )
+    nNonLeapYears = sum( [year>x for x in nonLeapYears])
+    days = nNonLeapYears*365 + nLeapYears*366
+    daysInYearsPriorDict[year] = days
+daysInYearsPrior = F.create_map([F.lit(x) for x in chain(*daysInYearsPriorDict.items())])
 
 def get_filename_dicts(pathToData, yearInitial, yearFinal):
 

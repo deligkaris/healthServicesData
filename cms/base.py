@@ -1,7 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
-from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip
+from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, daysInYearsPrior
 
 #CMS DUA email on my question about LDS claim numbers:
 #"The Claim ID is set by a sequence. A Part A (Institutional) and a Part B (Professional) Claim could have the same ID. 
@@ -53,8 +53,6 @@ from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgram
 
 def add_admission_date_info(baseDF, claimType="op"):
 
-    #leapYears=[2016,2020,2024,2028]
-   
     #unfortunately, SNF claims have a different column name for admission date
     #admissionColName = "CLM_ADMSN_DT" if claim=="snf" else "ADMSN_DT"
     if ( (claimType=="hha") ):
@@ -73,16 +71,16 @@ def add_admission_date_info(baseDF, claimType="op"):
     baseDF = baseDF.withColumn( "ADMSN_DT_YEAR", F.col("ADMSN_DT").substr(1,4).cast('int'))
 
     # find number of days from yearStart-1 to year of admission -1
-    baseDF = baseDF.withColumn( "ADMSN_DT_DAYSINYEARSPRIOR", 
+    baseDF = baseDF.withColumn( "ADMSN_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("ADMSN_DT_YEAR")])
                                 #some admissions have started in yearStart-1
-                                F.when(F.col("ADMSN_DT_YEAR")==2015 ,0)  #this should be yearStart-1
-                                 .when(F.col("ADMSN_DT_YEAR")==2016 ,365) 
-                                 .when(F.col("ADMSN_DT_YEAR")==2017 ,366+365) #set them to 366 for leap years
-                                 .when(F.col("ADMSN_DT_YEAR")==2018 ,366+365*2)
-                                 .when(F.col("ADMSN_DT_YEAR")==2019 ,366+365*3)
-                                 .when(F.col("ADMSN_DT_YEAR")==2020 ,366+365*4)
-                                 .when(F.col("ADMSN_DT_YEAR")==2021 ,366*2+365*4)
-                                 .otherwise(365)) #otherwise 365
+                           #     F.when(F.col("ADMSN_DT_YEAR")==2015 ,0)  #this should be yearStart-1
+                            #     .when(F.col("ADMSN_DT_YEAR")==2016 ,365) 
+                             #    .when(F.col("ADMSN_DT_YEAR")==2017 ,366+365) #set them to 366 for leap years
+                              #   .when(F.col("ADMSN_DT_YEAR")==2018 ,366+365*2)
+                              #   .when(F.col("ADMSN_DT_YEAR")==2019 ,366+365*3)
+                              #   .when(F.col("ADMSN_DT_YEAR")==2020 ,366+365*4)
+                              #   .when(F.col("ADMSN_DT_YEAR")==2021 ,366*2+365*4)
+                              #   .otherwise(365)) #otherwise 365
 
     # assign a day number starting at day 1 of yearStart-1
     baseDF = baseDF.withColumn("ADMSN_DT_DAY", 
@@ -104,16 +102,16 @@ def add_through_date_info(baseDF, claimType="op"):
     baseDF = baseDF.withColumn( "THRU_DT_YEAR", F.col("THRU_DT").substr(1,4).cast('int'))
 
     # find number of days from yearStart-1 to year of admission -1
-    baseDF = baseDF.withColumn( "THRU_DT_DAYSINYEARSPRIOR", 
+    baseDF = baseDF.withColumn( "THRU_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("THRU_DT_YEAR")])
                                 #some admissions have started in yearStart-1
-                                F.when(F.col("THRU_DT_YEAR")==2015 ,0)  #this should be yearStart-1
-                                 .when(F.col("THRU_DT_YEAR")==2016 ,365) 
-                                 .when(F.col("THRU_DT_YEAR")==2017 ,366+365) #set them to 366 for leap years
-                                 .when(F.col("THRU_DT_YEAR")==2018 ,366+365*2)
-                                 .when(F.col("THRU_DT_YEAR")==2019 ,366+365*3)
-                                 .when(F.col("THRU_DT_YEAR")==2020 ,366+365*4)
-                                 .when(F.col("THRU_DT_YEAR")==2021 ,366*2+365*4)
-                                 .otherwise(365)) #otherwise 365
+                                 #F.when(F.col("THRU_DT_YEAR")==2015 ,0)  #this should be yearStart-1
+                                 #.when(F.col("THRU_DT_YEAR")==2016 ,365) 
+                                 #.when(F.col("THRU_DT_YEAR")==2017 ,366+365) #set them to 366 for leap years
+                                 #.when(F.col("THRU_DT_YEAR")==2018 ,366+365*2)
+                                 #.when(F.col("THRU_DT_YEAR")==2019 ,366+365*3)
+                                 #.when(F.col("THRU_DT_YEAR")==2020 ,366+365*4)
+                                 #.when(F.col("THRU_DT_YEAR")==2021 ,366*2+365*4)
+                                 #.otherwise(365)) #otherwise 365
 
     # assign a day number starting at day 1 of yearStart-1
     baseDF = baseDF.withColumn( "THRU_DT_DAY", 
@@ -139,16 +137,17 @@ def add_discharge_date_info(baseDF, claimType="op"):
     baseDF = baseDF.withColumn( "DSCHRGDT_YEAR", F.col("DSCHRGDT").substr(1,4).cast('int'))
 
     # find number of days from yearStart-1 to year of admission -1
-    baseDF = baseDF.withColumn( "DSCHRGDT_DAYSINYEARSPRIOR",
+    baseDF = baseDF.withColumn( "DSCHRGDT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("DSCHRGDT_DAYSINYEARSPRIOR")])
+                                #some adm_DT_YEAR")])
                                 #some admissions have started in yearStart-1
-                                F.when(F.col("DSCHRGDT_YEAR")==2015 ,0)  #this should be yearStart-1
-                                 .when(F.col("DSCHRGDT_YEAR")==2016 ,365)
-                                 .when(F.col("DSCHRGDT_YEAR")==2017 ,366+365) #set them to 366 for leap years
-                                 .when(F.col("DSCHRGDT_YEAR")==2018 ,366+365*2)
-                                 .when(F.col("DSCHRGDT_YEAR")==2019 ,366+365*3)
-                                 .when(F.col("DSCHRGDT_YEAR")==2020 ,366+365*4)
-                                 .when(F.col("DSCHRGDT_YEAR")==2021 ,366*2+365*4)
-                                 .otherwise(365)) #otherwise 365
+                                #F.when(F.col("DSCHRGDT_YEAR")==2015 ,0)  #this should be yearStart-1
+                                # .when(F.col("DSCHRGDT_YEAR")==2016 ,365)
+                                # .when(F.col("DSCHRGDT_YEAR")==2017 ,366+365) #set them to 366 for leap years
+                                # .when(F.col("DSCHRGDT_YEAR")==2018 ,366+365*2)
+                                # .when(F.col("DSCHRGDT_YEAR")==2019 ,366+365*3)
+                                # .when(F.col("DSCHRGDT_YEAR")==2020 ,366+365*4)
+                                # .when(F.col("DSCHRGDT_YEAR")==2021 ,366*2+365*4)
+                                # .otherwise(365)) #otherwise 365
 
     # assign a day number starting at day 1 of yearStart-1
     baseDF = baseDF.withColumn( "DSCHRGDT_DAY",

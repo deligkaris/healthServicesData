@@ -159,7 +159,6 @@ def enforce_schema(df, claimType, claimPart):
 #outputs: input dataframes with additional columns appended that are needed almost always
 def add_preliminary_info(dataframes):
 
-    #logic for op, ip, snf, hha, hosp, car
     for claimTypePart in list(dataframes.keys()):
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
 
@@ -177,10 +176,12 @@ def add_preliminary_info(dataframes):
             dataframes[claimTypePart] = lineF.add_allowed(dataframes[claimTypePart])
         elif (claimPart=="Revenue"):
             pass
-
-    #logic for mbsf
-    dataframes["mbsf"] = mbsfF.add_death_date_info(dataframes["mbsf"])
-    dataframes["mbsf"] = mbsfF.add_ssaCounty(dataframes["mbsf"])
+        elif (claimPart is None):
+            if (claimType=="mbsf"):
+                dataframes[claimType] = mbsfF.add_death_date_info(dataframes[claimType])
+                dataframes[claimType] = mbsfF.add_ssaCounty(dataframes[claimType])
+        else:
+            pass
 
     return dataframes
 
