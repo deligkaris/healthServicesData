@@ -8,8 +8,23 @@ import pyspark.sql.functions as F
 from pyspark.sql.types import StructType
 import re
 from functools import reduce
+from utilities import yearMin, yearMax
 
 yearJKTransition = 2016 #year CMS switched from J to K format
+yearMinWithCMSData = 2012
+yearMaxWithCMSData = 2021
+
+#inputs: year initial and final requested
+#outputs: boolean if years requested are within limits that the code was designed to operate
+def years_within_code_limits(yearI, yearF):
+
+    return True if ( (yearI>=yearMin) & (yearF<=yearMax) ) else False
+
+#inputs: year initial and final requested
+#outputs: boolean if years requested CMS data exists
+def years_within_cms_data_limits(yearI, yearF):
+
+    return True if (yearI>=yearMinWithCMSData) & (yearF<=yearMaxWithCMSData) ) else False
 
 #inputs: claimTypePart eg opBase, snfRevenue etc
 #outputs: claimType eg op, snf, etc and claimPart eg Base, Revenue, Line
@@ -187,9 +202,14 @@ def add_preliminary_info(dataframes):
 
 def get_data(pathCMS, yearI, yearF, spark):
 
-    filenames = get_filenames(pathCMS, yearI, yearF)
-    dataframes = read_data(spark, filenames, yearI, yearF)
-    #dataframes = add_preliminary_info(dataframes)
+    if ( years_within_code_limits(yearI, yearF)==False ):
+        raise ValueError("code was not designed to operate for the years provided")
+    elif( years_within_cms_data_limits(yearI, yearF)==False ):
+        raise ValueError("CMS data not available for the years requested")
+    else:
+        filenames = get_filenames(pathCMS, yearI, yearF)
+        dataframes = read_data(spark, filenames, yearI, yearF)
+        dataframes = add_preliminary_info(dataframes)
 
     return dataframes
 
