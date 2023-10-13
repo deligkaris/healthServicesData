@@ -34,7 +34,7 @@ def add_level1HCPCS_CD(lineDF):
 
 def add_pcp(lineDF, inClaim=False):
 
-    pcpCond = 'F.col("HCFASPCL").isin([1,8,11])'
+    pcpCond = 'F.col("HCFASPCL").isin(["01","08","11"])'
 
     if (inClaim):
         eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
@@ -88,7 +88,7 @@ def add_opVisit(lineDF, inClaim=False):
 
 def add_neurology(lineDF, inClaim=False):
 
-    neurologyCond = 'F.col("HCFASPCL")==13'
+    neurologyCond = 'F.col("HCFASPCL")=="13"'
 
     if (inClaim):
         eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
@@ -114,7 +114,7 @@ def add_neurologyFromTaxonomy(lineDF, inClaim=False):
 
 def add_neuropsychiatry(lineDF, inClaim=False):
 
-    neuropsychiatryCond = 'F.col("HCFASPCL").isin([62,68,86])'
+    neuropsychiatryCond = 'F.col("HCFASPCL").isin(["62","68","86"])'
 
     if (inClaim):
         eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
@@ -140,7 +140,7 @@ def add_neuropsychiatryFromTaxonomy(lineDF, inClaim=False):
 
 def add_geriatric(lineDF, inClaim=False):
 
-    geriatricCond = 'F.col("HCFASPCL")==38'
+    geriatricCond = 'F.col("HCFASPCL")=="38"'
 
     if (inClaim):
         eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
