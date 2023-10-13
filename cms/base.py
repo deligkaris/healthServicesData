@@ -137,7 +137,7 @@ def add_discharge_date_info(baseDF, claimType="op"):
     baseDF = baseDF.withColumn( "DSCHRGDT_YEAR", F.col("DSCHRGDT").substr(1,4).cast('int'))
 
     # find number of days from yearStart-1 to year of admission -1
-    baseDF = baseDF.withColumn( "DSCHRGDT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("DSCHRGDT_DAYSINYEARSPRIOR")])
+    baseDF = baseDF.withColumn( "DSCHRGDT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("DSCHRGDT_YEAR")])
                                 #some adm_DT_YEAR")])
                                 #some admissions have started in yearStart-1
                                 #F.when(F.col("DSCHRGDT_YEAR")==2015 ,0)  #this should be yearStart-1
