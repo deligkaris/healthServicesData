@@ -24,7 +24,7 @@ def years_within_code_limits(yearI, yearF):
 #outputs: boolean if years requested CMS data exists
 def years_within_cms_data_limits(yearI, yearF):
 
-    return True if (yearI>=yearMinWithCMSData) & (yearF<=yearMaxWithCMSData) ) else False
+    return True if ( (yearI>=yearMinWithCMSData) & (yearF<=yearMaxWithCMSData) ) else False
 
 #inputs: claimTypePart eg opBase, snfRevenue etc
 #outputs: claimType eg op, snf, etc and claimPart eg Base, Revenue, Line
