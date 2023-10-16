@@ -114,6 +114,9 @@ def add_neurologyFromTaxonomy(lineDF, inClaim=False):
 
 def add_neuropsychiatry(lineDF, inClaim=False):
 
+    #note: specialty code 86 is not used frequently
+    #note: specialty codes 62, 68 are used much more frequently
+    #      and they are used mainly with level 1 HCPCS codes 90837, 90834, 90832 which indicate individual outpatient psychotherapy sessions
     neuropsychiatryCond = 'F.col("HCFASPCL").isin(["62","68","86"])'
 
     if (inClaim):
