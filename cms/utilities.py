@@ -178,7 +178,7 @@ def add_preliminary_info(dataframes):
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
 
         if (claimPart=="Base"):
-            dataframes[claimTypePart] = baseF.add_through_date_info(dataframes[claimTypePart], claimType=claimType)
+            dataframes[claimTypePart] = add_through_date_info(dataframes[claimTypePart])
             dataframes[claimTypePart] = baseF.add_ssaCounty(dataframes[claimTypePart])
             if (claimType in ["ip","snf","hosp","hha"]):
                 dataframes[claimTypePart] = baseF.add_admission_date_info(dataframes[claimTypePart],claimType=claimType)
@@ -189,6 +189,7 @@ def add_preliminary_info(dataframes):
         elif (claimPart=="Line"): 
             dataframes[claimTypePart] = lineF.add_level1HCPCS_CD(dataframes[claimTypePart])
             dataframes[claimTypePart] = lineF.add_allowed(dataframes[claimTypePart])
+            dataframes[claimTypePart] = add_through_date_info(dataframes[claimTypePart])
         elif (claimPart=="Revenue"):
             pass
         elif (claimPart is None):
@@ -212,4 +213,24 @@ def get_data(pathCMS, yearI, yearF, spark):
         dataframes = add_preliminary_info(dataframes)
 
     return dataframes
+
+def add_through_date_info(df):
+
+    df = (df.withColumn("THRU_DT_DAYOFYEAR",
+                        F.date_format(
+                            #THRU_DT was read as bigint, need to convert it to string that can be understood by date_format
+                            F.concat_ws('-',F.col("THRU_DT").substr(1,4),F.col("THRU_DT").substr(5,2),F.col("THRU_DT").substr(7,2)),
+                                        "D") #get the day of the year
+                         .cast('int'))
+                         #keep the claim through year too
+                         .withColumn("THRU_DT_YEAR", F.col("THRU_DT").substr(1,4).cast('int'))
+                         #find number of days from yearStart-1 to year of admission -1
+                         .withColumn("THRU_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("THRU_DT_YEAR")])
+                         #assign a day number starting at day 1 of yearStart-1
+                         .withColumn("THRU_DT_DAY",
+                                     # days in years prior to admission + days in year of admission = day nunber
+                                     (F.col("THRU_DT_DAYSINYEARSPRIOR") + F.col("THRU_DT_DAYOFYEAR")).cast('int')))
+
+    return df
+
 
