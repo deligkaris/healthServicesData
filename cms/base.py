@@ -18,39 +18,6 @@ from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgram
 #a page with LDS, RIF differences: https://resdac.org/articles/differences-between-rif-lds-and-puf-data-files
 #they do not include the claimno reset in LDS though.....
 
-#def cast_columns_as_int(baseDF, claim="op"): #date fields in the dataset must be interpreted as integers (and not as floats)
-
-#    if (claim=="op"):
-#       columns = ["THRU_DT", "DSYSRTKY"]
-#    elif (claim=="ip"):
-#       columns = ["THRU_DT", "DSCHRGDT", "ADMSN_DT", "DSYSRTKY"]
-#    # SNF: DSCHRG DT is either NULL (quite frequently) or the same as THRU_DT, so for SNF claims use the THRU_DT when you need DSCHRG_DT
-#    elif ( (claim=="snf") | (claim=="hha") ):
-#       columns = ["CLM_THRU_DT", "NCH_BENE_DSCHRG_DT", "CLM_ADMSN_DT", "DESY_SORT_KEY"]
-#    elif ( (claim=="hosp") ):
-#       columns = ["CLM_THRU_DT", "CLM_HOSPC_START_DT_ID", "DESY_SORT_KEY"]
-
-#    for iColumns in columns:
-#        baseDF = baseDF.withColumn( iColumns, F.col(iColumns).cast('int'))
-
-#    return baseDF
-
-#def cast_columns_as_string(baseDF, claim="op"):
-
-#    if ((claim=="op") | (claim=="ip")):
-#        baseDF = (baseDF.withColumn("PRSTATE", F.lpad(F.col("PRSTATE").cast("string"),2,'0'))
-#                        .withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast("string"),2,'0'))
-#                        .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast("string"),3,'0')))
-#    elif ((claim=="hha") | (claim=="hosp") | (claim=="snf")):
-#        baseDF = (baseDF.withColumn("PRVDR_STATE_CD", F.lpad(F.col("PRVDR_STATE_CD").cast("string"),2,'0'))
-#                        .withColumn("BENE_STATE_CD", F.lpad(F.col("BENE_STATE_CD").cast("string"),2,'0'))
-#                        .withColumn("BENE_CNTY_CD", F.lpad(F.col("BENE_CNTY_CD").cast("string"),3,'0')))
-#    elif (claim=="car"):
-#        baseDF = (baseDF.withColumn("BENE_STATE_CD", F.lpad(F.col("BENE_STATE_CD").cast("string"),2,'0'))
-#                        .withColumn("BENE_CNTY_CD", F.lpad(F.col("BENE_CNTY_CD").cast("string"),3,'0')))
-        
-#    return baseDF
-
 def add_admission_date_info(baseDF, claimType="op"):
 
     #unfortunately, SNF claims have a different column name for admission date
@@ -60,32 +27,18 @@ def add_admission_date_info(baseDF, claimType="op"):
     elif ( (claimType=="hosp") ):
         baseDF = baseDF.withColumn( "ADMSN_DT", F.col("HSPCSTRT") )
 
-    baseDF = baseDF.withColumn( "ADMSN_DT_DAYOFYEAR", 
+    baseDF = (baseDF.withColumn("ADMSN_DT_DAYOFYEAR", 
                                 F.date_format(
-                                     #ADMSN_DT was read as bigint, need to convert it to string that can be understood by date_format
-                                     F.concat_ws('-',F.col("ADMSN_DT").substr(1,4),F.col("ADMSN_DT").substr(5,2),F.col("ADMSN_DT").substr(7,2)), 
-                                     "D" #get the day of the year
+                                   #ADMSN_DT was read as bigint, need to convert it to string that can be understood by date_format
+                                   F.concat_ws('-',F.col("ADMSN_DT").substr(1,4),F.col("ADMSN_DT").substr(5,2),F.col("ADMSN_DT").substr(7,2)), 
+                                   "D" #get the day of the year
                                 ).cast('int'))
-
-    # keep the year too
-    baseDF = baseDF.withColumn( "ADMSN_DT_YEAR", F.col("ADMSN_DT").substr(1,4).cast('int'))
-
-    # find number of days from yearStart-1 to year of admission -1
-    baseDF = baseDF.withColumn( "ADMSN_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("ADMSN_DT_YEAR")])
-                                #some admissions have started in yearStart-1
-                           #     F.when(F.col("ADMSN_DT_YEAR")==2015 ,0)  #this should be yearStart-1
-                            #     .when(F.col("ADMSN_DT_YEAR")==2016 ,365) 
-                             #    .when(F.col("ADMSN_DT_YEAR")==2017 ,366+365) #set them to 366 for leap years
-                              #   .when(F.col("ADMSN_DT_YEAR")==2018 ,366+365*2)
-                              #   .when(F.col("ADMSN_DT_YEAR")==2019 ,366+365*3)
-                              #   .when(F.col("ADMSN_DT_YEAR")==2020 ,366+365*4)
-                              #   .when(F.col("ADMSN_DT_YEAR")==2021 ,366*2+365*4)
-                              #   .otherwise(365)) #otherwise 365
-
-    # assign a day number starting at day 1 of yearStart-1
-    baseDF = baseDF.withColumn("ADMSN_DT_DAY", 
-                               # days in years prior to admission + days in year of admission = day nunber
-                               (F.col("ADMSN_DT_DAYSINYEARSPRIOR") + F.col("ADMSN_DT_DAYOFYEAR")).cast('int'))
+                    # keep the year too
+                    .withColumn( "ADMSN_DT_YEAR", F.col("ADMSN_DT").substr(1,4).cast('int'))
+                    # find number of days from yearStart-1 to year of admission -1
+                    .withColumn( "ADMSN_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("ADMSN_DT_YEAR")])
+                    # days in years prior to admission + days in year of admission = day nunber
+                    .withColumn("ADMSN_DT_DAY", (F.col("ADMSN_DT_DAYSINYEARSPRIOR") + F.col("ADMSN_DT_DAYOFYEAR")).cast('int')))
 
     return baseDF
 
@@ -95,33 +48,18 @@ def add_discharge_date_info(baseDF, claimType="op"):
     if (claimType=="snf"):         
         baseDF = baseDF.withColumn( "DSCHRGDT", F.col("NCH_BENE_DSCHRG_DT"))
 
-    baseDF = baseDF.withColumn( "DSCHRGDT_DAYOFYEAR",
+    baseDF = (baseDF.withColumn("DSCHRGDT_DAYOFYEAR",
                                 F.date_format(
                                     #THRU_DT was read as bigint, need to convert it to string that can be understood by date_format
                                     F.concat_ws('-',F.col("DSCHRGDT").substr(1,4),F.col("DSCHRGDT").substr(5,2),F.col("DSCHRGDT").substr(7,2)),
                                     "D" #get the day of the year
                                 ).cast('int'))
-
-    # keep the claim through year too
-    baseDF = baseDF.withColumn( "DSCHRGDT_YEAR", F.col("DSCHRGDT").substr(1,4).cast('int'))
-
-    # find number of days from yearStart-1 to year of admission -1
-    baseDF = baseDF.withColumn( "DSCHRGDT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("DSCHRGDT_YEAR")])
-                                #some adm_DT_YEAR")])
-                                #some admissions have started in yearStart-1
-                                #F.when(F.col("DSCHRGDT_YEAR")==2015 ,0)  #this should be yearStart-1
-                                # .when(F.col("DSCHRGDT_YEAR")==2016 ,365)
-                                # .when(F.col("DSCHRGDT_YEAR")==2017 ,366+365) #set them to 366 for leap years
-                                # .when(F.col("DSCHRGDT_YEAR")==2018 ,366+365*2)
-                                # .when(F.col("DSCHRGDT_YEAR")==2019 ,366+365*3)
-                                # .when(F.col("DSCHRGDT_YEAR")==2020 ,366+365*4)
-                                # .when(F.col("DSCHRGDT_YEAR")==2021 ,366*2+365*4)
-                                # .otherwise(365)) #otherwise 365
-
-    # assign a day number starting at day 1 of yearStart-1
-    baseDF = baseDF.withColumn( "DSCHRGDT_DAY",
-                                 # days in years prior to admission + days in year of admission = day nunber
-                                 (F.col("DSCHRGDT_DAYSINYEARSPRIOR") + F.col("DSCHRGDT_DAYOFYEAR")).cast('int'))
+                    # keep the claim through year too
+                    .withColumn( "DSCHRGDT_YEAR", F.col("DSCHRGDT").substr(1,4).cast('int'))
+                    # find number of days from yearStart-1 to year of admission -1
+                    .withColumn( "DSCHRGDT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("DSCHRGDT_YEAR")])
+                    # days in years prior to admission + days in year of admission = day nunber
+                    .withColumn( "DSCHRGDT_DAY", (F.col("DSCHRGDT_DAYSINYEARSPRIOR") + F.col("DSCHRGDT_DAYOFYEAR")).cast('int')))
 
     return baseDF
 
