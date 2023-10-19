@@ -65,7 +65,7 @@ def add_mri(revenueDF, inClaim=False):
 
 def add_ct(revenueDF, inClaim=False):
 
-    if (inClaim=False):
+    if (inClaim):
         eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"]) 
         revenueDF = (revenueDF.withColumn("ct",
                                           F.when( (F.col("REV_CNTR")>= 350) & (F.col("REV_CNTR") <= 359) ,1)
