@@ -1,5 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
+import re
 
 #I think for now I prefer not implementing any filters on revenue records because I am doing an inner join of base with revenue summaries
 #maybe I should rethink how to to do the base and revenue summary join
