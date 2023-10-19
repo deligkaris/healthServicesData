@@ -234,6 +234,21 @@ def add_homeVisit(lineDF, inClaim=False):
 
     return lineDF
 
+def add_nptesVisit(lineDF, inClaim=False): #nptes: neuropsychological testing evaluation services
+
+    nptesUntil2018Cond = '((F.col("level1HCPCS_CD").isin([96118])) & (F.col("THRU_DT_YEAR")<=2018))'
+    nptesSince2019Cond = '((F.col("level1HCPCS_CD").isin([96132, 96133, 96136, 96137])) & (F.col("THRU_DT_YEAR")>=2019))'
+    nptesCond = nptesUntil2018Cond + '|' + nptesSince2019Cond
+
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("nptesVisit", F.when( eval(nptesCond), 1).otherwise(0))
+                        .withColumn("nptesVisitInClaim", F.max(F.col("nptesVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("nptesVisit", F.when( eval(nptesCond), 1).otherwise(0))
+
+    return lineDF
+
 def add_pcpHomeVisit(lineDF, inClaim=False):
 
     lineDF = add_pcp(lineDF, inClaim=False)
@@ -287,6 +302,20 @@ def add_neuropsychiatryOpVisit(lineDF, inClaim=False):
                         .withColumn("neuropsychiatryOpVisitInClaim", F.max(F.col("neuropsychiatryOpVisit")).over(eachClaim)))
     else:
         lineDF = lineDF.withColumn("neuropsychiatryOpVisit", F.col("neuropsychiatry")*F.col("opVisit"))
+
+    return lineDF
+
+def add_neuropsychiatryNptesVisit(lineDF, inClaim=False):
+ 
+    lineDF = add_neuropsychiatry(lineDF, inClaim=False)
+    lineDF = add_nptes(lineDF, inClaim=False)
+
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        lineDF = (lineDF.withColumn("neuropsychiatryNptesVisit", F.col("neuropsychiatry")*F.col("nptesVisit"))
+                        .withColumn("neuropsychiatryNptesVisitInClaim", F.max(F.col("neuropsychiatryNptesVisit")).over(eachClaim)))
+    else:
+        lineDF = lineDF.withColumn("neuropsychiatryNptesVisit", F.col("neuropsychiatry")*F.col("nptesVisit"))
 
     return lineDF
 
