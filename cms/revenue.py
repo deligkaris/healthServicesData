@@ -115,7 +115,7 @@ def get_revenue_summary(revenueDF):
 
     #the only summary I think I typically need are the inClaim summaries, and those columns now end with InClaim
     #include a few other columns so that I can link the summary to the base 
-    revenueSummaryDF = revenueDF.select("DSYSRTKY", "CLAIMNO", "THRU_DT", lineDF.colRegex("`^[a-zA-Z]+(InClaim)$`")).distinct()
+    revenueSummaryDF = revenueDF.select("DSYSRTKY", "CLAIMNO", "THRU_DT", revenueDF.colRegex("`^[a-zA-Z]+(InClaim)$`")).distinct()
 
     #the summary will be joined to base, so the InClaim is no longer needed
     namesWithoutInClaim = [re.sub("InClaim","",x) for x in revenueSummaryDF.columns]
