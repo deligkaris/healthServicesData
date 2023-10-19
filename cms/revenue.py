@@ -5,26 +5,29 @@ from pyspark.sql.window import Window
 #maybe I should rethink how to to do the base and revenue summary join
 #for now implement filters either on base or on claims
 
-def add_ed(revenueDF):
+def add_ed(revenueDF, inClaim=False):
 
     # https://resdac.org/articles/how-identify-hospital-claims-emergency-room-visits-medicare-claims-data
     # Claims in the Outpatient and Inpatient files are identified via Revenue Center Code 
     # values of 0450-0459 (Emergency room) or 0981 (Professional fees-Emergency room).
 
-    revenueDF = revenueDF.withColumn("ed",
-                                     F.when( (F.col("REV_CNTR")>= 450) & (F.col("REV_CNTR") <= 459) ,1)
-                                      .when( F.col("REV_CNTR")==981 ,1)
-                                      .otherwise(0))
-
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
-
-    revenueDF = revenueDF.withColumn("ed", F.max(F.col("ed")).over(eachDsysrtkyAndClaim))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        revenueDF = (revenueDF.withColumn("ed",
+                                          F.when( (F.col("REV_CNTR")>= 450) & (F.col("REV_CNTR") <= 459) ,1)
+                                           .when( F.col("REV_CNTR")==981 ,1)
+                                           .otherwise(0))
+                              .withColumn("edInClaim", F.max(F.col("ed")).over(eachClaim)))
+    else:
+        revenueDF = revenueDF.withColumn("ed",
+                                         F.when( (F.col("REV_CNTR")>= 450) & (F.col("REV_CNTR") <= 459) ,1)
+                                          .when( F.col("REV_CNTR")==981 ,1)
+                                          .otherwise(0))  
 
     # this is another approach where I summarize the records and then return a summary, for now I prefer to do the summary in the notebook as needed
     # here we collapse all revenue center records that are part of the same claim to a single revenue center 
     # summary record that includes/summarizes the information we need
     # this allows us during join with the single base claim record to have a single combined base claim - revenue record
-
     #revenueSummaryDF = (revenueDF
     #                      .select(
     #                         F.col("DSYSRTKY"),F.col("CLAIMNO"),F.col("edClaim"))
@@ -36,16 +39,18 @@ def add_ed(revenueDF):
 
     return revenueDF
 
-def add_mri(revenueDF):
+def add_mri(revenueDF, inClaim=False):
 
-    revenueDF = revenueDF.withColumn("mri", 
-                                     F.when( (F.col("REV_CNTR")>= 610) & (F.col("REV_CNTR") <= 619) ,1)
-                                      .otherwise(0))
-
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
-
-    revenueDF = revenueDF.withColumn("mri", 
-                                     F.max(F.col("mri")).over(eachDsysrtkyAndClaim))
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        revenueDF = (revenueDF.withColumn("mri", 
+                                          F.when( (F.col("REV_CNTR")>= 610) & (F.col("REV_CNTR") <= 619) ,1)
+                                           .otherwise(0))
+                              .withColumn("mriInClaim", F.max(F.col("mri")).over(eachClaim)))
+    else:
+        revenueDF = revenueDF.withColumn("mri",
+                                         F.when( (F.col("REV_CNTR")>= 610) & (F.col("REV_CNTR") <= 619) ,1)
+                                          .otherwise(0))   
 
     #revenueSummaryDF = (revenueDF
     #                      .select(
@@ -58,16 +63,18 @@ def add_mri(revenueDF):
 
     return revenueDF
 
-def add_ct(revenueDF):
+def add_ct(revenueDF, inClaim=False):
 
-    revenueDF = revenueDF.withColumn("ct",
-                                    F.when( (F.col("REV_CNTR")>= 350) & (F.col("REV_CNTR") <= 359) ,1)
-                                     .otherwise(0))
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
-
-    revenueDF = revenueDF.withColumn("ct",
-                                     F.max(F.col("ct")).over(eachDsysrtkyAndClaim))
-
+    if (inClaim=False):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"]) 
+        revenueDF = (revenueDF.withColumn("ct",
+                                          F.when( (F.col("REV_CNTR")>= 350) & (F.col("REV_CNTR") <= 359) ,1)
+                                           .otherwise(0))
+                              .withColumn("ctInClaim", F.max(F.col("ct")).over(eachClaim)))
+    else:
+        revenueDF = revenueDF.withColumn("ct",
+                                         F.when( (F.col("REV_CNTR")>= 350) & (F.col("REV_CNTR") <= 359) ,1)
+                                          .otherwise(0))
     #revenueSummaryDF = (revenueDF
     #                      .select(
     #                         F.col("DSYSRTKY"),F.col("CLAIMNO"),F.col("ctClaim"))
@@ -79,21 +86,21 @@ def add_ct(revenueDF):
 
     return revenueDF
 
-def add_echo(revenueDF):
+def add_echo(revenueDF, inClaim=False):
 
     echoCodes = ["93304", "93306", "93307", "93320", "93321", "93312", "93313", "93314","93315", "93316", "93317"]
-
     echoCondition = '(F.col("HCPCS_CD").isin(echoCodes))'
 
-    revenueDF = revenueDF.withColumn("echo",
-                                    F.when( eval(echoCondition) ,1)
-                                     .otherwise(0))
-
-    eachDsysrtkyAndClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO"])
-
-    revenueDF = revenueDF.withColumn("echo",
-                                     F.max(F.col("echo")).over(eachDsysrtkyAndClaim))
-
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        revenueDF = (revenueDF.withColumn("echo",
+                                          F.when( eval(echoCondition) ,1)
+                                           .otherwise(0))
+                              .withColumn("echoInClaim", F.max(F.col("echo")).over(eachClaim)))
+    else:
+        revenueDF = revenueDF.withColumn("echo",
+                                          F.when( eval(echoCondition) ,1)
+                                           .otherwise(0))
     return revenueDF
 
 def filter_claims(revenueDF, baseDF):
@@ -103,5 +110,18 @@ def filter_claims(revenueDF, baseDF):
                                on=["CLAIMNO","DSYSRTKY","THRU_DT"],
                                how="left_semi")
     return revenueDF
+
+def get_revenue_summary(revenueDF):
+
+    #the only summary I think I typically need are the inClaim summaries, and those columns now end with InClaim
+    #include a few other columns so that I can link the summary to the base 
+    revenueSummaryDF = revenueDF.select("DSYSRTKY", "CLAIMNO", "THRU_DT", lineDF.colRegex("`^[a-zA-Z]+(InClaim)$`")).distinct()
+
+    #the summary will be joined to base, so the InClaim is no longer needed
+    namesWithoutInClaim = [re.sub("InClaim","",x) for x in revenueSummaryDF.columns]
+
+    revenueSummaryDF = revenueSummaryDF.toDF(*namesWithoutInClaim)
+
+    return revenueSummaryDF
 
 
