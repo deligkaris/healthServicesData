@@ -1,5 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
+from utilities import daysInYearsPrior
 
 #notes (most are from the Resdac tutorial: https://youtu.be/-nxGbTPVLo8?si=TsTNDXDpZlPTsvpX )
 #note: demographic information is largely reliable and valid
