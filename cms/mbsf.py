@@ -1,21 +1,25 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
-#notes from the Resdac tutorial: https://youtu.be/-nxGbTPVLo8?si=TsTNDXDpZlPTsvpX
-#demographic information is largely reliable and valid
-#age is the oldest they could be, age at the end of the calendar year, or age as the date of death
-#some deaths are missed by medicare (or SSA)
-#no standard way to remove the likely dead people but some options are:
-#delete anyone over 100 or 90 with no health care use in a year
-#delete anyone over 90 who has not part B coverage
-#delete anyone older than the oldest person in the US
-#non-validated death dates are assigned at the end of the month so
-#including non-validated death dates as actual death dates will over-estimate survival times
-#hispanic ethnicity code has a sensitivity of about 35%
-#denominator file indicates mailing address on when file is finalized so it may reflect changes after the end of the calendar year
-#mbsf indicates mailing address as of december 31 of the calendar year
-#data support the idea that those with A-only coverage probably have incomplete claims, even for part A services
-#state buy-in is not the same as poverty
+#notes (most are from the Resdac tutorial: https://youtu.be/-nxGbTPVLo8?si=TsTNDXDpZlPTsvpX )
+#note: demographic information is largely reliable and valid
+#note: age is the oldest they could be, age at the end of the calendar year, or age as the date of death
+#note: some deaths are missed by medicare (or SSA)
+#      no standard way to remove the likely dead people but some options are:
+#      delete anyone over 100 or 90 with no health care use in a year
+#      delete anyone over 90 who has not part B coverage
+#      delete anyone older than the oldest person in the US
+#note: non-validated death dates are assigned at the end of the month so
+#      including non-validated death dates as actual death dates will over-estimate survival times
+#note: hispanic ethnicity code has a sensitivity of about 35%
+#note: denominator file indicates mailing address on when file is finalized so it may reflect changes after the end of the calendar year
+#      mbsf indicates mailing address as of december 31 of the calendar year
+#note: data support the idea that those with A-only coverage probably have incomplete claims, even for part A services
+#note: state buy-in is not the same as poverty
+#note: if at some point you are interested in doing statical calculation of FFS and MA enrollments, eg to verify processes,
+#      the https://www.kff.org/state-category/medicare/medicare-enrollment/ 
+#      I think in this website they calculated the sum of months, divided by 12, to get the person-years numbers for enrollments
+#      CMS also has data on enrollment: https://www.cms.gov/medicare/payment/medicare-advantage-rates-statistics/ffs-data-2015-2021
 
 def add_allPartB(mbsfDF): #assumes add death date info
 
@@ -212,52 +216,34 @@ def add_cAppalachiaResident(mbsfDF):
 
 def add_death_date_info(mbsfDF):
 
-    #leapYears=[2016,2020,2024,2028]
-
-    mbsfDF = mbsfDF.withColumn( "DEATH_DT_DAYOFYEAR", 
-                              F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date
+    mbsfDF = (mbsfDF.withColumn("DEATH_DT_DAYOFYEAR", 
+                                F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date
                                   F.date_format(
                                      #ADMSN_DT was read as bigint, need to convert it to string that can be understood by date_format
                                      F.concat_ws('-',F.col("DEATH_DT").substr(1,4),F.col("DEATH_DT").substr(5,2),F.col("DEATH_DT").substr(7,2)), 
                                      "D" #get the day of the year
                                   ).cast('int'))
                                .otherwise(F.lit(None)))
-
-    # keep the year too
-    mbsfDF = mbsfDF.withColumn( "DEATH_DT_YEAR", 
+                    # keep the year too
+                    .withColumn("DEATH_DT_YEAR", 
                                 F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date                              
                                     F.col("DEATH_DT").substr(1,4).cast('int'))
                                  .otherwise(F.lit(None)))
-
-    # keep the month 
-    mbsfDF = mbsfDF.withColumn( "DEATH_DT_MONTH",
+                    # keep the month 
+                    .withColumn("DEATH_DT_MONTH",
                                 F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date                              
                                     F.col("DEATH_DT").substr(5,2).cast('int'))
                                  .otherwise(F.lit(None)))
-
-    # find number of days from yearStart-1 to year of death -1
-    mbsfDF = mbsfDF.withColumn( "DEATH_DT_DAYSINYEARSPRIOR", 
-                                F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date
-                                    #some admissions have started in yearStart-1
-                                    F.when(F.col("DEATH_DT_YEAR")==2015 ,0)  #this should be yearStart-1
-                                     .when(F.col("DEATH_DT_YEAR")==2016 ,365) 
-                                     .when(F.col("DEATH_DT_YEAR")==2017 ,366+365) #set them to 366 for leap years
-                                     .when(F.col("DEATH_DT_YEAR")==2018 ,366+365*2)
-                                     .when(F.col("DEATH_DT_YEAR")==2019 ,366+365*3)
-                                     .when(F.col("DEATH_DT_YEAR")==2020 ,366+365*4)
-                                     .when(F.col("DEATH_DT_YEAR")==2021 ,366*2+365*4)
-                                     .when(F.col("DEATH_DT_YEAR")==2022 ,366*2+365*5)
-                                     .when(F.col("DEATH_DT_YEAR")==2023 ,366*2+365*6)
-                                     .otherwise(365)) #otherwise 365
+                    # find number of days from yearStart-1 to year of death -1
+                    .withColumn("DEATH_DT_DAYSINYEARSPRIOR", 
+                                F.when( F.col("V_DOD_SW")=="V", daysInYearsPrior[F.col("DEATH_DT_YEAR")])  #for the ones that have a valid death date
                                  .otherwise(F.lit(None)))
-
-    # assign a day number starting at day 1 of yearStart-1
-    mbsfDF = mbsfDF.withColumn( "DEATH_DT_DAY",
+                    # assign a day number starting at day 1 of yearStart-1
+                    .withColumn("DEATH_DT_DAY",
                                 F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date 
                                     # days in years prior to admission + days in year of admission = day nunber
                                     (F.col("DEATH_DT_DAYSINYEARSPRIOR") + F.col("DEATH_DT_DAYOFYEAR")).cast('int'))
-                                 .otherwise(F.lit(None)))
-
+                                 .otherwise(F.lit(None))))
     return mbsfDF
 
 def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
