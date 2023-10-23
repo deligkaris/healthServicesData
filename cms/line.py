@@ -234,6 +234,7 @@ def add_homeVisit(lineDF, inClaim=False):
 
     return lineDF
 
+#source: https://www.apaservices.org/practice/reimbursement/health-codes/testing/neuropsychological-testing.pdf
 def add_nptesVisit(lineDF, inClaim=False): #nptes: neuropsychological testing evaluation services
 
     nptesUntil2018Cond = '((F.col("level1HCPCS_CD").isin([96118, 96119, 96116])) & (F.col("THRU_DT_YEAR")<=2018))'
