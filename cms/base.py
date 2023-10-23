@@ -1160,7 +1160,7 @@ def add_nihss_info(baseDF):
 def add_claim_stroke_info(baseDF, inpatient=True):
 
     baseDF = add_claim_stroke_treatment_info(baseDF, inpatient=inpatient)
-    baseDF = add_nihss(baseDF)
+    baseDF = add_nihss_info(baseDF)
 
     return baseDF
 
