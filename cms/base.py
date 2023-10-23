@@ -1139,6 +1139,24 @@ def add_nihss(baseDF):
 
     return baseDF
 
+def add_nihssGroup(baseDF):
+
+    baseDF = baseDF.withColumn("nihssGroup",
+                               F.when( ((F.col("nihss")>=0)&(F.col("nihss")<10)), F.lit(0) )
+                                .when( ((F.col("nihss")>=10)&(F.col("nihss")<20)), F.lit(1) )
+                                .when( ((F.col("nihss")>=20)&(F.col("nihss")<30)), F.lit(2) )
+                                .when( ((F.col("nihss")>=30)&(F.col("nihss")<40)), F.lit(3) )
+                                .when( ((F.col("nihss")>=40)&(F.col("nihss")<43)), F.lit(4) )
+                                .otherwise(F.lit(None)))
+    return baseDF
+
+def add_nihss_info(baseDF):
+
+    baseDF = add_nihss(baseDF)
+    baseDF = add_nihssGroup(baseDF)
+
+    return baseDF
+
 def add_claim_stroke_info(baseDF, inpatient=True):
 
     baseDF = add_claim_stroke_treatment_info(baseDF, inpatient=inpatient)
@@ -1215,6 +1233,7 @@ def add_acgmeXInZip(baseDF,acgmeXDF, X="Sites"):
 
     return baseDF
 
+#did not have time to validate extensively this function
 def add_acgmeX(baseDF,acgmeXDF, X="Site"):
 
     baseDF = add_processed_name(baseDF,colToProcess="providerName")
@@ -1269,7 +1288,7 @@ def add_aamcMajorTeachingHospital(baseDF,aamcHospitalsDF):
 
     return baseDF
 
-
+#did not have time to validate extensively this function
 def add_teachingHospital(baseDF, aamcHospitalsDF, acgmeProgramsDF):
 
     #definition of a teaching hospital:  https://hcup-us.ahrq.gov/db/vars/hosp_bedsize/nisnote.jsp
