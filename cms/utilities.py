@@ -110,6 +110,8 @@ def read_and_prep_dataframe(filename, claimTypePart, spark):
         df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
     #some columns need to have zeros padded (state and county codes)
     df = pad_zeros(df, claimType=claimType, claimPart=claimPart)
+    #mbsf files 2015 and prior have only 2 digits for the RFRNC_YR
+    df = fix_year(df, claimType=claimType, claimPart=claimPart)
     #enforce the schema now, dataframes need to have the same schema before doing the unions
     #in some dataframes the first row is a copy of the header, enforce_schema has made the "DSYSRTKY" string of that first row a null value
     #so I need to remove that row, assumes that the DSYSRTKY col is cast to an int in schema.py
@@ -156,6 +158,18 @@ def pad_zeros(df, claimType, claimPart):
                 #             .otherwise( F.format_string("%03d",F.col("CNTY_CD"))))
                 #.select([ F.when( ~F.col(c).isNull(), F.format_string("%05d",F.col(c))).alias(c)  if c in stCntCols else F.col(c) for c in df.columns ]))
     return df  
+
+#inputs: df, mbsf, with incomplete RFRNC_YR (eg 15)
+#outputs: df, mbsf, with RFRNC_YR complete (eg 2015)
+def fix_year(df, claimType=claimType, claimPart=claimPart):
+
+    if (claimType=="mbsf"):
+        df = (df.withColumn("lengthRFRNC_YR", F.length(F.col("RFRNC_YR").cast('string')))
+                .withColumn("RFRNC_YR",
+                            F.when( F.col("lengthRFRNC_YR")==2, F.concat(F.lit("20"), F.col("RFRNC_YR").cast('string')))
+                             .otherwise(F.col("RFRNC_YR").cast('string')))
+                .withColumn("RFRNC_YR", F.col("RFRNC_YR").cast('int')))
+    return df
 
 #inputs: dataframe with inferred schema by spark
 #outputs: dataframe with schema defined in schema.py
