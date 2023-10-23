@@ -236,8 +236,8 @@ def add_homeVisit(lineDF, inClaim=False):
 
 def add_nptesVisit(lineDF, inClaim=False): #nptes: neuropsychological testing evaluation services
 
-    nptesUntil2018Cond = '((F.col("level1HCPCS_CD").isin([96118])) & (F.col("THRU_DT_YEAR")<=2018))'
-    nptesSince2019Cond = '((F.col("level1HCPCS_CD").isin([96132, 96133, 96136, 96137])) & (F.col("THRU_DT_YEAR")>=2019))'
+    nptesUntil2018Cond = '((F.col("level1HCPCS_CD").isin([96118, 96119, 96116])) & (F.col("THRU_DT_YEAR")<=2018))'
+    nptesSince2019Cond = '((F.col("level1HCPCS_CD").isin([96132, 96133, 96136, 96137, 96138, 96139, 96116, 96121])) & (F.col("THRU_DT_YEAR")>=2019))'
     nptesCond = nptesUntil2018Cond + '|' + nptesSince2019Cond
 
     if (inClaim):
