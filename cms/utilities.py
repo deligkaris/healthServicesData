@@ -161,7 +161,7 @@ def pad_zeros(df, claimType, claimPart):
 
 #inputs: df, mbsf, with incomplete RFRNC_YR (eg 15)
 #outputs: df, mbsf, with RFRNC_YR complete (eg 2015)
-def fix_year(df, claimType=claimType, claimPart=claimPart):
+def fix_year(df, claimType, claimPart):
 
     if (claimType=="mbsf"):
         df = (df.withColumn("lengthRFRNC_YR", F.length(F.col("RFRNC_YR").cast('string')))
