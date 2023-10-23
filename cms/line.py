@@ -309,7 +309,7 @@ def add_neuropsychiatryOpVisit(lineDF, inClaim=False):
 def add_neuropsychiatryNptesVisit(lineDF, inClaim=False):
  
     lineDF = add_neuropsychiatry(lineDF, inClaim=False)
-    lineDF = add_nptes(lineDF, inClaim=False)
+    lineDF = add_nptesVisit(lineDF, inClaim=False)
 
     if (inClaim):
         eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
