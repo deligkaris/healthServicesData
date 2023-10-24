@@ -171,7 +171,7 @@ def get_filenames(pathToData, yearInitial, yearFinal):
 def read_data(spark, filenames):
 
      data = dict()
-     for (file in list(filenames.keys())):
+     for file in list(filenames.keys()):
          if file in ["gazetteer2020","geojsonCounty"]:
              continue
          else:
