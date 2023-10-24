@@ -1473,27 +1473,6 @@ def filter_beneficiaries(baseDF, mbsfDF):
 
     return baseDF
 
-#def enforce_schema(baseDF, claim="ip"):
-
-    #some columns are read as double or int but they are strings and include leading zeros, so fix this
-#    baseDF = cast_columns_as_string(baseDF,claim=claim)
-
-    #now enforce the schema set for base df
-#    if claim=="ip":
-#        baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in ipBaseSchema.fields])
-#    elif claim=="op":
-#        baseDF = baseDF.select([baseDF[field.name].cast(field.dataType) for field in opBaseSchema.fields])
-#    elif claim=="snf":
-#        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(snfBaseLongToShortXW[field.name]) for field in snfBaseSchema.fields])
-#    elif claim=="hha":
-#        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hhaBaseLongToShortXW[field.name]) for field in hhaBaseSchema.fields])
-#    elif claim=="hosp":
-#        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(hospBaseLongToShortXW[field.name]) for field in hospBaseSchema.fields])
-#    elif claim=="car":
-#        baseDF = baseDF.select([(F.col(field.name).cast(field.dataType)).alias(carBaseLongToShortXW[field.name]) for field in carBaseSchema.fields])
-
-#    return baseDF
-
 def add_cAppalachiaResident(baseDF):  
 
     #cAppalachia: central Appalachia, Kentucky, North Carolina, Ohio, Tennessee, Virginia, West Virginia)
