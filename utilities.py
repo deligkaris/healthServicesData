@@ -3,6 +3,7 @@ from pyspark.sql.window import Window
 from urllib.request import urlopen
 import json
 from itertools import chain
+from functools import reduce
 
 #yearMin and yearMax are limits, the code is designed to operate within these limits
 #create a map from year to number of days in all previous years (assume there is a year that is year 0)
