@@ -26,35 +26,27 @@ def get_filenames(pathToData, yearInitial, yearFinal):
     filenames = dict()
 
     # NPI numbers and other provider information obtained from CMS: https://download.cms.gov/nppes/NPI_Files.html
-    npiFilename = pathToData + '/npidata_pfile_20050523-20220807.csv'
     filenames["npi"] = [pathToData + '/npidata_pfile_20050523-20220807.csv']
 
     # got this file from https://data.nber.org/data/cbsa-msa-fips-ssa-county-crosswalk.html
     # found it using some insight from https://resdac.org/cms-data/variables/county-code-claim-ssa
     #https://www.nber.org/research/data/census-core-based-statistical-area-cbsa-federal-information-processing-series-fips-county-crosswalk
-    cbsaFilename = pathToData + '/cbsatocountycrosswalk.csv'
     filenames["cbsa"] = [pathToData + '/cbsatocountycrosswalk.csv']
 
     # county level data were obtained from US Census Bureau
     # https://www.census.gov/cgi-bin/geo/shapefiles/index.php
-    shpCountyFilename = pathToData + "/tl2021county/tl_2021_us_county.shp"
     filenames["shpCounty"] = [pathToData + "/tl2021county/tl_2021_us_county.shp"]
     
     #county-level data from Plotly
-    geojsonCountyFilename = 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json'
     filenames["geojsonCounty"] = ['https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json']
 
     # data from USDA ERS
     # https://www.ers.usda.gov/data-products/atlas-of-rural-and-small-town-america/download-the-data/
     # https://www.ers.usda.gov/data-products/rural-urban-continuum-codes.aspx
-    filenames["usdaErsPeople"] = [pathToData + "/USDA-ERS/People.csv"]
-    filenames["usdaErsJobs"] = [pathToData + "/USDA-ERS/Jobs.csv"]
-    filenames["usdaErsIncome"] = [pathToData + "/USDA-ERS/Income.csv"]
-    filenames["usdaErsRucc"] = [pathToData + "/USDA-ERS/ruralurbancodes2013.csv"]
-    usdaErsPeopleFilename = pathToData + "/USDA-ERS/People.csv"
-    usdaErsJobsFilename = pathToData + "/USDA-ERS/Jobs.csv"
-    usdaErsIncomeFilename = pathToData + "/USDA-ERS/Income.csv"
-    usdaErsRuccFilename = pathToData + "/USDA-ERS/ruralurbancodes2013.csv"
+    filenames["ersPeople"] = [pathToData + "/USDA-ERS/People.csv"]
+    filenames["ersJobs"] = [pathToData + "/USDA-ERS/Jobs.csv"]
+    filenames["ersIncome"] = [pathToData + "/USDA-ERS/Income.csv"]
+    filenames["ersRucc"] = [pathToData + "/USDA-ERS/ruralurbancodes2013.csv"]
 
     # US Census data
     # This is how I got the data: https://www.youtube.com/watch?v=I6r-y_GQLfo
@@ -67,20 +59,16 @@ def get_filenames(pathToData, yearInitial, yearFinal):
     # for examples: https://api.census.gov/data/2021/acs/acs1/profile/examples.html
     # for the codes: https://api.census.gov/data/2021/acs/acs1/profile/variables.html
     # https://api.census.gov/data/2021/acs/acs1/profile.html
-    census2021Filename = pathToData + "/CENSUS/census-2021-oh.csv"
     filenames["census2021"] = [pathToData + "/CENSUS/census-2021-oh.csv"]
 
     # to calculate population density I need to use the Gazetteer file:
     #  https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.2020.html
-    censusGazetteer2020Filename = pathToData + "/CENSUS/2020_Gaz_counties_national.csv" #the .txt file does not work
     filenames["gazetteer2020"] = [pathToData + "/CENSUS/2020_Gaz_counties_national.csv"] 
 
     # these data were obtained from CMS, for now just use the latest data available
     # https://www.cms.gov/Research-Statistics-Data-and-Systems/Downloadable-Public-Use-Files/Cost-Reports/Hospital-2010-form
     # https://data.cms.gov/provider-compliance/cost-report/hospital-provider-cost-report
     # https://data.cms.gov/resources/hospital-provider-cost-report-data-dictionary
-    hospGme2021Filename = pathToData + '/HOSP10-REPORTS/IME_GME/IME_GME2021.CSV'
-    hospCost2018Filename = pathToData + '/HOSP10-REPORTS/COST-REPORTS/2018_CSV_2.csv'
     filenames["hospGme2021"] = [pathToData + '/HOSP10-REPORTS/IME_GME/IME_GME2021.CSV']
     filenames["hospCost2018"] = [pathToData + '/HOSP10-REPORTS/COST-REPORTS/2018_CSV_2.csv'] 
 
@@ -88,8 +76,6 @@ def get_filenames(pathToData, yearInitial, yearFinal):
     # has hospital identifiers + hospital size + rural/urban + location + a couple other useful variables…
     # mostly, though, it has a bunch of financial details that aren’t terribly relevant to us. 
     # We could link in census data to get a sense of the socioeconomic region for hospitals as well...
-    cbiHospitalsFilename = pathToData + '/COMMUNITY-BENEFIT-INSIGHT/cbiHospitals.csv' # retrieved September 30, 2022 from webpage
-    cbiDetailsFilename = pathToData + '/COMMUNITY-BENEFIT-INSIGHT/allHospitalsWithDetails.csv' # obtained from JB September 2022
     filenames["cbiHospitals"] = [pathToData + '/COMMUNITY-BENEFIT-INSIGHT/cbiHospitals.csv']
     filenames["cbiDetails"] = [pathToData + '/COMMUNITY-BENEFIT-INSIGHT/allHospitalsWithDetails.csv']
 
@@ -97,13 +83,11 @@ def get_filenames(pathToData, yearInitial, yearFinal):
     # I think that F.col("othpidty")=="6" will give the CCN number, in the description file below it is listed as Medicare OSCAR...
     # https://www.nber.org/research/data/national-provider-identifier-npi-medicare-ccn-crosswalk
     # https://data.nber.org/npi/desc/othpid/desc.txt for a description of what the variables in this file mean
-    npiMedicareXwFilename = pathToData + "/npi_medicarexw.csv"
     filenames["npiMedicareXw"] = [pathToData + "/npi_medicarexw.csv"]
 
     #https://www.huduser.gov/portal/datasets/usps_crosswalk.html#data
     #county column: 5 digit unique 2000 or 2010 Census county GEOID consisting of state FIPS + county FIPS.
     #zip codes split between counties are listed more than once and their ratios are shown
-    zipToCountyFilename = pathToData + "/HUD/ZIP_COUNTY_122021.csv"
     filenames["zipToCounty"] = [pathToData + "/HUD/ZIP_COUNTY_122021.csv"]
 
     pathMA = pathToData +'/MEDICARE-ADVANTAGE' 
@@ -114,60 +98,34 @@ def get_filenames(pathToData, yearInitial, yearFinal):
     # of the non-enrollment periods
     #because there are several MA penetration rate files, put them in a dictionary
     filenames["maPenetration"] = [pathMA + f"/State_County_Penetration_MA_{iYear}_07/State_County_Penetration_MA_{iYear}_07_withYear.csv" for iYear in range(yearInitial,yearFinal+1)]
-    maPenetrationFilenames = {}
-    #all filenames will include their absolute paths
-    for iYear in range(yearInitial,yearFinal+1): #remember range does not include the last point
-        maPenetrationFilenames[f'{iYear}'] = pathMA + f"/State_County_Penetration_MA_{iYear}_07/State_County_Penetration_MA_{iYear}_07_withYear.csv"
 
     #this set is for Medicare-registered hospitals only, the hospital ID is CCN (I checked) but the documentation does not state that
     #https://data.cms.gov/provider-data/dataset/xubh-q36u
     #in a quick test with inpatient stroke claims, this set was about 98.5% complete, using county names,
     #but for outpatient claims, this set was about 81% complete
-    medicareHospitalInfoFilename = pathToData + "/Hospital_General_Information.csv"
     filenames["medicareHospitalInfo"] = [pathToData + "/Hospital_General_Information.csv"]
 
     #https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/provider-of-services-file-hospital-non-hospital-facilities
-    posFilename = pathToData + "/PROVIDER-OF-SERVICES/POS_OTHER_DEC22.csv"
     filenames["pos"] = [pathToData + "/PROVIDER-OF-SERVICES/POS_OTHER_DEC22.csv"]
    
     #https://www.neighborhoodatlas.medicine.wisc.edu/
-    adiFilename = pathToData + "/ATLAS-DISCRIMINATION-INDEX/US_2020_ADI_CensusBlockGroup_v3.2.csv"
     filenames["adi"] = [pathToData + "/ATLAS-DISCRIMINATION-INDEX/US_2020_ADI_CensusBlockGroup_v3.2.csv"]
 
     #have permission from AAMC to use this dataset for a single project only
-    aamcHospitalsFilename = pathToData + "/AAMC/teachingHospitalRequest-modifiedHeaders.csv"
     filenames["aamcHospitals"] = [pathToData + "/AAMC/teachingHospitalRequest-modifiedHeaders.csv"]
 
     #https://apps.acgme.org/ads/Public, I submitted a request to the data retrieval system and I got the data in an email
-    acgmeSitesFilename = pathToData + "/ACGME/ParticipatingSiteListingAY20212022.csv"
     filenames["acgmeSites"] = [pathToData + "/ACGME/ParticipatingSiteListingAY20212022.csv"]
-    acgmeProgramsFilename = pathToData + "/ACGME/ProgramListingAY20212022.csv"
     filenames["acgmePrograms"] = [pathToData + "/ACGME/ProgramListingAY20212022.csv"]
 
     #https://onlinelibrary.wiley.com/doi/10.1002/emp2.12673
-    strokeCentersCamargoFilename = pathToData + "/CAMARGO-GROUP/2018_Stroke_CMS_2023apr-modifiedHeader.csv"
     filenames["strokeCentersCamargo"] = [pathToData + "/CAMARGO-GROUP/2018_Stroke_CMS_2023apr-modifiedHeader.csv"]
 
     #joint commission website
-    strokeCentersJCFilename = pathToData + "/JOINT-COMMISSION/StrokeCertificationList.csv"
     filenames["strokeCentersJC"] = [pathToData + "/JOINT-COMMISSION/StrokeCertificationList.csv"]
 
-    #return (npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, usdaErsPeopleFilename, usdaErsJobsFilename,
-    #        usdaErsIncomeFilename, usdaErsRuccFilename, census2021Filename, censusGazetteer2020Filename, cbiHospitalsFilename, cbiDetailsFilename,
-    #        hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-    #        medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename, acgmeProgramsFilename,
-    #        strokeCentersCamargoFilename, strokeCentersJCFilename)
     return filenames
 
-#def read_data(spark, 
-#              npiFilename, 
-#              cbsaFilename, 
-#              usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
-#              census2021Filename, censusGazetteer2020Filename,
-#              cbiHospitalsFilename, cbiDetailsFilename,
-#              hospGme2021Filename, hospCost2018Filename, npiMedicareXwFilename, zipToCountyFilename, maPenetrationFilenames,
-#              medicareHospitalInfoFilename, posFilename, adiFilename, aamcHospitalsFilename, acgmeSitesFilename, acgmeProgramsFilename,
-#              strokeCentersCamargoFilename, strokeCentersJCFilename):
 #includes both dataframes and other non-spark data
 def read_data(spark, filenames):
 
@@ -183,199 +141,30 @@ def read_data(spark, filenames):
      with urlopen(filenames["geojsonCounty"][0]) as response:
         data["geojsonCounty"] = json.load(response)
 
-     #npiProviders = spark.read.csv(npiFilename, header="True") # read CMS provider information
-     #cbsa = spark.read.csv(cbsaFilename, header="True") # read CBSA information
-     #ersPeople = spark.read.csv(usdaErsPeopleFilename, header="True")
-     #ersJobs = spark.read.csv(usdaErsJobsFilename, header="True")
-     #ersIncome = spark.read.csv(usdaErsIncomeFilename, header="True")
-     #ersRucc = spark.read.csv(usdaErsRuccFilename, header="True")
-     #census = spark.read.csv(census2021Filename,header=True)
-     #gazetteer = (spark.read
-     #                  .option("delimiter","\t")
-     #                  .option("inferSchema", "true")
-     #                  .csv(censusGazetteer2020Filename, header=True))
-     #npiMedicareXw = spark.read.csv(npiMedicareXwFilename,header="True")
-     #hospGme2021 = spark.read.csv(hospGme2021Filename,header="True") # read HOSP cost report data
-     #hospCost2018 =spark.read.csv(hospCost2018Filename,header="True")
-     #cbiHospitals =spark.read.csv(cbiHospitalsFilename, header="True") # read CBI information
-     #cbiDetails = spark.read.csv(cbiDetailsFilename, header="True") # read CBI information
-     #zipToCounty = spark.read.csv(zipToCountyFilename, header="True")
-     #assume the worst...that each type of file includes claims from different years
-     #maPenetrationYears = sorted(list(maPenetrationFilenames.keys()))
-     #one dictionary for each type of file
-     #maPenetrationDict={}
-     #read all data and put them in dictionary
-     #for iYear in maPenetrationYears:
-      #   maPenetrationDict[f'{iYear}'] = spark.read.csv(maPenetrationFilenames[f'{iYear}'], header="True")
-     # merge all previous years in one dataframe
-     #maPenetration = maPenetrationDict[maPenetrationYears[0]] #initialize here
-     #if (len(maPenetrationYears) > 1):
-     #   for iYear in maPenetrationYears[1:]:
-     #       maPenetration = maPenetration.union(maPenetrationDict[f'{iYear}']) #and then do union with the rest     
-     #medicareHospitalInfo = spark.read.csv(medicareHospitalInfoFilename, header="True")
-     #pos = spark.read.csv(posFilename, header="True")
-     #adi = spark.read.csv(adiFilename, header="True")
-     #aamcHospitals = spark.read.csv(aamcHospitalsFilename, header="True")
-     #acgmeSites = spark.read.csv(acgmeSitesFilename, header="True")
-     #acgmePrograms = spark.read.csv(acgmeProgramsFilename, header="True")
-     #strokeCentersCamargo = spark.read.csv(strokeCentersCamargoFilename, header="True")
-     #strokeCentersJC = spark.read.csv(strokeCentersJCFilename, header="True")
-     #return (npiProviders, cbsa, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails, 
-     #        hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos, adi, aamcHospitals,
-     #        acgmeSites, acgmePrograms, strokeCentersCamargo, strokeCentersJC)
      return data
 
 def get_data(pathToData, yearInitial, yearFinal, spark):
 
-    #(npiFilename, cbsaFilename, shpCountyFilename, geojsonCountyFilename, 
-    #usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
-    #census2021Filename, censusGazetteer2020Filename, 
-    #cbiHospitalsFilename, cbiDetailsFilename,
-    #hospGme2021Filename, hospCost2018Filename, 
-    #npiMedicareXwFilename, 
-    #zipToCountyFilename, 
-    #maPenetrationFilenames,
-    #medicareHospitalInfoFilename,
-    #posFilename,
-    #adiFilename,
-    #aamcHospitalsFilename,
-    #acgmeSitesFilename,
-    #acgmeProgramsFilename,
-    #strokeCentersCamargoFilename,
-    #strokeCentersJCFilename) = get_filename_dicts(pathToData, yearInitial, yearFinal)
     filenames = get_filenames(pathToData, yearInitial, yearFinal)
-
-    #(npiProviders, cbsa, 
-    #ersPeople, ersJobs, ersIncome, ersRucc, 
-    #census, gazetteer,
-    #cbiHospitals, cbiDetails, 
-    #hospGme2021, hospCost2018, 
-    #npiMedicareXw, 
-    #zipToCounty, 
-    #maPenetration,
-    #medicareHospitalInfo, 
-    #pos,
-    #adi,
-    #aamcHospitals,
-    #acgmeSites,
-    #acgmePrograms,
-    #strokeCentersCamargo,
-    #strokeCentersJC) = read_data(spark, npiFilename, cbsaFilename, 
-     #                     usdaErsPeopleFilename, usdaErsJobsFilename,usdaErsIncomeFilename, usdaErsRuccFilename,
-     #                     census2021Filename, censusGazetteer2020Filename,
-     #                     cbiHospitalsFilename, cbiDetailsFilename,
-     #                     hospGme2021Filename, hospCost2018Filename, 
-     #                     npiMedicareXwFilename, 
-     #                     zipToCountyFilename,
-     #                     maPenetrationFilenames,
-     #                     medicareHospitalInfoFilename,
-     #                     posFilename,
-     #                     adiFilename, 
-     #                     aamcHospitalsFilename,
-     #                     acgmeSitesFilename,
-     #                     acgmeProgramsFilename,
-     #                     strokeCentersCamargoFilename,
-     #                     strokeCentersJCFilename)
     data = read_data(spark, filenames)
-
-    #with urlopen(geojsonCountyFilename) as response:
-    #    counties = json.load(response)
-
-    #(npiProviders, cbsa, counties,
-    #ersPeople, ersJobs, ersIncome, ersRucc,
-    #census, gazetteer,
-    #cbiHospitals, cbiDetails,
-    #hospGme2021, hospCost2018,
-    #npiMedicareXw,
-    #zipToCounty,
-    #maPenetration,
-    #medicareHospitalInfo,
-    #pos,
-    #adi,
-    #aamcHospitals,
-    #acgmeSites,
-    #acgmePrograms,
-    #strokeCentersCamargo,
-    #strokeCentersJC) = prep_dfs(npiProviders, cbsa, counties, ersPeople, ersJobs, ersIncome, ersRucc, census, gazetteer, cbiHospitals, cbiDetails,
-    #                            hospGme2021, hospCost2018, npiMedicareXw, zipToCounty, maPenetration, medicareHospitalInfo, pos,
-    #                            adi, aamcHospitals, acgmeSites,acgmePrograms, strokeCentersCamargo, strokeCentersJC) 
     data = prep_data(data)
 
     return data
-    #return (npiProviders, cbsa, counties,
-    #        ersPeople, ersJobs, ersIncome, ersRucc, 
-    #        census, gazetteer,
-    #        cbiHospitals, cbiDetails, 
-    #        hospGme2021, hospCost2018, 
-    #        npiMedicareXw, 
-    #        zipToCounty, 
-    #        maPenetration,
-    #        medicareHospitalInfo, 
-    #        pos,
-    #        adi,
-    #        aamcHospitals,
-    #        acgmeSites,
-    #        acgmePrograms,
-    #        strokeCentersCamargo,
-    #        strokeCentersJC)
 
-#def prep_dfs(npiProviders, cbsa, counties,
-#            ersPeople, ersJobs, ersIncome, ersRucc,
-#            census, gazetteer,
-#            cbiHospitals, cbiDetails,
-#            hospGme2021, hospCost2018,
-#            npiMedicareXw,
-#            zipToCounty,
-#            maPenetration,
-#            medicareHospitalInfo,
-#            pos,
-#            adi,
-#            aamcHospitals,
-#            acgmeSites,
-#            acgmePrograms,
-#            strokeCentersCamargo,
-#            strokeCentersJC):
 def prep_data(data):
 
-    #npiProviders = prep_npiProvidersDF(npiProviders)
     data["npi"] = prep_npiProvidersDF(data["npi"])
-    #maPenetration = prep_maPenetrationDF(maPenetration)
     data["maPenetration"] = prep_maPenetrationDF(data["maPenetration"])
-    #hospCost2018 = prep_hospCostDF(hospCost2018)
     data["hospCost2018"] = prep_hospCostDF(data["hospCost2018"])
-    #pos = prep_posDF(pos)
     data["pos"] = prep_posDF(data["pos"])
-    #acgmeSites = prep_acgmeSitesDF(acgmeSites)
     data["acgmeSites"] = prep_acgmeSitesDF(data["acgmeSites"])
-    #acgmePrograms = prep_acgmeProgramsDF(acgmePrograms)
     data["acgmePrograms"] = prep_acgmeProgramsDF(data["acgmePrograms"])
-    #aamcHospitals = prep_aamcHospitalsDF(aamcHospitals)
     data["aamcHospitals"] = prep_aamcHospitalsDF(data["aamcHospitals"])
-    #strokeCentersCamargo = prep_strokeCentersCamargoDF(strokeCentersCamargo)
     data["strokeCentersCamargo"] = prep_strokeCentersCamargoDF(data["strokeCentersCamargo"])
-    #strokeCentersJC = prep_strokeCentersJCDF(strokeCentersJC)
     data["strokeCentersJC"] = prep_strokeCentersJCDF(data["strokeCentersJC"])
-    #zipToCounty = prep_zipToCountyDF(zipToCounty)
     data["zipToCounty"] = prep_zipToCountyDF(data["zipToCounty"])
 
     return data
-#    return (npiProviders, cbsa, counties,
-#            ersPeople, ersJobs, ersIncome, ersRucc,
-#            census, gazetteer,
-#            cbiHospitals, cbiDetails,
-#            hospGme2021, hospCost2018,
-#            npiMedicareXw,
-#            zipToCounty,
-#            maPenetration,
-#            medicareHospitalInfo,
-#            pos,
-#            adi,
-#            aamcHospitals,
-#            acgmeSites,
-#            acgmePrograms,
-#            strokeCentersCamargo,
-#            strokeCentersJC)
-
 
 def get_cbus_metro_ssa_counties():
 
