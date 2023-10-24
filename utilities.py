@@ -180,7 +180,7 @@ def read_data(spark, filenames):
             data[file] = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=True), data[file])
 
      data["gazetteer2020"] = spark.read.option("delimiter","\t").option("inferSchema", "true").csv(filenames["gazetteer2020"], header=True)
-     with urlopen(filenames["geojsonCounty"]) as response:
+     with urlopen(filenames["geojsonCounty"][0]) as response:
         data["geojsonCounty"] = json.load(response)
 
      #npiProviders = spark.read.csv(npiFilename, header="True") # read CMS provider information
