@@ -174,9 +174,9 @@ def read_and_prep_dataframe(filename, file, spark):
 
     return df   
 
-def get_data(pathToData, yearInitial, yearFinal, spark):
+def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
 
-    filenames = get_filenames(pathToData, yearInitial, yearFinal)
+    filenames = get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal)
     data = read_data(spark, filenames)
 
     return data
