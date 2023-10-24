@@ -21,9 +21,11 @@ for year in range(min(years),max(years)):
     daysInYearsPriorDict[year] = days
 daysInYearsPrior = F.create_map([F.lit(x) for x in chain(*daysInYearsPriorDict.items())])
 
-def get_filenames(pathToData, yearInitial, yearFinal):
+def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     filenames = dict()
+
+    filenames["aha"] = [pathToAHAData + f"/AHAAS Raw Data/FY{iYear} ASDB/COMMA/ASPUB" + f"{iYear}"[-2:] + ".CSV" for iYear in range(yearInitial,yearFinal+1)]
 
     # NPI numbers and other provider information obtained from CMS: https://download.cms.gov/nppes/NPI_Files.html
     filenames["npi"] = [pathToData + '/npidata_pfile_20050523-20220807.csv']
@@ -134,7 +136,7 @@ def read_data(spark, filenames):
          if file in ["gazetteer2020","geojsonCounty"]:
              continue
          else:
-            data[file] = map(lambda x: spark.read.csv(x, header=True), filenames[file])
+            data[file] = map(lambda x: read_and_prep_dataframe(x, file, spark), filenames[file])
             data[file] = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=True), data[file])
 
      data["gazetteer2020"] = spark.read.option("delimiter","\t").option("inferSchema", "true").csv(filenames["gazetteer2020"], header=True)
@@ -143,28 +145,49 @@ def read_data(spark, filenames):
 
      return data
 
+def read_and_prep_dataframe(filename, file, spark):
+
+    df = spark.read.csv(filename, header=True)
+    
+    if file=="npi":
+        df = prep_npiProvidersDF(df)
+    elif file=="maPenetration":
+        df = prep_maPenetrationDF(df)
+    elif file=="hospCost2018":
+        df = prep_hospCostDF(df)
+    elif file=="pos":
+        df = prep_posDF(df)
+    elif file=="acgmeSites":
+        df = prep_acgmeSitesDF(df)
+    elif file=="acgmePrograms":
+        df = prep_acgmeProgramsDF(df)
+    elif file=="aamcHospitals":
+        df = prep_aamcHospitalsDF(df)
+    elif file=="strokeCentersCamargo":
+        df = prep_strokeCentersCamargoDF(df)
+    elif file=="strokeCentersJC":
+        df = prep_strokeCentersJCDF(df)
+    elif file=="zipToCounty":
+        df = prep_zipToCountyDF(df)
+    elif file=="aha":
+        df = prep_ahaDF(df, filename)
+
+    return df   
+
 def get_data(pathToData, yearInitial, yearFinal, spark):
 
     filenames = get_filenames(pathToData, yearInitial, yearFinal)
     data = read_data(spark, filenames)
-    data = prep_data(data)
 
     return data
 
-def prep_data(data):
+def prep_ahaDF(df, filename):
+ 
+    ahaYear = int(re.compile(r'FY\d{4}').search(filename).group()[2:])
+    #include a column so that I know which year the data was from, need this when I union the aha data from several years
+    df = df.withColumn("year", F.lit(ahaYear))
 
-    data["npi"] = prep_npiProvidersDF(data["npi"])
-    data["maPenetration"] = prep_maPenetrationDF(data["maPenetration"])
-    data["hospCost2018"] = prep_hospCostDF(data["hospCost2018"])
-    data["pos"] = prep_posDF(data["pos"])
-    data["acgmeSites"] = prep_acgmeSitesDF(data["acgmeSites"])
-    data["acgmePrograms"] = prep_acgmeProgramsDF(data["acgmePrograms"])
-    data["aamcHospitals"] = prep_aamcHospitalsDF(data["aamcHospitals"])
-    data["strokeCentersCamargo"] = prep_strokeCentersCamargoDF(data["strokeCentersCamargo"])
-    data["strokeCentersJC"] = prep_strokeCentersJCDF(data["strokeCentersJC"])
-    data["zipToCounty"] = prep_zipToCountyDF(data["zipToCounty"])
-
-    return data
+    return df
 
 def get_cbus_metro_ssa_counties():
 
