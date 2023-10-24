@@ -2,6 +2,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from urllib.request import urlopen
 import json
+import re
 from itertools import chain
 from functools import reduce
 
