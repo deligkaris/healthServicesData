@@ -1507,6 +1507,56 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
 
     return baseDF
 
+#inputs: baseDF is probably an inpatient or outpatient claims DF, XDF is probably hosp, hha, snf, or ip claims, X specifies claim type
+#outputs: baseDF with four additional columns, losAtX90, losDaysAtX90, losAtX365, losDaysAtX365
+#note: due to the complex joins etc I prefer to add the four columns at the same time here
+def add_days_at_X_info(baseDF, XDF, X="hosp"):
+
+    baseDF = add_XDaysFromYDAY(baseDF, YDAY="THRU_DT_DAY", X=90)
+    baseDF = add_XDaysFromYDAY(baseDF, YDAY="THRU_DT_DAY", X=365)
+
+    XDF = (XDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) #need only 3 columns from this df
+              .join(baseDF.select("DSYSRTKY"),
+                    on="DSYSRTKY",
+                    how="left_semi")) #need claims only from the beneficiaries in baseDF 
+
+    #for every base claim, find the X claims that started after the base through date
+    XDF = XDF.join(baseDF.select(F.col("DSYSRTKY"), 
+                                 F.col("CLAIMNO").alias("baseCLAIMNO"), 
+                                 F.col("THRU_DT_DAY").alias("baseTHRU_DT_DAY"), 
+                                 F.col("90DaysFromTHRU_DT_DAY"), 
+                                 F.col("365DaysFromTHRU_DT_DAY")),
+                   on=[ (baseDF.DSYSRTKY==XDF.DSYSRTKY) & (XDF.ADMSN_DT_DAY - baseDF.baseTHRU_DT_DAY >= 0) ],
+                   how="inner")  #inner join ensures that each X claim is matched will all relevant base claims
+
+    XDF = (add_losOverXUntilY(XDF, X="baseCLAIMNO", Y="90DaysFromTHRU_DT_DAY")
+           .withColumnRenamed("losOverbaseCLAIMNOUntil90DaysFromTHRU_DT_DAY", f"losAt{X}90")
+           .withColumnRenamed("losDaysOverbaseCLAIMNOUntil90DaysFromTHRU_DT_DAY", f"losDaysAt{X}90"))
+
+    XDF = (add_losOverXUntilY(XDF,X="baseCLAIMNO",Y="365DaysFromTHRU_DT_DAY")
+            .withColumnRenamed("losOverbaseCLAIMNOUntil365DaysFromTHRU_DT_DAY", f"losAt{X}365")
+            .withColumnRenamed("losDaysOverbaseCLAIMNOUntil365DaysFromTHRU_DT_DAY", f"losDaysAt{X}365"))
+
+    #bring results back to base 
+    baseDF = baseDF.join(XDF.select(F.col("baseCLAIMNO").alias("CLAIMNO"),
+                                    F.col(f"losAt{X}90"), F.col(f"losDaysAt{X}90"),
+                                    F.col(f"losAt{X}365"), F.col(f"losDaysAt{X}365"))
+                            .distinct(),
+                         on="CLAIMNO",
+                         how="left_outer")
+
+    # if a beneficiary does not have other X claims, put a 0
+    baseDF = baseDF.fillna(0.0,subset=f"losAt{X}90").fillna(0.0,subset=f"losAt{X}365")
+    #replace nulls due to left_outer join with empty arrays [] so that the concatenation will be done correctly
+    baseDF = (baseDF.withColumn(f"losDaysAt{X}90", F.coalesce( F.col(f"losDaysAt{X}90"), F.array()))
+                    .withColumn(f"losDaysAt{X}365",F.coalesce( F.col(f"losDaysAt{X}365"), F.array())))
+
+    return baseDF
+
+
+
+
+
 
 
 
