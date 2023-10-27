@@ -1526,7 +1526,7 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
                                  F.col("THRU_DT_DAY").alias("baseTHRU_DT_DAY"), 
                                  F.col("90DaysFromTHRU_DT_DAY"), 
                                  F.col("365DaysFromTHRU_DT_DAY")),
-                   on=[ (baseDF.DSYSRTKY==XDF.DSYSRTKY) & (XDF.ADMSN_DT_DAY - baseDF.THRU_DT_DAY >= 0) ],
+                   on=[ (baseDF.DSYSRTKY==XDF.DSYSRTKY) & (XDF.ADMSN_DT_DAY - baseDF.baseTHRU_DT_DAY >= 0) ],
                    how="inner")  #inner join ensures that each X claim is matched will all relevant base claims
 
     XDF = (add_losOverXUntilY(XDF, X="baseCLAIMNO", Y="90DaysFromTHRU_DT_DAY")
