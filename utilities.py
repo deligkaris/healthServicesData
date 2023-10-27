@@ -22,6 +22,12 @@ for year in range(min(years),max(years)):
     daysInYearsPriorDict[year] = days
 daysInYearsPrior = F.create_map([F.lit(x) for x in chain(*daysInYearsPriorDict.items())])
 
+#definition of which states (fips codes) belong to which region
+usRegionFipsCodes = {"west":  ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"],
+                     "south": ["10", "11", "12", "13", "24", "37", "45", "51", "54", "01", "21", "28", "47", "05", "22", "40", "48"],
+                     "midwest": ["18", "17", "26", "39", "55", "19", "20", "27", "29", "31", "38", "46"],
+                     "northeast": ["09", "23", "25", "33", "44", "50", "34", "36", "42"]}
+
 def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     filenames = dict()

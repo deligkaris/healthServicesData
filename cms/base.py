@@ -1,7 +1,7 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
-from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, daysInYearsPrior
+from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, daysInYearsPrior, usRegionFipsCodes
 
 #CMS DUA email on my question about LDS claim numbers:
 #"The Claim ID is set by a sequence. A Part A (Institutional) and a Part B (Professional) Claim could have the same ID. 
@@ -406,15 +406,10 @@ def add_providerStateFIPS(baseDF, posDF):
 
 def add_providerRegion(baseDF):
 
-    westCodes = ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"] #state fips codes
-    southCodes = ["10", "11", "12", "13", "24", "37", "45", "51", "54", "01", "21", "28", "47", "05", "22", "40", "48"]
-    midwestCodes = ["18", "17", "26", "39", "55", "19", "20", "27", "29", "31", "38", "46"]
-    northeastCodes = ["09", "23", "25", "33", "44", "50", "34", "36", "42"]
-
-    westCondition = '(F.col("providerStateFIPS").isin(westCodes))' 
-    southCondition = '(F.col("providerStateFIPS").isin(southCodes))'
-    midwestCondition = '(F.col("providerStateFIPS").isin(midwestCodes))'
-    northeastCondition = '(F.col("providerStateFIPS").isin(northeastCodes))'
+    westCondition = '(F.col("providerStateFIPS").isin(usRegionFipsCodes["west"]))' 
+    southCondition = '(F.col("providerStateFIPS").isin(usRegionFipsCodes["south"]))'
+    midwestCondition = '(F.col("providerStateFIPS").isin(usRegionFipsCodes["midwest"]))'
+    northeastCondition = '(F.col("providerStateFIPS").isin(usRegionFipsCodes["northeast"]))'
 
     baseDF = baseDF.withColumn("providerRegion",
                                F.when( eval(westCondition), 4)
@@ -464,7 +459,7 @@ def add_provider_pos_info(baseDF, posDF):
 
     return baseDF
 
-def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF):
+def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF):
 
     baseDF = add_provider_npi_info(baseDF, npiProvidersDF)
     baseDF = add_provider_pos_info(baseDF, posDF)
@@ -475,6 +470,7 @@ def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetr
     #right now I prefer cost report data because they seem to be about 99.5% complete, vs 80% complete for cbi
     #baseDF = add_cbi_info(baseDF, cbiDF)
     baseDF = add_provider_cost_report_info(baseDF, costReportDF)
+    baseDF = add_aha_info(baseDF, ahaDF)
 
     return baseDF
 
@@ -762,15 +758,10 @@ def add_rucc(baseDF, ersRuccDF):
 
 def add_region(baseDF): 
     
-    westCodes = ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"] #state fips codes
-    southCodes = ["10", "11", "12", "13", "24", "37", "45", "51", "54", "01", "21", "28", "47", "05", "22", "40", "48"]
-    midwestCodes = ["18", "17", "26", "39", "55", "19", "20", "27", "29", "31", "38", "46"]
-    northeastCodes = ["09", "23", "25", "33", "44", "50", "34", "36", "42"]
-    
-    westCondition = '(F.col("fipsState").isin(westCodes))'
-    southCondition = '(F.col("fipsState").isin(southCodes))'
-    midwestCondition = '(F.col("fipsState").isin(midwestCodes))'
-    northeastCondition = '(F.col("fipsState").isin(northeastCodes))'
+    westCondition = '(F.col("fipsState").isin(usRegionFipsCodes["west"]))'
+    southCondition = '(F.col("fipsState").isin(usRegionFipsCodes["south"]))'
+    midwestCondition = '(F.col("fipsState").isin(usRegionFipsCodes["midwest"]))'
+    northeastCondition = '(F.col("fipsState").isin(usRegionFipsCodes["northeast"]))'
 
     baseDF = baseDF.withColumn("region",
                                F.when( eval(westCondition), 4)
@@ -1501,16 +1492,16 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
     #annual survey file layouts includes field explanations and information about data sources
     baseDF = baseDF.join(ahaDF.select(F.col("MCRNUM").alias("PROVIDER"),  
                                       F.col("year").alias("THRU_DT_YEAR"),
-                                      F.col("LAT").alias("ahaLat"), 
-                                      F.col("LONG").alias("ahaLong"), 
-                                      F.col("MAPP3").alias("ahaACGME"),        #one or more ACGME programs
-                                      F.col("MAPP5").alias("ahaMedSchoolAff"), #medical school affiliation
-                                      F.col("MAPP8").alias("ahaCOTH"),         #member of COTH
-                                      F.col("MAPP18").alias("ahaCah"),         #critical access hospital
-                                      F.col("STRCHOS").alias("ahaTStrHos"),    #telestroke care hospital
-                                      F.col("STRCSYS").alias("ahaTStrSys"),    #telestroke care health system
-                                      F.col("STRCVEN").alias("ahaTStrVen"),    #telestroke care joint venture
-                                      F.col("BDH").alias("ahaBdh")),           #total facility beds - nursing home beds
+                                      F.col("LAT").alias("providerAhaLat"), 
+                                      F.col("LONG").alias("providerAhaLong"), 
+                                      F.col("MAPP3").alias("providerAhaACGME"),        #one or more ACGME programs
+                                      F.col("MAPP5").alias("providerAhaMedSchoolAff"), #medical school affiliation
+                                      F.col("MAPP8").alias("providerAhaCOTH"),         #member of COTH
+                                      F.col("MAPP18").alias("providerAhaCah"),         #critical access hospital
+                                      F.col("STRCHOS").alias("providerAhaTStrHos"),    #telestroke care hospital
+                                      F.col("STRCSYS").alias("providerAhaTStrSys"),    #telestroke care health system
+                                      F.col("STRCVEN").alias("providerAhaTStrVen"),    #telestroke care joint venture
+                                      F.col("BDH").alias("providerAhaBdh")),           #total facility beds - nursing home beds
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
 
