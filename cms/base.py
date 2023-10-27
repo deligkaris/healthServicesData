@@ -1495,7 +1495,26 @@ def add_denied(baseDF):
                                 .otherwise(0))
     return baseDF
 
+def add_aha_info(baseDF, ahaDF): #american hospital association info
 
+    #dictionary can be found at https://www.ahadata.com/aha-data-resources
+    #annual survey file layouts includes field explanations and information about data sources
+    baseDF = baseDF.join(ahaDF.select(F.col("MCRNUM").alias("PROVIDER"),  
+                                      F.col("year").alias("THRU_DT_YEAR"),
+                                      F.col("LAT").alias("ahaLat"), 
+                                      F.col("LONG").alias("ahaLong"), 
+                                      F.col("MAPP3").alias("ahaACGME"),        #one or more ACGME programs
+                                      F.col("MAPP5").alias("ahaMedSchoolAff"), #medical school affiliation
+                                      F.col("MAPP8").alias("ahaCOTH"),         #member of COTH
+                                      F.col("MAPP18").alias("ahaCah"),         #critical access hospital
+                                      F.col("STRCHOS").alias("ahaTStrHos"),    #telestroke care hospital
+                                      F.col("STRCSYS").alias("ahaTStrSys"),    #telestroke care health system
+                                      F.col("STRCVEN").alias("ahaTStrVen"),    #telestroke care joint venture
+                                      F.col("BDH").alias("ahaBdh")),           #total facility beds - nursing home beds
+                         on=["PROVIDER","THRU_DT_YEAR"],
+                         how="left_outer")
+
+    return baseDF
 
 
 
