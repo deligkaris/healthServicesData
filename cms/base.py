@@ -1521,13 +1521,16 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
                     how="left_semi")) #need claims only from the beneficiaries in baseDF 
 
     #for every base claim, find the X claims that started after the base through date
-    XDF = XDF.join(baseDF.select(F.col("DSYSRTKY"), 
-                                 F.col("CLAIMNO").alias("baseCLAIMNO"), 
-                                 F.col("THRU_DT_DAY").alias("baseTHRU_DT_DAY"), 
-                                 F.col("90DaysFromTHRU_DT_DAY"), 
-                                 F.col("365DaysFromTHRU_DT_DAY")).alias("baseDFSelected"),
-                   on=[ (baseDFSelected.DSYSRTKY==XDF.DSYSRTKY) & (XDF.ADMSN_DT_DAY - baseDFSelected.baseTHRU_DT_DAY >= 0) ],
-                   how="inner")  #inner join ensures that each X claim is matched will all relevant base claims
+    XDF = (XDF.join(baseDF.select(F.col("DSYSRTKY"), 
+                                  F.col("CLAIMNO").alias("baseCLAIMNO"), 
+                                  F.col("THRU_DT_DAY").alias("baseTHRU_DT_DAY"), 
+                                  F.col("90DaysFromTHRU_DT_DAY"), 
+                                  F.col("365DaysFromTHRU_DT_DAY")),
+                    on="DSYSRTKY",
+                    #on=[ baseDF.DSYSRTKY==XDF.DSYSRTKY,
+                    #     XDF.ADMSN_DT_DAY - baseDF.baseTHRU_DT_DAY >= 0 ],
+                    how="inner")  #inner join ensures that each X claim is matched will all relevant base claims
+              .filter(F.col("ADMSN_DT_DAY") - F.col("baseTHRU_DT_DAY") >= 0))        
 
     XDF = (add_losOverXUntilY(XDF, X="baseCLAIMNO", Y="90DaysFromTHRU_DT_DAY")
            .withColumnRenamed("losOverbaseCLAIMNOUntil90DaysFromTHRU_DT_DAY", f"losAt{X}90")
