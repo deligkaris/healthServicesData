@@ -1510,7 +1510,7 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
 #inputs: baseDF is probably an inpatient or outpatient claims DF, XDF is probably hosp, hha, snf, or ip claims, X specifies claim type
 #outputs: baseDF with four additional columns, losAtX90, losDaysAtX90, losAtX365, losDaysAtX365
 #note: due to the complex joins etc I prefer to add the four columns at the same time here
-def add_days_at_X_info(baseDF, XDF, X="hosp"):
+def add_los_at_X_info(baseDF, XDF, X="hosp"):
 
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="THRU_DT_DAY", X=90)
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="THRU_DT_DAY", X=365)
