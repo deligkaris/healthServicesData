@@ -1556,6 +1556,37 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
 
     return baseDF
 
+def add_los_total_info(baseDF):
+
+    baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+90$`"))))
+                    .withColumn("losDaysTotal365", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+365$`"))))
+                    .withColumn("losTotal90", F.when( F.col("losDaysTotal90").isNull(), 0)
+                                               .otherwise( F.size(F.col("losDaysTotal90"))))
+                    .withColumn("losTotal365", F.when( F.col("losDaysTotal365").isNull(), 0)
+                                               .otherwise( F.size(F.col("losDaysTotal365")))))
+    return baseDF 
+
+def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
+
+    baseD F= add_los_at_X_info(baseDF, snfDF, X="snf")
+    baseDF = add_los_at_X_info(baseDF, hhaDF, X="hha")
+    baseDF = add_los_at_X_info(baseDF, hospDF, X="hosp")
+    baseDF = add_los_at_X_info(baseDF, ipDF, X="ip")
+
+    baseDF = add_los_total_info(baseDF)
+
+    baseDF = (baseDF.withColumn("homeDaysTotal90", F.when( F.col("STUS_CD")==20, F.lit(None))
+                                                    .when( F.col("90DaysDead")==1, F.lit(None))
+                                                    .otherwise( 90-F.col("losTotal90") ))
+                    .withColumn("homeDaysTotal365", F.when( F.col("STUS_CD")==20, F.lit(None))
+                                                    .when( F.col("365DaysDead")==1, F.lit(None))
+                                                    .otherwise( 365-F.col("losTotal365") )))
+    return baseDF
+
+
+
+
+
 
 
 
