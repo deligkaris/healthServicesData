@@ -2,6 +2,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, daysInYearsPrior, usRegionFipsCodes
+import re
 
 #CMS DUA email on my question about LDS claim numbers:
 #"The Claim ID is set by a sequence. A Part A (Institutional) and a Part B (Professional) Claim could have the same ID. 
