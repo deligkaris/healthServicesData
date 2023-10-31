@@ -1558,8 +1558,13 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
 
 def add_los_total_info(baseDF):
 
-    baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+90$`"))))
-                    .withColumn("losDaysTotal365", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+365$`"))))
+    losDays90Columns = [c for c in baseDF.columns if re.match('^losDaysAt[a-zA-Z]+90$', c)]
+    losDays365Columns = [c for c in baseDF.columns if re.match('^losDaysAt[a-zA-Z]+365$', c)]
+
+    #baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+90$`"))))
+    #                .withColumn("losDaysTotal365", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+365$`"))))
+    baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( F.concat( *losDays90Columns  )))
+                    .withColumn("losDaysTotal365", F.array_distinct( F.concat( *losDays365Columns )))
                     .withColumn("losTotal90", F.when( F.col("losDaysTotal90").isNull(), 0)
                                                .otherwise( F.size(F.col("losDaysTotal90"))))
                     .withColumn("losTotal365", F.when( F.col("losDaysTotal365").isNull(), 0)
