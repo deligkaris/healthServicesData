@@ -1568,7 +1568,7 @@ def add_los_total_info(baseDF):
 
 def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
 
-    baseD F= add_los_at_X_info(baseDF, snfDF, X="snf")
+    baseDF = add_los_at_X_info(baseDF, snfDF, X="snf")
     baseDF = add_los_at_X_info(baseDF, hhaDF, X="hha")
     baseDF = add_los_at_X_info(baseDF, hospDF, X="hosp")
     baseDF = add_los_at_X_info(baseDF, ipDF, X="ip")
