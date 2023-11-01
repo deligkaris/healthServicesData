@@ -1505,7 +1505,7 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                                       F.col("BDH").alias("providerAhaBdh"),            #total facility beds - nursing home beds
                                       F.col("FTERES").alias("providerAhaFTERES"),      #full time equivalent residents and interns
                                       F.col("teachingHospital").alias("providerAhaTeachingHospital"), 
-                                      F.col("residentToBedRatio").alias("providerAhaResidentToBedRatio"))
+                                      F.col("residentToBedRatio").alias("providerAhaResidentToBedRatio")),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
 
