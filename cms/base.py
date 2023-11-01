@@ -669,13 +669,17 @@ def add_tpaOsu(baseDF):
 
     #return baseDF
 
-def add_beneficiary_info(baseDF, mbsfDF, cbsaDF, ersRuccDF):
+def add_beneficiary_info(baseDF, mbsfDF, cbsaDF, ersRuccDF, claimType="op"):
 
     baseDF = add_age(baseDF, mbsfDF)
     baseDF = add_death_date_info(baseDF,mbsfDF)
-    baseDF = add_daysDeadAfterVisit(baseDF)
-    baseDF = add_90DaysDead(baseDF)
-    baseDF = add_365DaysDead(baseDF)
+    baseDF = add_daysDeadAfterThroughDate(baseDF)
+    baseDF = add_90DaysAfterThroughDateDead(baseDF)
+    baseDF = add_365DaysAfterThroughDateDead(baseDF)
+    if (claimType=="ip"):
+        baseDF = add_daysDeadAfterAdmissionDate(baseDF)
+        baseDF = add_90DaysAfterAdmissionDateDead(baseDF)
+        baseDF = add_365DaysAfterAdmissionDateDead(baseDF)
  
     baseDF = add_fips_info(baseDF, cbsaDF) 
     baseDF = add_rucc(baseDF, ersRuccDF)
@@ -1008,28 +1012,41 @@ def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has be
 
     return baseDF
 
-def add_daysDeadAfterVisit(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
+def add_daysDeadAfterThroughDate(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
 
-    baseDF = (baseDF.withColumn( "daysDeadAfterVisit",
-                                 F.col("DEATH_DT_DAY")-F.col("THRU_DT_DAY")))
+    baseDF = (baseDF.withColumn( "daysDeadAfterThroughDate", F.col("DEATH_DT_DAY")-F.col("THRU_DT_DAY")))
                                  
     return baseDF
+
+def add_daysDeadAfterAdmissionDate(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
+                    
+    baseDF = (baseDF.withColumn( "daysDeadAfterAdmissionDate", F.col("DEATH_DT_DAY")-F.col("ADMSN_DT_DAY")))
+                 
+    return baseDF
             
-def add_90DaysDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfterVisit
+def add_90DaysAfterThroughDateDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfter
 
-    baseDF = baseDF.withColumn( "90DaysDead",
-                                 F.when( F.col("daysDeadAfterVisit") <= 90, 1)
-                                  .otherwise(0))
-
+    baseDF = baseDF.withColumn( "90DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 90, 1)
+                                                               .otherwise(0))
     return baseDF
 
-def add_365DaysDead(baseDF): #this is the 365 day mortality flag
-
-    baseDF = baseDF.withColumn( "365DaysDead",
-                                 F.when( F.col("daysDeadAfterVisit") <= 365, 1)
-                                  .otherwise(0))
-
+def add_90DaysAfterAdmissionDateDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfter
+    
+    baseDF = baseDF.withColumn( "90DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 90, 1)
+                                                                 .otherwise(0))
     return baseDF
+
+def add_365DaysAfterThroughDateDead(baseDF): #this is the 365 day mortality flag
+
+    baseDF = baseDF.withColumn( "365DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 365, 1)
+                                                                .otherwise(0))
+    return baseDF
+
+def add_365DaysAfterAdmissionDateDead(baseDF): #this is the 365 day mortality flag
+                                    
+    baseDF = baseDF.withColumn( "365DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 365, 1)
+                                                                  .otherwise(0))
+    return baseDF 
 
 def add_los(baseDF): #length of stay = los, assumes add date infos
 
