@@ -188,13 +188,29 @@ def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
 
     return data
 
-def prep_ahaDF(df, filename):
+def prep_ahaDF(ahaDF, filename):
  
     ahaYear = int(re.compile(r'FY\d{4}').search(filename).group()[2:])
     #include a column so that I know which year the data was from, need this when I union the aha data from several years
-    df = df.withColumn("year", F.lit(ahaYear))
+    ahaDF = (ahaDF.withColumn("year", F.lit(ahaYear))
+                  .withColumn("MAPP3", F.col("MAPP3").cast('int'))
+                  .withColumn("MAPP5", F.col("MAPP5").cast('int'))
+                  .withColumn("MAPP8", F.col("MAPP8").cast('int'))
+                  .withColumn("MAPP18", F.col("MAPP18").cast('int'))
+                  .withColumn("BDH", F.col("BDH").cast('int'))
+                  .withColumn("FTERES", F.col("FTERES").cast('int'))
+                  .withColumn("STRCHOS", F.col("STRCHOS").cast('int'))
+                  .withColumn("STRCSYS", F.col("STRCSYS").cast('int'))
+                  .withColumn("STRCVEN", F.col("STRCVEN").cast('int'))
+                  .withColumn("LAT", F.col("LAT").cast('double'))
+                  .withColumn("LONG", F.col("LONG").cast('double'))
+                  .withColumn("residentToBedRatio", F.col("FTERES")/F.col("BDH"))
+                  #NIS definition of teaching hospitals: https://hcup-us.ahrq.gov/db/vars/hosp_teach/nisnote.jsp
+                  .withColumn("teachingHospital", 
+                              F.when( (F.col("MAPP8")==1) | (F.col("MAPP3")==1) | (F.col("residentToBedRatio")>=0.25) , 1)
+                               .otherwise(0)))
 
-    return df
+    return ahaDF
 
 def get_cbus_metro_ssa_counties():
 
