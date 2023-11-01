@@ -188,6 +188,7 @@ def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
 
     return data
 
+#note: some AHA columns are coded as 0=no, 1=yes, some are 2=no, 1=yes.....
 def prep_ahaDF(ahaDF, filename):
  
     ahaYear = int(re.compile(r'FY\d{4}').search(filename).group()[2:])

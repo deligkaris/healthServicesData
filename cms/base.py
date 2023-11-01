@@ -1502,7 +1502,10 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                                       F.col("STRCHOS").alias("providerAhaTStrHos"),    #telestroke care hospital
                                       F.col("STRCSYS").alias("providerAhaTStrSys"),    #telestroke care health system
                                       F.col("STRCVEN").alias("providerAhaTStrVen"),    #telestroke care joint venture
-                                      F.col("BDH").alias("providerAhaBdh")),           #total facility beds - nursing home beds
+                                      F.col("BDH").alias("providerAhaBdh"),            #total facility beds - nursing home beds
+                                      F.col("FTERES").alias("providerAhaFTERES"),      #full time equivalent residents and interns
+                                      F.col("teachingHospital").alias("providerAhaTeachingHospital"), 
+                                      F.col("residentToBedRatio").alias("providerAhaResidentToBedRatio"))
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
 
