@@ -1602,10 +1602,10 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
     baseDF = add_los_total_info(baseDF)
 
     baseDF = (baseDF.withColumn("homeDaysTotal90", F.when( F.col("STUS_CD")==20, F.lit(None))
-                                                    .when( F.col("90DaysDead")==1, F.lit(None))
+                                                    .when( F.col("90DaysAfterAdmissionDateDead")==1, F.lit(None))
                                                     .otherwise( 90-F.col("losTotal90") ))
                     .withColumn("homeDaysTotal365", F.when( F.col("STUS_CD")==20, F.lit(None))
-                                                    .when( F.col("365DaysDead")==1, F.lit(None))
+                                                    .when( F.col("365DaysAfterAdmissionDateDead")==1, F.lit(None))
                                                     .otherwise( 365-F.col("losTotal365") )))
     return baseDF
 
