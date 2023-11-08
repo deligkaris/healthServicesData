@@ -361,11 +361,10 @@ def add_providerCountyName(baseDF,cbsaDF): #assumes providerFIPS
                         cbsaDF
                             .select(
                                 F.col("countyname").alias("providerCountyName"),
-                                F.col("fipscounty"))
+                                F.col("fipscounty").alias("providerFIPS"))
                             .distinct(),
-                        on=[F.col("fipscounty")==F.col("providerFIPS")],
-                        how="left_outer")
-                    .drop("fipscounty"))
+                        on="providerFIPS",
+                        how="left_outer"))
 
     return baseDF
 
