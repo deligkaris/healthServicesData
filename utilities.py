@@ -200,12 +200,6 @@ def prep_ahaDF(ahaDF, filename):
                   .withColumn("MAPP18", F.col("MAPP18").cast('int'))
                   .withColumn("BDH", F.col("BDH").cast('int'))
                   .withColumn("FTERES", F.col("FTERES").cast('int'))
-                  .withColumn("STRCHOS", F.when( "STRCHOS" in ahaDF.columns, F.col("STRCHOS").cast('int'))
-                                          .otherwise( F.lit(None) ))
-                  .withColumn("STRCSYS", F.when( "STRCSYS" in ahaDF.columns, F.col("STRCSYS").cast('int'))
-                                          .otherwise( F.lit(None) ))
-                  .withColumn("STRCVEN", F.when( "STRCVEN" in ahaDF.columns, F.col("STRCVEN").cast('int'))
-                                          .otherwise( F.lit(None) ))
                   .withColumn("LAT", F.col("LAT").cast('double'))
                   .withColumn("LONG", F.col("LONG").cast('double'))
                   .withColumn("residentToBedRatio", F.col("FTERES")/F.col("BDH"))
@@ -213,6 +207,11 @@ def prep_ahaDF(ahaDF, filename):
                   .withColumn("teachingHospital", 
                               F.when( (F.col("MAPP8")==1) | (F.col("MAPP3")==1) | (F.col("residentToBedRatio")>=0.25) , 1)
                                .otherwise(0)))
+
+    if ahaYear > 2016:
+        ahaDF = (ahaDF.withColumn("STRCHOS", F.col("STRCHOS").cast('int'))
+                      .withColumn("STRCSYS", F.col("STRCSYS").cast('int'))
+                      .withColumn("STRCVEN", F.col("STRCVEN").cast('int')))
 
     return ahaDF
 
