@@ -996,18 +996,16 @@ def add_transferToIn(baseDF):
 
 def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
 
-    baseDF = baseDF.join( mbsfDF.filter(
-                                         F.col("V_DOD_SW")=="V")
-                                 .select(
-                                        F.col("DSYSRTKY"),
-                                        F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"), 
-                                        F.col("DEATH_DT_DAY"), F.col("DEATH_DT"),
-                                        F.col("RFRNC_YR")),
-                           on=[ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
-                                F.col("THRU_DT_YEAR")==F.col("RFRNC_YR") ],
-                           how="left_outer") #uses null when the beneficiary does not have a valid death date in mbsfDF
+    baseDF = baseDF.join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
+                                .select( F.col("DSYSRTKY"),
+                                         F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") ),
+                                         #F.col("RFRNC_YR")),
+                          #on=[ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
+                          #      F.col("THRU_DT_YEAR")==F.col("RFRNC_YR") ],
+                          on="DSYSRTKY",            
+                          how="left_outer") #uses null when the beneficiary does not have a valid death date in mbsfDF
 
-    baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
+    #baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
 
     return baseDF
 
@@ -1403,7 +1401,7 @@ def add_providerIsCah(baseDF, posDF): #critical access hospital
 
 def add_providerStrokeVol(baseDF, stroke="anyStroke"):
 
-    eachProvider = Window.partitionBy("ORGNPINM")
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
 
     baseDF = baseDF.withColumn("providerStrokeVol",
                                F.sum( F.col(stroke) ).over(eachProvider))
@@ -1412,7 +1410,7 @@ def add_providerStrokeVol(baseDF, stroke="anyStroke"):
 
 def add_providerEvtVol(baseDF):
 
-    eachProvider = Window.partitionBy("ORGNPINM")
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
 
     baseDF = baseDF.withColumn("providerEvtVol",
                                F.sum( F.col("evt") ).over(eachProvider))
@@ -1421,7 +1419,7 @@ def add_providerEvtVol(baseDF):
 
 def add_providerTpaVol(baseDF):
 
-    eachProvider = Window.partitionBy("ORGNPINM")
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
 
     baseDF = baseDF.withColumn("providerTpaVol",
                                F.sum( F.col("tpa") ).over(eachProvider))
@@ -1430,7 +1428,7 @@ def add_providerTpaVol(baseDF):
 
 def add_providerMeanEvt(baseDF):
 
-    eachProvider = Window.partitionBy("ORGNPINM")
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
 
     baseDF = baseDF.withColumn("providerMeanEvt",
                                F.mean( F.col("evt") ).over(eachProvider))
@@ -1439,7 +1437,7 @@ def add_providerMeanEvt(baseDF):
 
 def add_providerMeanTpa(baseDF):
 
-    eachProvider = Window.partitionBy("ORGNPINM")
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
 
     baseDF = baseDF.withColumn("providerMeanTpa",
                                F.mean( F.col("tpa") ).over(eachProvider))
@@ -1475,8 +1473,8 @@ def add_numberOfClaims(baseDF):
 
 def filter_beneficiaries(baseDF, mbsfDF):
 
-    baseDF = baseDF.join(mbsfDF.select(F.col("DSYSRTKY")), 
-                         on=["DSYSRTKY"],
+    baseDF = baseDF.join(mbsfDF.select(F.col("DSYSRTKY"), F.col("RFRNC_YR").alias("THRU_DT_YEAR")), 
+                         on=["DSYSRTKY","THRU_DT_YEAR"],
                          how="left_semi")
 
     return baseDF
