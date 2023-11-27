@@ -525,18 +525,20 @@ def add_evtPrcdr(baseDF):
 
     return baseDF
 
+# main reference: https://svn.bmj.com/content/6/2/194
+# the current implementation includes a difference with the main reference:
+# When DRG codes 23 or 24 are present in a claim we classify that as an EVT claim but they excluded any claim with these 
+# two DRG codes that had procedure codes consistent with craniectomy/craniotomy/ventriculostomy.
 def add_evt(baseDF):
 
-    # EVT takes place only in inpatient settings, EVT events are found on base claim file, not in the revenue center
+    # EVT takes place only in inpatient settings
     baseDF = add_evtDrg(baseDF)
     baseDF = add_evtPrcdr(baseDF)
 
     evtCondition = '( (F.col("evtDrg")==1) | (F.col("evtPrcdr")==1) )' # do NOT forget the parenthesis!!!
 
-    baseDF = baseDF.withColumn("evt", 
-                               F.when(eval(evtCondition) ,1) #set them to true
-                                .otherwise(0)) #otherwise false
-
+    baseDF = baseDF.withColumn("evt", F.when(eval(evtCondition) ,1) 
+                                       .otherwise(0)) 
     return baseDF
 
 def add_evtOsu(baseDF):
@@ -614,6 +616,10 @@ def add_tpaCpt(baseDF):
 
     return baseDF
 
+# main reference: https://svn.bmj.com/content/6/2/194
+# the current implementation includes two differences with the main reference:
+# We did not use CPT codes to find tpa claims.
+# We use the 4 DRG codes they used but they coupled DRG code 65 with a DGNS code indicating alteplase receipt and we did not do that.
 def add_tpa(baseDF, inpatient=True):
 
     # tPA can take place in either outpatient or inpatient setting
