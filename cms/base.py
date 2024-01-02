@@ -1,6 +1,8 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
+from .revenue import filter_claims, add_ed, add_mri, add_ct, get_revenue_summary
+from .claims import get_claimsDF
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, daysInYearsPrior, usRegionFipsCodes
 import re
 
@@ -18,6 +20,22 @@ import re
 #I was referring to LDS and not RIF, it seems that CCW is responsible for creating the LDS
 #a page with LDS, RIF differences: https://resdac.org/articles/differences-between-rif-lds-and-puf-data-files
 #they do not include the claimno reset in LDS though.....
+# medpar resdac video: 
+# 1) ip claims: diagnosis codes are on discharge, admitting diagnosis code is often symptom-based, and vague
+# 2) ip claims: most diagnosis codes are firm, rule out diagnosis codes most often not noted at all on hospitalization
+# 3) ip claims: larger hospitals may have better systems for their coders or at least better quality control
+#               (eg in rural hospitals patients may apper to be healthier and with worse outcomes but this could be just
+#                a result of differences in coding)
+# 4) ip claims: each year dataset includes claims of that year's claim through date (in contrast with the medpar file)
+# 5) ip claims: discharge dates may be different than claim through dates
+# 6) ip claims: a hospital stay may be broken in more than 1 claim (same dsysrtky, same admission date, same provider) but it happens
+#               rarely (so need to check if this affects the project)
+# 7) general advice: always good to have clinicians, billers in your team but your hospital may be doing things differently than other
+#                    hospitals! (eg differences in academic institutions versus community hospitals)
+# 8) ip claims: present on admission codes, some hospitals are not required to report these (eg if they are in the PPS system)
+# 9) ip claims: there are medical and surgical DRG codes, need to be very broad if the goal is to identify a clinical population,
+#               perhaps use diagnostic codes to narrow down the DRG codes
+
 
 def add_admission_date_info(baseDF, claimType="op"):
 
@@ -1612,7 +1630,46 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
                                                     .otherwise( 365-F.col("losTotal365") )))
     return baseDF
 
+def add_nonPPS_info(ipClaimsDF, opBaseDF, opRevenueDF):
 
+    #non-PPS hospitals (PPS_IND == null), eg CAH, do not need to bundle the outpatient ED visit with the inpatient stay
+    #so for non-PPS hospitals I need to search in the outpatient file...
+    #as a test, doing this for the PPS hospitals (PPS_IND==2) should yield exactly zero
+
+    opBaseDF = opBaseDF.join(ipClaimsDF.filter(F.col("PPS_IND").isNull())
+                              .select(F.col("ORGNPINM"), F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY")),
+                             on=[ipClaimsDF.ADMSN_DT_DAY == opBaseDF.THRU_DT_DAY,
+                                 #ipClaimsStrokes.ADMSN_DT_DAY >= opBase.THRU_DT_DAY,
+                                 #ipClaimsStrokes.ADMSN_DT_DAY <= opBase.THRU_DT_DAY+1,
+                                 ipClaimsDF.DSYSRTKY==opBaseDF.DSYSRTKY, 
+                                 ipClaimsDF.ORGNPINM==opBaseDF.ORGNPINM],
+                             how="left_semi")
+
+    opRevenueDF = filter_claims(opRevenueDF, opBaseDF)
+    opRevenueDF = add_ed(opRevenueDF, inClaim=True)
+    opRevenueDF = add_mri(opRevenueDF, inClaim=True)
+    opRevenueDF = add_ct(opRevenueDF, inClaim=True)
+
+    opRevenueDFSummary = get_revenue_summary(opRevenueDF)
+
+    opClaimsDF = get_claimsDF(opBaseDF,opRevenueDFSummary).filter(F.col("ed")==1)
+
+    #now bring back to the ip claims the updated information about the non-PPS hospitals
+    ipClaimsDF = (ipClaimsDF.join(opClaimsDF
+                                   .select(F.col("ORGNPINM"),F.col("DSYSRTKY"),
+                                           F.col("THRU_DT_DAY").alias("ADMSN_DT_DAY"),
+                                           F.col("ed").alias("oped"),
+                                           F.col("mri").alias("opmri"),
+                                           F.col("ct").alias("opct")),
+                                  on=["ORGNPINM","DSYSRTKY","ADMSN_DT_DAY"],
+                                  how="left_outer")
+                   .fillna(0, subset=["oped","opmri","opct"])
+                   .withColumn("ed", ((F.col("ed").cast("boolean"))|(F.col("oped").cast("boolean"))).cast('int'))
+                   .withColumn("mri", ((F.col("mri").cast("boolean"))|(F.col("opmri").cast("boolean"))).cast('int'))
+                   .withColumn("ct", ((F.col("ct").cast("boolean")) | ((F.col("opct").cast("boolean")))).cast('int'))
+                   .drop("oped","opmri","opct"))
+
+    return ipClaimsDF
 
 
 
