@@ -122,7 +122,7 @@ def add_enrollment_info(mbsfDF):
 
 def filter_FFS(mbsfDF):
 
-    mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1))
+    mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1)
     return mbsfDF
 
 def add_rfrncYrDifference(mbsfDF):
