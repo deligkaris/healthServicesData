@@ -302,7 +302,7 @@ def add_probablyDead(mbsfDF, ipBaseDF, opBaseDF):
 
 def filter_probably_dead(mbsfDf):
 
-    mbsfDf = mbsfDf.filter( F.col("probablyDead")==0 ))   
+    mbsfDf = mbsfDf.filter( F.col("probablyDead")==0 )   
     return mbsfDF
 
 def add_residentsInCounty(mbsfDF):
