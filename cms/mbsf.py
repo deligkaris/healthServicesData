@@ -122,38 +122,27 @@ def add_enrollment_info(mbsfDF):
 
 def filter_FFS(mbsfDF):
 
-    mbsfDF = (add_enrollment_info(mbsfDF)
-              .filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1))
-
+    mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1))
     return mbsfDF
 
-def filter_continuous_coverage(mbsfDF):
+def add_rfrncYrDifference(mbsfDF):
 
     #for every beneficiary, order their year of FFS coverage
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
     eachDsysrtkyOrdered=eachDsysrtky.orderBy("RFRNC_YR")
 
     #and then calculate the difference between two consecutive years of FFS coverage
-    mbsfDF = mbsfDF.withColumn("RFRNC_YR_DIFFERENCE",
+    mbsfDF = mbsfDF.withColumn("rfrncYrDifference",
                                (F.col("RFRNC_YR")-F.lag("RFRNC_YR",1).over(eachDsysrtkyOrdered)))
 
     #for the first year, all difference entries will be null, replace them with 0
-    mbsfDF = mbsfDF.fillna(value=0,subset=["RFRNC_YR_DIFFERENCE"])
+    mbsfDF = mbsfDF.fillna(value=0,subset=["rfrncYrDifference"])
 
     #each window now will keep values until the current row
     eachDsysrtkyOrderedUntilnow= eachDsysrtkyOrdered.rowsBetween(Window.unboundedPreceding,Window.currentRow)
 
     #if a beneficiary has a year of no coverage (difference greater than 1) then propagate that to the future
-    mbsfDF = mbsfDF.withColumn("RFRNC_YR_DIFFERENCE",
-                                F.max(
-                                    F.col("RFRNC_YR_DIFFERENCE")).over(eachDsysrtkyOrderedUntilnow))
-
-    #now keep only beneficiary-years with continuous coverage
-    mbsfDF = mbsfDF.filter(F.col("RFRNC_YR_DIFFERENCE")<=1)
-
-    #find the beginning of each beneficiary's FFS coverage
-    mbsfDF = mbsfDF.withColumn("RFRNC_YR_INITIAL",
-                                F.min(F.col("RFRNC_YR")).over(eachDsysrtky))
+    mbsfDF = mbsfDF.withColumn("rfrncYrDifference", F.max(F.col("rfrncYrDifference")).over(eachDsysrtkyOrderedUntilnow))
 
     #approach that uses a self-join 
     #find when a beneficiary, and which beneficiaries, had a gap in FFS coverage
@@ -169,8 +158,16 @@ def filter_continuous_coverage(mbsfDF):
     #                                 #if there is a gap remove all rows after the long gap
     #                                 F.col("mbsf.RFRNC_YR") >= F.col("yearWithBreakInFFS.RFRNC_YR")],
     #                            how="left_anti")
-
     return mbsfDF
+
+def filter_continuous_coverage(mbsfDF):
+
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+    #now keep only beneficiary-years with continuous coverage
+    mbsfDF = mbsfDF.filter(F.col("rfrncYrDifference")<=1)
+    #find the beginning of each beneficiary's FFS coverage
+    mbsfDF = mbsfDF.withColumn("rfrncYrInitial", F.min(F.col("RFRNC_YR")).over(eachDsysrtky))
+    return mbsfDf
 
 def add_ohResident(mbsfDF): #also used in base.py
 
@@ -265,27 +262,6 @@ def add_ssaCounty(mbsfDF):
 
     return mbsfDF
 
-#def enforce_schema(mbsfDF):
-
-    #some columns need to be converted to ints first (the ones that are now double and that will be converted to strings at the end)
-#    stCntFipsColList = [f"STATE_CNTY_FIPS_CD_{x:02d}" for x in range(1,13)]
-#    castToIntColList = stCntFipsColList + ["STATE_CD"]
-#    mbsfDF = mbsfDF.select([F.col(c).cast('int') if c in castToIntColList else F.col(c) for c in mbsfDF.columns])
-
-    #some columns need to be formatted independently because there may be leading 0s
-#    mbsfDF = (mbsfDF.withColumn("STATE_CD", 
-#                                F.when( F.col("STATE_CD").isNull(), F.col("STATE_CD") )
-#                                 .otherwise( F.format_string("%02d",F.col("STATE_CD"))))
-#                    .withColumn("CNTY_CD", 
-#                                F.when( F.col("CNTY_CD").isNull(), F.col("CNTY_CD") )
-#                                 .otherwise( F.format_string("%03d",F.col("CNTY_CD"))))
-#                    .select([ F.when( ~F.col(c).isNull(), F.format_string("%05d",F.col(c))).alias(c)  if c in stCntFipsColList else F.col(c) for c in mbsfDF.columns ]))
-
-    #now enforce the schema set for mbsf
-#    mbsfDF = mbsfDF.select([mbsfDF[field.name].cast(field.dataType) for field in mbsfSchema.fields])
-
-#    return mbsfDF
-
 def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on the code I no longer need these...
 
     dropColumns = (list(map(lambda x: "STATE_CNTY_FIPS_CD_" + f"{x}".zfill(2),range(1,13))) +
@@ -294,20 +270,21 @@ def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on t
                    list(map(lambda x: f"BUYIN{x}",range(1,13))) +
                    list(map(lambda x: f"HMOIND{x}",range(1,13))) +
                    ["SAMPLE_GROUP","OREC","CREC","ESRD_IND","A_TRM_CD","B_TRM_CD","A_MO_CNT","B_MO_CNT","HMO_MO","BUYIN_MO"])
-
     mbsfDF = mbsfDF.drop(*dropColumns)
-
     return mbsfDF
 
-def clean_mbsf(mbsfDF, ipBaseDF, opBaseDF):
+def filter_valid_dod(mbsfDf): 
+
+    #deaths are always validated but death dates are not always validated
+    #unvalidated death dates will typically register at end of a month and this will bias survival rate calculations
+    #https://www.youtube.com/watch?v=-nxGbTPVLo8
+    mbsfDF = mbsfDF.filter( (F.col("DEATH_DT").isNull()) | (F.col("V_DOD_SW")=="V") )
+    return mbsfDf
+
+def add_probablyDead(mbsfDF, ipBaseDF, opBaseDF):
 
     eachDSYSRTKY = Window.partitionBy("DSYSRTKY")
-
     mbsfDF = (mbsfDF
-                 #deaths are always validated but death dates are not always validated
-                 #unvalidated death dates will typically register at end of a month and this will bias survival rate calculations
-                 #https://www.youtube.com/watch?v=-nxGbTPVLo8
-                 .filter( (F.col("DEATH_DT").isNull()) | (F.col("V_DOD_SW")=="V") )
                  #CMS misses a few deaths so some beneficiaries included in MBSF are actually dead
                  #no standard approach on how to find these
                  #one approach: if there is no op or ip claim for someone older than 90 years old, remove them from MBSF
@@ -320,17 +297,18 @@ def clean_mbsf(mbsfDF, ipBaseDF, opBaseDF):
                  .fillna(0, subset="lastYearWithClaim")
                  .withColumn("probablyDead",
                        F.when( (F.col("AGE")>90) & (F.col("RFRNC_YR")>F.col("lastYearWithClaim")), 1)
-                        .otherwise(0))
-                 .filter( F.col("probablyDead")==0 ))   
+                        .otherwise(0)))
+    return mbsfDf
 
+def filter_probably_dead(mbsfDf):
+
+    mbsfDf = mbsfDf.filter( F.col("probablyDead")==0 ))   
     return mbsfDF
 
 def add_residentsInCounty(mbsfDF):
 
     eachCounty = Window.partitionBy(["ssaCounty","RFRNC_YR"])
-
     mbsfDF = mbsfDF.withColumn("residentsInCounty", F.count(F.col("DSYSRTKY")).over(eachCounty))
-
     return mbsfDF
 
 def add_fipsCounty(mbsfDF, cbsaDF):
@@ -338,7 +316,6 @@ def add_fipsCounty(mbsfDF, cbsaDF):
     mbsfDF = mbsfDF.join(cbsaDF.select(F.col("ssaCounty"),F.col("fipsCounty")),
                          on=["ssaCounty"],
                          how="left_outer")
-
     return mbsfDF
 
 def add_countyName(mbsfDF,cbsaDF):
@@ -346,7 +323,6 @@ def add_countyName(mbsfDF,cbsaDF):
     mbsfDF = mbsfDF.join(cbsaDF.select(F.col("countyName"),F.col("ssaCounty")),
                          on = ["ssaCounty"],
                          how = "left_outer")
-
     return(mbsfDF)
 
 

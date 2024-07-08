@@ -210,9 +210,13 @@ def add_preliminary_info(dataframes):
             if (claimType=="mbsf"):
                 dataframes[claimType] = mbsfF.add_death_date_info(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_ssaCounty(dataframes[claimType])
+                dataframes[claimType] = mbsfF.add_enrollment_info(dataframes[claimType])
+                dataframes[claimType] = mbsfF.add_rfrncYrDifference(dataframes[claimType])
         else:
             pass
 
+    #this needs to be done when all dfs have been processed
+    dataframes["mbsf"] = mbsf.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"])
     return dataframes
 
 def get_data(pathCMS, yearI, yearF, spark):
