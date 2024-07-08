@@ -216,7 +216,7 @@ def add_preliminary_info(dataframes):
             pass
 
     #this needs to be done when all dfs have been processed
-    dataframes["mbsf"] = mbsf.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"])
+    dataframes["mbsf"] = mbsfF.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"])
     return dataframes
 
 def get_data(pathCMS, yearI, yearF, spark):
