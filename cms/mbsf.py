@@ -273,13 +273,13 @@ def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on t
     mbsfDF = mbsfDF.drop(*dropColumns)
     return mbsfDF
 
-def filter_valid_dod(mbsfDf): 
+def filter_valid_dod(mbsfDF): 
 
     #deaths are always validated but death dates are not always validated
     #unvalidated death dates will typically register at end of a month and this will bias survival rate calculations
     #https://www.youtube.com/watch?v=-nxGbTPVLo8
     mbsfDF = mbsfDF.filter( (F.col("DEATH_DT").isNull()) | (F.col("V_DOD_SW")=="V") )
-    return mbsfDf
+    return mbsfDF
 
 def add_probablyDead(mbsfDF, ipBaseDF, opBaseDF):
 
@@ -298,11 +298,11 @@ def add_probablyDead(mbsfDF, ipBaseDF, opBaseDF):
                  .withColumn("probablyDead",
                        F.when( (F.col("AGE")>90) & (F.col("RFRNC_YR")>F.col("lastYearWithClaim")), 1)
                         .otherwise(0)))
-    return mbsfDf
+    return mbsfDF
 
-def filter_probably_dead(mbsfDf):
+def filter_probably_dead(mbsfDF):
 
-    mbsfDf = mbsfDf.filter( F.col("probablyDead")==0 )   
+    mbsfDF = mbsfDF.filter( F.col("probablyDead")==0 )   
     return mbsfDF
 
 def add_residentsInCounty(mbsfDF):
