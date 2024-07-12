@@ -167,7 +167,6 @@ def add_enrollment_info(mbsfDF):
     mbsfDF = add_hmo(mbsfDF)
     mbsfDF = add_ffs(mbsfDF)
     mbsfDF = add_ffsSinceJanuary(mbsfDF)
-    mbsfDF = add_ffsSinceJanuaryDifference(mbsfDF)
     mbsfDF = add_continuousFfs(mbsfDF)
     mbsfDF = add_rfrncYrDifference(mbsfDF)
     mbsfDF = add_continuousYears(mbsfDF)
