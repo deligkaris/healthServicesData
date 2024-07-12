@@ -112,16 +112,27 @@ def add_hmo(mbsfDF):
 
     return mbsfDF
 
-def add_enrollment_info(mbsfDF):
+def add_medicaidEver(mbsfDF):
+    # This function determines if there is one month in the year where the beneficiary was either
+    # partially or fully enrolled in Medicaid
+    # Following recommendation from CCW technical guidance document on 
+    # Defining Medicare-Medicaid Dually Enrolled Beneficiaries in CMS Administrative Data
+    # https://www.cms.gov/medicare-medicaid-coordination/medicare-and-medicaid-coordination/medicare-medicaid-coordination-office/downloads/mmco_dualeligibledefinition.pdf
+    dualCodes = (1,2,3,4,5,6,8)
+    mbsfDF = (mbsfDF.withColumn("dualArray", F.array(["DUAL_" + str(x).zfill(2) for x in range(1,13)]))
+                    .withColumn("dualArrayFiltered", F.expr(f"filter(dualArray, x->x in {dualCodes})"))
+                    .withColumn("medicaidEver", F.when( F.size(F.col("dualArrayFiltered"))>0, 1).otherwise(0))
+                    .drop("dualArray", "dualArrayFiltered"))
+    return mbsfDF
 
+def add_enrollment_info(mbsfDF):
     mbsfDF = add_allPartA(mbsfDF)
     mbsfDF = add_allPartB(mbsfDF)
     mbsfDF = add_hmo(mbsfDF)
-
+    mbsfDF = add_medicaidEver(mbsfDF)
     return mbsfDF
 
 def filter_FFS(mbsfDF):
-
     mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1)
     return mbsfDF
 
@@ -161,13 +172,12 @@ def add_rfrncYrDifference(mbsfDF):
     return mbsfDF
 
 def filter_continuous_coverage(mbsfDF):
-
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
     #now keep only beneficiary-years with continuous coverage
     mbsfDF = mbsfDF.filter(F.col("rfrncYrDifference")<=1)
     #find the beginning of each beneficiary's FFS coverage
     mbsfDF = mbsfDF.withColumn("rfrncYrInitial", F.min(F.col("RFRNC_YR")).over(eachDsysrtky))
-    return mbsfDf
+    return mbsfDF
 
 def add_ohResident(mbsfDF): #also used in base.py
 
@@ -269,7 +279,7 @@ def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on t
                    list(map(lambda x: "DUAL_" + f"{x}".zfill(2),range(1,13))) +
                    list(map(lambda x: f"BUYIN{x}",range(1,13))) +
                    list(map(lambda x: f"HMOIND{x}",range(1,13))) +
-                   ["SAMPLE_GROUP","OREC","CREC","ESRD_IND","A_TRM_CD","B_TRM_CD","A_MO_CNT","B_MO_CNT","HMO_MO","BUYIN_MO"])
+                   ["SAMPLE_GROUP","OREC","CREC","A_TRM_CD","B_TRM_CD","A_MO_CNT","B_MO_CNT","HMO_MO","BUYIN_MO"])
     mbsfDF = mbsfDF.drop(*dropColumns)
     return mbsfDF
 
