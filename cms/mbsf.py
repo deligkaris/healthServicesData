@@ -22,12 +22,40 @@ from utilities import daysInYearsPrior
 #      I think in this website they calculated the sum of months, divided by 12, to get the person-years numbers for enrollments
 #      CMS also has data on enrollment: https://www.cms.gov/medicare/payment/medicare-advantage-rates-statistics/ffs-data-2015-2021
 
-def add_allPartB(mbsfDF): #assumes add death date info
+def add_allPartAB(mbsfDF):
+    partABCodes = ["3","C"]
+    mbsfDF = (mbsfDF.withColumn("partABArray", 
+                                F.array( [F.when( F.col("BUYIN" + str(x)).isin(partABCodes), 1 ).otherwise(0) for x in range(1,13)]))
+                    .withColumn("partABFirstMonth", F.array_position(F.col("partABArray"), 1))
+                    .withColumn("partABLastMonth", F.when( F.col("DEATH_DT_MONTH").isNull(), 12).otherwise(F.col("DEATH_DT_MONTH")))
+                    #number of months beneficiary should have part AB coverage, depending on death (or not)
+                    .withColumn("abMoCntForAllPartAB", 
+                                F.when(F.col("partABFirstMonth")>0, F.col("partABLastMonth")-F.col("partABFirstMonth")+1)
+                                 .otherwise(0))
+                    .withColumn("allPartAB", F.when( (F.col("abMoCntForAllPartAB")==F.col("B_MO_CNT")) & 
+                                                     (F.col("abMoCntForAllPartAB")==F.col("A_MO_CNT")), 1).otherwise(0)))
+    return mbsfDF
+
+def add_allPartB(mbsfDF): 
+
+    #an approach that takes into account death date and if this is the first year beneficiary first became eligible for Medicare
+    notPartBCodes = ["0","1","A"]
+    #an array of 12 0/1 codes eg [0,0,0,0,1,1,1,1,0,0..] 
+    #1 is when BUYIN_XX code is part B code, 0 is when BUYIN_XX code is not part B code
+    mbsfDF = (mbsfDF.withColumn("partBArray", 
+                                F.array( [F.when( F.col("BUYIN" + str(x)).isin(notPartBCodes), 0 ).otherwise(F.lit('1')) for x in range(1,13)]))
+                    .withColumn("partBFirstMonth", F.array_position(F.col("partBArray"), '1'))
+                    .withColumn("partBLastMonth", F.when( F.col("DEATH_DT_MONTH").isNull(), 12).otherwise(F.col("DEATH_DT_MONTH")))
+                    #number of months beneficiary should have part B coverage, depending on death (or not)
+                    .withColumn("bMoCntForAllPartB", 
+                                F.when(F.col("partBFirstMonth")>0, F.col("partBLastMonth")-F.col("partBFirstMonth")+1)
+                                 .otherwise(F.lit(0)))
+                    .withColumn("allPartB", F.when( F.col("partBMonths")==F.col("B_MO_CNT"), 1).otherwise(0)))
 
     #first approach, takes into account death date, does not take into account if this is the year beneficiary first became eligible for Medicare
-    mbsfDF = mbsfDF.withColumn("allPartB",
-                               F.when( (F.col("DEATH_DT_MONTH")==F.col("B_MO_CNT")) | (F.col("B_MO_CNT")==12), 1)
-                                .otherwise(0))
+    #mbsfDF = mbsfDF.withColumn("allPartB",
+    #                           F.when( (F.col("DEATH_DT_MONTH")==F.col("B_MO_CNT")) | (F.col("B_MO_CNT")==12), 1)
+    #                            .otherwise(0))
 
     #second approach, produces same results as first approach above, but slower, more flexible though since I check monthly indicators
     #buyInColumns = list(map(lambda x: f"BUYIN{x}",range(1,13))) # ['BUYIN1','BUYIN2',...'BUYIN12']
@@ -128,6 +156,7 @@ def add_medicaidEver(mbsfDF):
 def add_enrollment_info(mbsfDF):
     mbsfDF = add_allPartA(mbsfDF)
     mbsfDF = add_allPartB(mbsfDF)
+    mbsfDF = add_allPartAB(mbsfDF)
     mbsfDF = add_hmo(mbsfDF)
     mbsfDF = add_medicaidEver(mbsfDF)
     return mbsfDF
