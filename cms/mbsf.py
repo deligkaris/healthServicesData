@@ -165,11 +165,38 @@ def add_enrollment_info(mbsfDF):
     #mbsfDF = add_allPartB(mbsfDF)
     mbsfDF = add_allPartAB(mbsfDF)
     mbsfDF = add_hmo(mbsfDF)
+    mbsfDF = add_ffs(mbsfDF)
+    mbsfDF = add_ffsSinceJanuary(mbsfDF)
+    mbsfDF = add_ffsSinceJanuaryDifference(mbsfDF)
+    mbsfDF = add_continuousFfs(mbsfDF)
+    mbsfDF = add_rfrncYrDifference(mbsfDF)
+    mbsfDF = add_continuousYears(mbsfDF)
     mbsfDF = add_medicaidEver(mbsfDF)
     return mbsfDF
 
+def add_ffs(mbsfDF):
+    mbsfDF = mbsfDF.withColumn("ffs", F.when( (F.col("hmo")==0) & (F.col("allPartAB")==1) , 1).otherwise(0))
+    return mbsfDF
+
+def add_ffsSinceJanuary(mbsfDF):
+    partABCodes = ["3","C"]
+    mbsfDF = mbsfDF.withColumn("ffsSinceJanuary", F.col("ffs") * F.col("BUYIN1").isin(partABCodes).cast('int'))
+    return mbsfDF
+
+def add_continuousFfs(mbsfDF):
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+    eachDsysrtkyOrdered=eachDsysrtky.orderBy("RFRNC_YR")
+    mbsfDF = (mbsfDF.withColumn("ffsSinceJanuaryDifference",
+                                (F.col("ffsSinceJanuary")-F.lag("ffsSinceJanuary",1).over(eachDsysrtkyOrdered))) 
+                    .fillna(value=0,subset=["ffsSinceJanuaryDifference"])
+                    .withColumn("continuousFfs", F.when( F.min(F.col("ffsSinceJanuaryDifference")).over(eachDsysrtky)<0, 0)
+                                                  .otherwise(1)))
+    return mbsfDF
+
 def filter_FFS(mbsfDF):
-    mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1)
+    #mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1)
+    #mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartAB")==1)
+    mbsfDF = mbsfDF.filter(F.col("ffs")==1)
     return mbsfDF
 
 def add_rfrncYrDifference(mbsfDF):
@@ -205,6 +232,13 @@ def add_rfrncYrDifference(mbsfDF):
     #                                 #if there is a gap remove all rows after the long gap
     #                                 F.col("mbsf.RFRNC_YR") >= F.col("yearWithBreakInFFS.RFRNC_YR")],
     #                            how="left_anti")
+    return mbsfDF
+
+def add_continuousYears(mbsfDF):
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+    mbsfDF = mbsfDF.withColumn("continuousYears",
+                               F.when( F.max(F.col("rfrncYrDifference")).over(eachDsysrtky)>1, 0)
+                                .otherwise(1))
     return mbsfDF
 
 def filter_continuous_coverage(mbsfDF):

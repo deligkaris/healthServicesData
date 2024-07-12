@@ -211,7 +211,6 @@ def add_preliminary_info(dataframes):
                 dataframes[claimType] = mbsfF.add_death_date_info(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_ssaCounty(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_enrollment_info(dataframes[claimType])
-                dataframes[claimType] = mbsfF.add_rfrncYrDifference(dataframes[claimType])
         else:
             pass
 
