@@ -28,12 +28,19 @@ def add_allPartAB(mbsfDF):
                                 F.array( [F.when( F.col("BUYIN" + str(x)).isin(partABCodes), 1 ).otherwise(0) for x in range(1,13)]))
                     .withColumn("partABFirstMonth", F.array_position(F.col("partABArray"), 1))
                     .withColumn("partABLastMonth", F.when( F.col("DEATH_DT_MONTH").isNull(), 12).otherwise(F.col("DEATH_DT_MONTH")))
+                    .withColumn("partABArraySliced",
+                                F.when( F.col("partABFirstMonth")>0, F.expr("slice(partABArray, partABFirstMonth, partABLastMonth-partABFirstMonth+1)"))
+                                 .otherwise( F.array([F.lit(0)])))
+                    .withColumn("partABArraySlicedFiltered",
+                                F.expr("filter(partABArraySliced, x->x!=1)"))
+                    .withColumn("allPartAB",
+                                F.when( F.size(F.col("partABArraySlicedFiltered"))>0, 0).otherwise(1)))
                     #number of months beneficiary should have part AB coverage, depending on death (or not)
-                    .withColumn("abMoCntForAllPartAB", 
-                                F.when(F.col("partABFirstMonth")>0, F.col("partABLastMonth")-F.col("partABFirstMonth")+1)
-                                 .otherwise(0))
-                    .withColumn("allPartAB", F.when( (F.col("abMoCntForAllPartAB")==F.col("B_MO_CNT")) & 
-                                                     (F.col("abMoCntForAllPartAB")==F.col("A_MO_CNT")), 1).otherwise(0)))
+                    #.withColumn("abMoCntForAllPartAB", 
+                    #            F.when(F.col("partABFirstMonth")>0, F.col("partABLastMonth")-F.col("partABFirstMonth")+1)
+                    #             .otherwise(0))
+                    #.withColumn("allPartAB", F.when( (F.col("abMoCntForAllPartAB")==F.col("B_MO_CNT")) & 
+                    #                                 (F.col("abMoCntForAllPartAB")==F.col("A_MO_CNT")), 1).otherwise(0)))
     return mbsfDF
 
 def add_allPartB(mbsfDF): 
@@ -154,8 +161,8 @@ def add_medicaidEver(mbsfDF):
     return mbsfDF
 
 def add_enrollment_info(mbsfDF):
-    mbsfDF = add_allPartA(mbsfDF)
-    mbsfDF = add_allPartB(mbsfDF)
+    #mbsfDF = add_allPartA(mbsfDF)
+    #mbsfDF = add_allPartB(mbsfDF)
     mbsfDF = add_allPartAB(mbsfDF)
     mbsfDF = add_hmo(mbsfDF)
     mbsfDF = add_medicaidEver(mbsfDF)
