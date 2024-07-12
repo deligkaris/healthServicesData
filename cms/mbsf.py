@@ -50,7 +50,7 @@ def add_allPartB(mbsfDF):
                     .withColumn("bMoCntForAllPartB", 
                                 F.when(F.col("partBFirstMonth")>0, F.col("partBLastMonth")-F.col("partBFirstMonth")+1)
                                  .otherwise(F.lit(0)))
-                    .withColumn("allPartB", F.when( F.col("partBMonths")==F.col("B_MO_CNT"), 1).otherwise(0)))
+                    .withColumn("allPartB", F.when( F.col("bMoCntForAllPartB")==F.col("B_MO_CNT"), 1).otherwise(0)))
 
     #first approach, takes into account death date, does not take into account if this is the year beneficiary first became eligible for Medicare
     #mbsfDF = mbsfDF.withColumn("allPartB",
