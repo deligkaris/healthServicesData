@@ -1,6 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
-from utilities import daysInYearsPrior
+from utilities import daysInYearsPrior, monthsInYearsPrior
 
 #notes (most are from the Resdac tutorial: https://youtu.be/-nxGbTPVLo8?si=TsTNDXDpZlPTsvpX )
 #note: demographic information is largely reliable and valid
@@ -26,10 +26,11 @@ def add_allPartAB(mbsfDF):
     partABCodes = ["3","C"]
     mbsfDF = (mbsfDF.withColumn("partABArray", 
                                 F.array( [F.when( F.col("BUYIN" + str(x)).isin(partABCodes), 1 ).otherwise(0) for x in range(1,13)]))
-                    .withColumn("partABFirstMonth", F.array_position(F.col("partABArray"), 1))
-                    .withColumn("partABLastMonth", F.when( F.col("DEATH_DT_MONTH").isNull(), 12).otherwise(F.col("DEATH_DT_MONTH")))
+                    .withColumn("partABFirstMonthOfYear", F.array_position(F.col("partABArray"), 1))
+                    .withColumn("partABLastMonthOfYear", F.when( F.col("DEATH_DT_MONTH").isNull(), 12).otherwise(F.col("DEATH_DT_MONTH")))
                     .withColumn("partABArraySliced",
-                                F.when( F.col("partABFirstMonth")>0, F.expr("slice(partABArray, partABFirstMonth, partABLastMonth-partABFirstMonth+1)"))
+                                F.when( F.col("partABFirstMonthOfYear")>0, 
+                                        F.expr("slice(partABArray, partABFirstMonthOfYear, partABLastMonthOfYear-partABFirstMonthOfYear+1)"))
                                  .otherwise( F.array([F.lit(0)])))
                     .withColumn("partABArraySlicedFiltered",
                                 F.expr("filter(partABArraySliced, x->x!=1)"))
@@ -43,65 +44,12 @@ def add_allPartAB(mbsfDF):
                     #                                 (F.col("abMoCntForAllPartAB")==F.col("A_MO_CNT")), 1).otherwise(0)))
     return mbsfDF
 
-def add_allPartB(mbsfDF): 
-
-    #an approach that takes into account death date and if this is the first year beneficiary first became eligible for Medicare
-    notPartBCodes = ["0","1","A"]
-    #an array of 12 0/1 codes eg [0,0,0,0,1,1,1,1,0,0..] 
-    #1 is when BUYIN_XX code is part B code, 0 is when BUYIN_XX code is not part B code
-    mbsfDF = (mbsfDF.withColumn("partBArray", 
-                                F.array( [F.when( F.col("BUYIN" + str(x)).isin(notPartBCodes), 0 ).otherwise(F.lit('1')) for x in range(1,13)]))
-                    .withColumn("partBFirstMonth", F.array_position(F.col("partBArray"), '1'))
-                    .withColumn("partBLastMonth", F.when( F.col("DEATH_DT_MONTH").isNull(), 12).otherwise(F.col("DEATH_DT_MONTH")))
-                    #number of months beneficiary should have part B coverage, depending on death (or not)
-                    .withColumn("bMoCntForAllPartB", 
-                                F.when(F.col("partBFirstMonth")>0, F.col("partBLastMonth")-F.col("partBFirstMonth")+1)
-                                 .otherwise(F.lit(0)))
-                    .withColumn("allPartB", F.when( F.col("bMoCntForAllPartB")==F.col("B_MO_CNT"), 1).otherwise(0)))
-
-    #first approach, takes into account death date, does not take into account if this is the year beneficiary first became eligible for Medicare
-    #mbsfDF = mbsfDF.withColumn("allPartB",
-    #                           F.when( (F.col("DEATH_DT_MONTH")==F.col("B_MO_CNT")) | (F.col("B_MO_CNT")==12), 1)
-    #                            .otherwise(0))
-
-    #second approach, produces same results as first approach above, but slower, more flexible though since I check monthly indicators
-    #buyInColumns = list(map(lambda x: f"BUYIN{x}",range(1,13))) # ['BUYIN1','BUYIN2',...'BUYIN12']
-    #https://resdac.org/cms-data/variables/medicare-entitlementbuy-indicator-january
-    #notPartBCodes = ("0","1","A")
-
-    #mbsfDF = (mbsfDF.withColumn("buyInAll",   #make the array
-    #                            F.array(buyInColumns))
-    #                #keep all 12 elements if beneficiary did not die that year, otherwise keep up to the month of death (after that month all codes are 0)
-    #                .withColumn("buyInAllSliced",   
-    #                            F.when( F.col("DEATH_DT_MONTH").isNull(), F.col("buyInAll"))
-    #                             #.otherwise(F.slice("buyInAll",F.lit(1),F.col("DEATH_DT_MONTH"))) #unsure why this is not working
-    #                             .otherwise(F.expr("slice(buyInAll,1,DEATH_DT_MONTH)")))
-    #                 #no need to keep all elements, just the distinct ones
-    #                .withColumn("buyInAllSlicedDistinct",  
-    #                            F.array_distinct(F.col("buyInAllSliced")))
-    #                #keep from sliced array only codes that indicate not enrollment in part B
-    #                #instead of filter, I could also use F.array_overlap, not sure if it would be faster though
-    #                .withColumn("buyInAllSlicedDistinctNotPartB", 
-    #                            F.expr(f"filter(buyInAllSlicedDistinct, x -> x in {notPartBCodes})"))
-    #                #indicate who had part B and who did not
-    #                .withColumn("allPartBEligible",  
-    #                            F.when( F.size(F.col("buyInAllSlicedDistinctNotPartB"))>0, 0)
-    #                             .otherwise(1))
-    #                .drop("buyInAll","buyInAllSliced","buyInAllSlicedDistinct","buyInAllSlicedDistinctNotPartB"))
-
-    return mbsfDF
-
-def add_allPartA(mbsfDF): #assumes add death date info
-
-    #first approach, takes into account death date, does not take into account if this is the year beneficiary first became eligible for Medicare
-    mbsfDF = mbsfDF.withColumn("allPartA",
-                               F.when( (F.col("DEATH_DT_MONTH")==F.col("A_MO_CNT")) | (F.col("A_MO_CNT")==12), 1)
-                                .otherwise(0))
-
+def add_partABFirstMonth(mbsfDF):
+    mbsfDF = mbsfDF.withColumn("partABFirstMonthMonthsInYearsPrior", monthsInYearsPrior[F.col("DEATH_DT_YEAR")])  #for the ones that have a valid death date
+                   .withColumn("partABFirstMonth", (F.col("partABFirstMonthMonthsInYearsPrior") + F.col("partABFirstMonthOfYear")).cast('int'))
     return mbsfDF
 
 def add_hmo(mbsfDF):
-
     # Using the HMO_COVERAGE indicator would in theory exclude beneficiaries that may have had their claims processed by CMS
     # but in practice there is evidence that CMS does not process all of these beneficiaries's claims, so
     # we need to exclude beneficiaries with codes 1 and A
@@ -161,15 +109,13 @@ def add_medicaidEver(mbsfDF):
     return mbsfDF
 
 def add_enrollment_info(mbsfDF):
-    #mbsfDF = add_allPartA(mbsfDF)
-    #mbsfDF = add_allPartB(mbsfDF)
     mbsfDF = add_allPartAB(mbsfDF)
     mbsfDF = add_hmo(mbsfDF)
     mbsfDF = add_ffs(mbsfDF)
     mbsfDF = add_ffsSinceJanuary(mbsfDF)
     mbsfDF = add_continuousFfs(mbsfDF)
     mbsfDF = add_rfrncYrDifference(mbsfDF)
-    mbsfDF = add_continuousYears(mbsfDF)
+    mbsfDF = add_continuousRfrncYr(mbsfDF)
     mbsfDF = add_medicaidEver(mbsfDF)
     return mbsfDF
 
@@ -192,9 +138,11 @@ def add_continuousFfs(mbsfDF):
                                                   .otherwise(1)))
     return mbsfDF
 
+def filter_continuousFfs(mbsfDF):
+    mbsfDF = mbsfDF.filter(F.col("continuousFfs")==1)
+    return mbsfDF
+
 def filter_FFS(mbsfDF):
-    #mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartA")==1).filter(F.col("allPartB")==1)
-    #mbsfDF = mbsfDF.filter(F.col("hmo")==0).filter(F.col("allPartAB")==1)
     mbsfDF = mbsfDF.filter(F.col("ffs")==1)
     return mbsfDF
 
@@ -233,11 +181,15 @@ def add_rfrncYrDifference(mbsfDF):
     #                            how="left_anti")
     return mbsfDF
 
-def add_continuousYears(mbsfDF):
+def add_continuousRfrncYr(mbsfDF):
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
-    mbsfDF = mbsfDF.withColumn("continuousYears",
+    mbsfDF = mbsfDF.withColumn("continuousRfrncYr",
                                F.when( F.max(F.col("rfrncYrDifference")).over(eachDsysrtky)>1, 0)
                                 .otherwise(1))
+    return mbsfDF
+
+def filter_continuousRfrncYr(mbsfDF):
+    mbsfDF = mbsfDF.filter(F.col("continuousRfrncYr")==1)
     return mbsfDF
 
 def filter_continuous_coverage(mbsfDF):

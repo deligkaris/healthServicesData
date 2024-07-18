@@ -15,12 +15,16 @@ yearMax = max(leapYears)+2
 years = [y for y in range(yearMin,yearMax)]  
 nonLeapYears = list( set(years)^set(leapYears) )
 daysInYearsPriorDict = dict()
+monthsInYearsPriorDict = dict()
 for year in range(min(years),max(years)):
     nLeapYears = sum( [year>x for x in leapYears] )
     nNonLeapYears = sum( [year>x for x in nonLeapYears])
     days = nNonLeapYears*365 + nLeapYears*366
     daysInYearsPriorDict[year] = days
+    months = nNonLeapYears*12 + nLeapYears*12
+    monthsInYearsPriorDict[year] = months
 daysInYearsPrior = F.create_map([F.lit(x) for x in chain(*daysInYearsPriorDict.items())])
+monthsInYearsPrior = F.create_map([F.lit(x) for x in chain(*monthsInYearsPriorDict.items())])
 
 #definition of which states (fips codes) belong to which region
 usRegionFipsCodes = {"west":  ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"],
