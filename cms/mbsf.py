@@ -44,11 +44,6 @@ def add_allPartAB(mbsfDF):
                     #                                 (F.col("abMoCntForAllPartAB")==F.col("A_MO_CNT")), 1).otherwise(0)))
     return mbsfDF
 
-def add_partABFirstMonth(mbsfDF):
-    mbsfDF = (mbsfDF.withColumn("partABFirstMonthMonthsInYearsPrior", monthsInYearsPrior[F.col("DEATH_DT_YEAR")])  #for the ones that have a valid death date
-                    .withColumn("partABFirstMonth", (F.col("partABFirstMonthMonthsInYearsPrior") + F.col("partABFirstMonthOfYear")).cast('int')))
-    return mbsfDF
-
 def add_hmo(mbsfDF):
     # Using the HMO_COVERAGE indicator would in theory exclude beneficiaries that may have had their claims processed by CMS
     # but in practice there is evidence that CMS does not process all of these beneficiaries's claims, so
@@ -58,9 +53,7 @@ def add_hmo(mbsfDF):
     # https://resdac.org/cms-data/variables/hmo-indicator
 
     #first approach, fastest, takes into account death date and if this is the year beneficiary became 65 or eligible for FFS
-    mbsfDF = mbsfDF.withColumn("hmo",
-                               F.when( F.col("HMO_MO")==0, 0)
-                                .otherwise(1))
+    mbsfDF = mbsfDF.withColumn("hmo", F.when( F.col("HMO_MO")==0, 0).otherwise(1))
 
     #second approach, produces same results as first approach
     #hmoIndColumns = list(map(lambda x: f"HMOIND{x}",range(1,13))) # ['HMOIND1','HMOIND2',...'HMOIND12'] 
@@ -109,12 +102,12 @@ def add_medicaidEver(mbsfDF):
     return mbsfDF
 
 def add_enrollment_info(mbsfDF):
+    mbsfDF = add_rfrncYrMonthsInYearsPrior(mbsfDF)
     mbsfDF = add_allPartAB(mbsfDF)
     mbsfDF = add_hmo(mbsfDF)
     mbsfDF = add_ffs(mbsfDF)
-    mbsfDF = add_ffsSinceJanuary(mbsfDF)
+    mbsfDF = add_ffsFirstMonth(mbsfDF)
     mbsfDF = add_continuousFfs(mbsfDF)
-    mbsfDF = add_rfrncYrDifference(mbsfDF)
     mbsfDF = add_continuousRfrncYr(mbsfDF)
     mbsfDF = add_medicaidEver(mbsfDF)
     return mbsfDF
@@ -123,12 +116,30 @@ def add_ffs(mbsfDF):
     mbsfDF = mbsfDF.withColumn("ffs", F.when( (F.col("hmo")==0) & (F.col("allPartAB")==1) , 1).otherwise(0))
     return mbsfDF
 
+def add_ffsFirstMonthOfYear(mbsfDF):
+    mbsfDF = mbsfDF.withColumn("ffsFirstMonthOfYear", F.when( F.col("ffs")==1, F.col("partABFirstMonthOfYear") ).otherwise(F.lit(None)))
+    return mbsfDF
+
+def add_rfrncYrMonthsInYearsPrior(mbsfDF):
+    mbsfDF = mbsfDF.withColumn("rfrncYrMonthsInYearsPrior", monthsInYearsPrior[F.col("RFRNC_YR")])
+    return mbsfDF
+
+def add_ffsFirstMonth(mbsfDF):
+    mbsfDF = add_ffsFirstMonthOfYear(mbsfDF)
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+    mbsfDF = mbsfDF.withColumn("ffsFirstMonth", 
+                               F.when( F.col("ffsFirstMonthOfYear").isNotNull(),
+                                       F.min(F.col("ffsFirstMonthOfYear")+F.col("rfrncYrMonthsInYearsPrior")).over(eachDsysrtky))
+                                .otherwise(F.lit(None)))
+    return mbsfDF
+
 def add_ffsSinceJanuary(mbsfDF):
     partABCodes = ["3","C"]
     mbsfDF = mbsfDF.withColumn("ffsSinceJanuary", F.col("ffs") * F.col("BUYIN1").isin(partABCodes).cast('int'))
     return mbsfDF
 
 def add_continuousFfs(mbsfDF):
+    mbsfDF = add_ffsSinceJanuary(mbsfDF)
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
     eachDsysrtkyOrdered=eachDsysrtky.orderBy("RFRNC_YR")
     mbsfDF = (mbsfDF.withColumn("ffsSinceJanuaryDifference",
@@ -182,6 +193,7 @@ def add_rfrncYrDifference(mbsfDF):
     return mbsfDF
 
 def add_continuousRfrncYr(mbsfDF):
+    mbsfDF = add_rfrncYrDifference(mbsfDF)
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
     mbsfDF = mbsfDF.withColumn("continuousRfrncYr",
                                F.when( F.max(F.col("rfrncYrDifference")).over(eachDsysrtky)>1, 0)
