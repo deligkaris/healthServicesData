@@ -110,6 +110,7 @@ def add_enrollment_info(mbsfDF):
     mbsfDF = add_continuousFfs(mbsfDF)
     mbsfDF = add_continuousRfrncYr(mbsfDF)
     mbsfDF = add_medicaidEver(mbsfDF)
+    mbsfDF = add_anyEsrd(mbsfDF)
     return mbsfDF
 
 def add_ffs(mbsfDF):
@@ -210,6 +211,35 @@ def filter_continuous_coverage(mbsfDF):
     mbsfDF = mbsfDF.filter(F.col("rfrncYrDifference")<=1)
     #find the beginning of each beneficiary's FFS coverage
     mbsfDF = mbsfDF.withColumn("rfrncYrInitial", F.min(F.col("RFRNC_YR")).over(eachDsysrtky))
+    return mbsfDF
+
+def add_anyEsrd(mbsfDF):
+    #Resdac note ESRD:
+    #There are three variables you could use to identify ESRD beneficiaries in the MBSF Base file: End-Stage Renal Disease (ESRD) Indicator ESRD_IND, 
+    #Current Reason for Entitlement Code ENTLMT_RSN_CURR, and Medicare Status Code January-December MDCR_STATUS_CODE_01-12.
+    #Based on some simple cross-tabulations in the 2019 MBSF, these three variables do not map perfectly to one another. 
+    #For example, there are people with ESRD_IND = Y who have MDCR_STATUS_CODE_01-12 indicating that they do not have ESRD. 
+    #We do expect some discrepancy between these variables because while the variables that we receive come from the same general source, 
+    #they come from different tables, which can cause a mismatch. 
+    #CCW does not have a recommendation for which is more reliable. 
+    #The only other thing to bear in mind is that the ESRD indicator is associated with ESRD benefit use and may differ from the 
+    #total Medicare population diagnosed with ESRD.
+    #My note:
+    #Using one of those 3 variables at a time on the 2017 FFS portion of the data, and multiplying the counts by 100/67 (there were 67% enrollment to FFS 
+    #in 2017), always leads me to a prevalence rate that seems to be lower than the 760,000 that I see on the USRDS website. 
+    #https://usrds-adr.niddk.nih.gov/2022/end-stage-renal-disease/1-incidence-prevalence-patient-characteristics-and-treatment-modalities
+    #Only when I used OR logic for all those 3 variables, the pseudocode is 
+    #ESRD_IND==Y OR CREC in (2,3) OR OREC in (2,3) OR MDCR_STUS_CD in (11,21,31) (any of the 12)
+    #I got to a number of beneficiaries that when multiplied by 100/67 is fairly close to the 760,000 that I see as the estimated ESRD 
+    #prevalence rate for 2017.
+    mbsfDF = (mbsfDF.withColumn("mdcrStusArray", F.array(["MDCR_STUS_CD_" + str(x).zfill(2) for x in range(1,13)]))
+                    .withColumn("anyEsrdInMdcrStus", 
+                                F.when( F.size( F.expr(f"filter(mdcrStusArray, x -> x in (11,21,31))") )>0, 1).otherwise(0))
+                    .withColumn("anyEsrd",
+                                F.when( (F.col("ESRD_IND")=="Y") | 
+                                        (F.col("OREC").isin([2,3])) | (F.col("CREC").isin([2,3])) | 
+                                        (F.col("anyEsrdInMdcrStus")==1), 1)
+                                 .otherwise(0)))
     return mbsfDF
 
 def add_ohResident(mbsfDF): #also used in base.py
@@ -317,7 +347,6 @@ def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on t
     return mbsfDF
 
 def filter_valid_dod(mbsfDF): 
-
     #deaths are always validated but death dates are not always validated
     #unvalidated death dates will typically register at end of a month and this will bias survival rate calculations
     #https://www.youtube.com/watch?v=-nxGbTPVLo8
@@ -325,7 +354,6 @@ def filter_valid_dod(mbsfDF):
     return mbsfDF
 
 def add_probablyDead(mbsfDF, ipBaseDF, opBaseDF):
-
     eachDSYSRTKY = Window.partitionBy("DSYSRTKY")
     mbsfDF = (mbsfDF
                  #CMS misses a few deaths so some beneficiaries included in MBSF are actually dead
@@ -344,25 +372,21 @@ def add_probablyDead(mbsfDF, ipBaseDF, opBaseDF):
     return mbsfDF
 
 def filter_probably_dead(mbsfDF):
-
     mbsfDF = mbsfDF.filter( F.col("probablyDead")==0 )   
     return mbsfDF
 
 def add_residentsInCounty(mbsfDF):
-
     eachCounty = Window.partitionBy(["ssaCounty","RFRNC_YR"])
     mbsfDF = mbsfDF.withColumn("residentsInCounty", F.count(F.col("DSYSRTKY")).over(eachCounty))
     return mbsfDF
 
 def add_fipsCounty(mbsfDF, cbsaDF):
-
     mbsfDF = mbsfDF.join(cbsaDF.select(F.col("ssaCounty"),F.col("fipsCounty")),
                          on=["ssaCounty"],
                          how="left_outer")
     return mbsfDF
 
 def add_countyName(mbsfDF,cbsaDF):
-
     mbsfDF = mbsfDF.join(cbsaDF.select(F.col("countyName"),F.col("ssaCounty")),
                          on = ["ssaCounty"],
                          how = "left_outer")
