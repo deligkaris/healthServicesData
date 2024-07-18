@@ -45,8 +45,8 @@ def add_allPartAB(mbsfDF):
     return mbsfDF
 
 def add_partABFirstMonth(mbsfDF):
-    mbsfDF = mbsfDF.withColumn("partABFirstMonthMonthsInYearsPrior", monthsInYearsPrior[F.col("DEATH_DT_YEAR")])  #for the ones that have a valid death date
-                   .withColumn("partABFirstMonth", (F.col("partABFirstMonthMonthsInYearsPrior") + F.col("partABFirstMonthOfYear")).cast('int'))
+    mbsfDF = (mbsfDF.withColumn("partABFirstMonthMonthsInYearsPrior", monthsInYearsPrior[F.col("DEATH_DT_YEAR")])  #for the ones that have a valid death date
+                    .withColumn("partABFirstMonth", (F.col("partABFirstMonthMonthsInYearsPrior") + F.col("partABFirstMonthOfYear")).cast('int')))
     return mbsfDF
 
 def add_hmo(mbsfDF):
