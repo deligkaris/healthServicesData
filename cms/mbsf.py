@@ -26,7 +26,7 @@ def add_allPartAB(mbsfDF):
     partABCodes = ["3","C"]
     mbsfDF = (mbsfDF.withColumn("partABArray", 
                                 F.array( [F.when( F.col("BUYIN" + str(x)).isin(partABCodes), 1 ).otherwise(0) for x in range(1,13)]))
-                    .withColumn("partABFirstMonthOfYear", F.array_position(F.col("partABArray"), 1))
+                    .withColumn("partABFirstMonthOfYear", F.array_position(F.col("partABArray"), 1).cast('int'))
                     .withColumn("partABLastMonthOfYear", F.when( F.col("DEATH_DT_MONTH").isNull(), 12).otherwise(F.col("DEATH_DT_MONTH")))
                     .withColumn("partABArraySliced",
                                 F.when( F.col("partABFirstMonthOfYear")>0, 
@@ -159,7 +159,6 @@ def filter_FFS(mbsfDF):
     return mbsfDF
 
 def add_rfrncYrDifference(mbsfDF):
-
     #for every beneficiary, order their year of FFS coverage
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
     eachDsysrtkyOrdered=eachDsysrtky.orderBy("RFRNC_YR")
@@ -243,7 +242,6 @@ def add_anyEsrd(mbsfDF):
     return mbsfDF
 
 def add_ohResident(mbsfDF): #also used in base.py
-
     # see if there was any month where beneficiary was in OH (STATE_CNTY_CD)
     # see if they were in OH based on mailing address, Ohio is code 36
     # mbsf file is finalized in spring I think of every year, so the state code is the residence state at that moment
@@ -276,7 +274,6 @@ def add_ohResident(mbsfDF): #also used in base.py
     return mbsfDF
 
 def add_cAppalachiaResident(mbsfDF):  
-
     #cAppalachia: central Appalachia, Kentucky, North Carolina, Ohio, Tennessee, Virginia, West Virginia)
     cAppalachiaCond = 'F.col("STATE_CD").isin(["18","34","36","44","49","51"])'
 
@@ -286,7 +283,6 @@ def add_cAppalachiaResident(mbsfDF):
     return mbsfDF    
 
 def add_death_date_info(mbsfDF):
-
     mbsfDF = (mbsfDF.withColumn("DEATH_DT_DAYOFYEAR", 
                                 F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date
                                   F.date_format(
@@ -318,7 +314,6 @@ def add_death_date_info(mbsfDF):
     return mbsfDF
 
 def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
-
     deadDF = (mbsfDF.filter(
                       F.col("V_DOD_SW")=="V")
                    .select(
@@ -327,7 +322,6 @@ def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
     return deadDF
 
 def add_ssaCounty(mbsfDF):
-
     mbsfDF = mbsfDF.withColumn("ssaCounty",
                                F.concat( F.col("STATE_CD"), F.col("CNTY_CD") ))
                                     #F.col("STATE_CD").substr(1,2),
@@ -336,13 +330,16 @@ def add_ssaCounty(mbsfDF):
     return mbsfDF
 
 def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on the code I no longer need these...
-
     dropColumns = (list(map(lambda x: "STATE_CNTY_FIPS_CD_" + f"{x}".zfill(2),range(1,13))) +
                    list(map(lambda x: "MDCR_STUS_CD_" + f"{x}".zfill(2),range(1,13))) +
                    list(map(lambda x: "DUAL_" + f"{x}".zfill(2),range(1,13))) +
                    list(map(lambda x: f"BUYIN{x}",range(1,13))) +
                    list(map(lambda x: f"HMOIND{x}",range(1,13))) +
-                   ["SAMPLE_GROUP","OREC","CREC","A_TRM_CD","B_TRM_CD","A_MO_CNT","B_MO_CNT","HMO_MO","BUYIN_MO"])
+                   ["SAMPLE_GROUP","OREC","CREC","A_TRM_CD","B_TRM_CD","A_MO_CNT","B_MO_CNT","HMO_MO","BUYIN_MO","ESRD_IND", 
+                    "lastYearWithClaim", "probablyDead",
+                    "anyEsrdInMdcrStus", "mdcrStusArray", "rfrncYrDifference", "ffsSinceJanuaryDifference", "ffsSinceJanuary",
+                    "ffsFirstMonthOfYear", "allPartAB", "hmo", "ffs", "partABArraySlicedFiltered", "partABArraySliced",
+                    "partABLastMonthOfYear", "partABFirstMonthOfYear", "partABArray", "rfrncYrMonthsInYearsPrior"])
     mbsfDF = mbsfDF.drop(*dropColumns)
     return mbsfDF
 
