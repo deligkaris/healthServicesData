@@ -458,34 +458,25 @@ def add_gach(npiProvidersDF, primary=True):
     return npiProvidersDF
 
 def add_rehabilitation(npiProvidersDF, primary=True):
-
     # https://taxonomy.nucc.org/
     #https://taxonomy.nucc.org/?searchTerm=283X00000X
     # https://data.cms.gov/provider-data/dataset/7t8x-u3ir
-
     rehabTaxonomyCodes = ["283X00000X", "273Y00000X"] #my definition of rehabilitation hospitals
-
     if (primary):
         rehabTaxonomyCondition = 'F.col("primaryTaxonomy").isin(rehabTaxonomyCodes)'         
     else: 
         rehabTaxonomyCondition = \
              '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(rehabTaxonomyCodes))' \
                        for x in range(1,16)) +')'
-
-    npiProvidersDF = npiProvidersDF.withColumn("rehabilitation",
-                                                F.when(eval(rehabTaxonomyCondition), 1)
-                                                 .otherwise(0))
-
+    npiProvidersDF = npiProvidersDF.withColumn("rehabilitation", F.when(eval(rehabTaxonomyCondition), 1).otherwise(0))
     return npiProvidersDF
 
 def prep_npiProvidersDF(npiProvidersDF):
-
     npiProvidersDF = add_primaryTaxonomy(npiProvidersDF)
     npiProvidersDF = add_gach(npiProvidersDF, primary=True).withColumnRenamed("gach","gachPrimary")
     npiProvidersDF = add_gach(npiProvidersDF, primary=False).withColumnRenamed("gach","gachAll")
-    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=True).withColumnRenamed("rehabilitation","rehabilitationPrimary")
-    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=False).withColumnRenamed("rehabilitation","rehabilitationAll")
-
+    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=True).withColumnRenamed("rehabilitation","rehabilitationPrimaryTaxonomy")
+    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=False).withColumnRenamed("rehabilitation","rehabilitationAllTaxonomy")
     return npiProvidersDF
 
 def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):

@@ -384,42 +384,6 @@ def add_providerCountyName(baseDF,cbsaDF): #assumes providerFIPS
 
     return baseDF
 
-def add_providerFIPS(baseDF,posDF): #assumes add_providerCounty
-
-    #I found that CBSA will duplicate some of my baseDF rows, I did not look into why because I found that posDF can be used as well
-    #baseDF = baseDF.join(cbsaDF
-    #                         .select(
-    #                            F.lower(F.trim(F.col("countyname"))).alias("countyname"),
-    #                            F.upper(F.trim(F.col("state"))).alias("state"),
-    #                            F.col("fipscounty").alias("providerFips")),
-    #                     on=[ (F.col("countyname")==F.col("providerCounty")) & (F.col("state")==F.col("providerState")) ],
-    #                     #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
-    #                     how="left_outer")
-
-    #baseDF = baseDF.drop("countyname","state")
-
-    #the posDF will give me ~99.9%of the providerFIPS codes
-    baseDF = baseDF.join(posDF
-                             .select( F.col("PRVDR_NUM"),F.col("providerFIPS")),
-                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
-                         how="left_outer")
-
-    baseDF = baseDF.drop("PRVDR_NUM")
-
-    return baseDF
-
-def add_providerStateFIPS(baseDF, posDF):
-
-    baseDF = baseDF.join(posDF
-                            .select( F.col("PRVDR_NUM"), F.col("providerStateFIPS") ),
-                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
-                         how="left_outer")
-
-    baseDF = baseDF.drop("PRVDR_NUM")
-
-    return baseDF
-
-
 def add_providerRegion(baseDF):
 
     westCondition = '(F.col("providerStateFIPS").isin(usRegionFipsCodes["west"]))' 
@@ -467,12 +431,21 @@ def add_provider_npi_info(baseDF, npiProvidersDF):
     return baseDF
 
 def add_provider_pos_info(baseDF, posDF):
-
-    baseDF = add_providerStateFIPS(baseDF, posDF)
-    baseDF = add_providerFIPS(baseDF, posDF)
-    baseDF = add_providerOwner(baseDF, posDF)
-    baseDF = add_providerIsCah(baseDF, posDF)
-
+    #I found that CBSA will duplicate some of my baseDF rows, I did not look into why because I found that posDF can be used as well
+    #baseDF = baseDF.join(cbsaDF
+    #                         .select(
+    #                            F.lower(F.trim(F.col("countyname"))).alias("countyname"),
+    #                            F.upper(F.trim(F.col("state"))).alias("state"),
+    #                            F.col("fipscounty").alias("providerFips")),
+    #                     on=[ (F.col("countyname")==F.col("providerCounty")) & (F.col("state")==F.col("providerState")) ],
+    #                     #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
+    #                     how="left_outer")
+    #the posDF will give me ~99.9%of the providerFIPS codes
+    baseDF = (baseDF.join(posDF.select( F.col("PRVDR_NUM"),F.col("providerFIPS"), F.col("providerStateFIPS"),
+                                        F.col("GNRL_CNTL_TYPE_CD"), F.col("cah").alias("providerIsCah") ),
+                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
+                         how="left_outer")
+                     .drop("PRVDR_NUM")
     return baseDF
 
 def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF):
@@ -923,22 +896,14 @@ def add_gach(baseDF, npiProvidersDF, primary=True):
     return baseDF
 
 def add_rehabilitationFromTaxonomy(baseDF, npiProvidersDF, primary=True):
-
-    rehabilitationColName = "rehabilitationPrimary" if primary else "rehabilitationAll"
-
-    # join with rehabilitation flag
-    baseDF = baseDF.join(npiProvidersDF.select(
-                                            F.col("NPI"), F.col(rehabilitationColName).alias("rehabilitationFromTaxonomy")),
+    rehabilitationColName = "rehabilitationPrimaryTaxonomy" if primary else "rehabilitationAllTaxonomy"
+    baseDF = (baseDF.join(npiProvidersDF.select( F.col("NPI"), F.col(rehabilitationColName).alias("rehabilitationFromTaxonomy") ),
                          on = [baseDF["ORGNPINM"] == npiProvidersDF["NPI"]],
                          how = "left_outer")
-
-    # the join will keep NPI as it is a different name
-    baseDF = baseDF.drop(F.col("NPI"))
-
+                    .drop(F.col("NPI")))
     return baseDF
 
 def add_rehabilitationFromCCN(baseDF):
-
     #https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r29soma.pdf
     #this function is using CCN numbers to flag rehabilitation hospitals and rehabilitation units within hospitals
     # an example: https://pubmed.ncbi.nlm.nih.gov/18996234/
@@ -947,8 +912,15 @@ def add_rehabilitationFromCCN(baseDF):
                                    ((F.substring(F.col("PROVIDER"),3,4).cast('int') >= 3025) & (F.substring(F.col("PROVIDER"),3,4).cast('int') <= 3099)) |
                                     (F.substring(F.col("PROVIDER"),3,1)=="T"), 1)
                                 .otherwise(0))
-
     return baseDF 
+
+def add_rehabilitation(baseDF, npiProvidersDF, primary=True):
+    baseDF = add_rehabilitationFromTaxonomy(baseDF, npiProvidersDF, primary=primary)
+    baseDF = add_rehabilitationFromCCN(baseDF)
+    baseDF = (baseDF.withColumn("rehabilitation", F.when( (F.col("rehabilitationFromCCN")==1) | (F.col("rehabilitationFromTaxonomy")==1), 1)
+                                                   .otherwise(0))
+                    .drop("rehabilitationFromCCN", "rehabilitationFromTaxonomy"))
+    return baseDF
 
 def add_hospital(baseDF):
 
@@ -1387,17 +1359,6 @@ def add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF):
 
     return baseDF    
 
-def add_providerOwner(baseDF, posDF):
-
-    baseDF = baseDF.join(posDF
-                          .select( F.col("GNRL_CNTL_TYPE_CD"),F.col("PRVDR_NUM")),
-                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
-                         how="left_outer")
-
-    baseDF = baseDF.drop("PRVDR_NUM")
-
-    return baseDF
-
 def add_numberOfResidents(baseDF, hospCostDF):
 
     baseDF = baseDF.join(hospCostDF
@@ -1407,17 +1368,6 @@ def add_numberOfResidents(baseDF, hospCostDF):
                          how="left_outer")
 
     baseDF = baseDF.drop("Provider CCN")
-
-    return baseDF
-
-def add_providerIsCah(baseDF, posDF): #critical access hospital
-
-    baseDF = baseDF.join(posDF
-                          .select(F.col("PRVDR_NUM"), F.col("cah").alias("providerIsCah")),
-                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
-                         how="left_outer")
-
-    baseDF = baseDF.drop("PRVDR_NUM")
 
     return baseDF
 
