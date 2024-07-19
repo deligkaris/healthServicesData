@@ -159,14 +159,7 @@ def add_dbsPrcdr(baseDF): # dbs: deep brain stimulation
     #this function tries to find dbs in procedure codes only, and those are found in inpatient claims
 
     dbsPrcdrCodes = ("00H00MZ", "00H03MZ")
-    
-    prcdrCodeColumns = [f"ICD_PRCDR_CD{x}" for x in range(1,26)]
-
-    #find dbs procedure codes in claims
-    baseDF = (baseDF.withColumn("prcdrCodeAll",
-                               F.array(prcdrCodeColumns))
-                    .withColumn("dbsPrcdrCodes",
-                               F.expr( f"filter(prcdrCodeAll, x -> x in {dbsPrcdrCodes})")))
+    baseDF = (baseDF.withColumn("dbsPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {dbsPrcdrCodes})")))
 
     #if dbs prcdr codes are found, then dbs was performed
     baseDF = baseDF.withColumn("dbsPrcdr",
@@ -477,33 +470,16 @@ def add_osu(baseDF):
     return baseDF
 
 def add_evtDrg(baseDF):
-
     evtDrgCodes=[23,24]
-
     evtDrgCondition = '(F.col("DRG_CD").isin(evtDrgCodes))'
-
-    baseDF = baseDF.withColumn("evtDrg",
-                               F.when( eval(evtDrgCondition), 1)
-                                .otherwise(0))
-
+    baseDF = baseDF.withColumn("evtDrg", F.when( eval(evtDrgCondition), 1).otherwise(0))
     return baseDF
 
 def add_evtPrcdr(baseDF):
-
     evtPrcdrCodes=("03CG3ZZ","03CH3ZZ","03CJ3ZZ","03CK3ZZ","03CL3ZZ","03CM3ZZ","03CN3ZZ","03CP3ZZ","03CQ3ZZ")
-
-    prcdrCodeColumns = [f"ICD_PRCDR_CD{x}" for x in range(1,26)]
-
-    baseDF = (baseDF.withColumn("prcdrCodeAll",
-                                F.array(prcdrCodeColumns))
-                    .withColumn("evtPrcdrCodes",
-                                F.expr( f"filter(prcdrCodeAll, x -> x in {evtPrcdrCodes})"))
-                    .withColumn("evtPrcdr",
-                                F.when( F.size(F.col("evtPrcdrCodes"))>0,     1)
-                                .otherwise(0)))
-
-    baseDF = baseDF.drop("evtPrcdrCodes")
-
+    baseDF = (baseDF.withColumn("evtPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {evtPrcdrCodes})"))
+                    .withColumn("evtPrcdr", F.when( F.size(F.col("evtPrcdrCodes"))>0,     1).otherwise(0))
+                    .drop("evtPrcdrCodes"))
     #a different approach, not sure if this is slower/faster
     #evtPrcdrCodes=["03CG3ZZ","03CH3ZZ","03CJ3ZZ","03CK3ZZ","03CL3ZZ","03CM3ZZ","03CN3ZZ","03CP3ZZ","03CQ3ZZ"]
     #evtPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(evtPrcdrCodes))' for x in range(1,26)) +')'
@@ -511,7 +487,6 @@ def add_evtPrcdr(baseDF):
     #baseDF = baseDF.withColumn("evt", 
     #                           F.when(eval(evtCondition) ,1) #set them to true
     #                            .otherwise(0)) #otherwise false
-
     return baseDF
 
 # main reference: https://svn.bmj.com/content/6/2/194
@@ -519,90 +494,48 @@ def add_evtPrcdr(baseDF):
 # When DRG codes 23 or 24 are present in a claim we classify that as an EVT claim but they excluded any claim with these 
 # two DRG codes that had procedure codes consistent with craniectomy/craniotomy/ventriculostomy.
 def add_evt(baseDF):
-
     # EVT takes place only in inpatient settings
     baseDF = add_evtDrg(baseDF)
     baseDF = add_evtPrcdr(baseDF)
-
     evtCondition = '( (F.col("evtDrg")==1) | (F.col("evtPrcdr")==1) )' # do NOT forget the parenthesis!!!
-
-    baseDF = baseDF.withColumn("evt", F.when(eval(evtCondition) ,1) 
-                                       .otherwise(0)) 
+    baseDF = baseDF.withColumn("evt", F.when(eval(evtCondition) ,1).otherwise(0)) 
     return baseDF
 
 def add_evtOsu(baseDF):
-
-     return baseDF.withColumn("evtOsu", F.col("osu")*F.col("evt"))
+    return baseDF.withColumn("evtOsu", F.col("osu")*F.col("evt"))
 
 def add_tpaDrg(baseDF):
-
     tpaDrgCodes = [61,62,63,65]
-
     tpaDrgCondition = '(F.col("DRG_CD").isin(tpaDrgCodes))'
-
-    baseDF = baseDF.withColumn("tpaDrg",
-                               F.when( eval(tpaDrgCondition), 1)
-                                .otherwise(0))
+    baseDF = baseDF.withColumn("tpaDrg", F.when( eval(tpaDrgCondition), 1).otherwise(0))
     return baseDF
 
 def add_tpaPrcdr(baseDF):
-
-    tpaPrcdrCodes = ("3E03317", "3E03317")
-                               
-    prcdrCodeColumns = [f"ICD_PRCDR_CD{x}" for x in range(1,26)]
-
-    baseDF = (baseDF.withColumn("prcdrCodeAll",
-                                F.array(prcdrCodeColumns))
-                    .withColumn("tpaPrcdrCodes",
-                                F.expr( f"filter(prcdrCodeAll, x -> x in {tpaPrcdrCodes})"))
-                    .withColumn("tpaPrcdr",
-                                F.when( F.size(F.col("tpaPrcdrCodes"))>0,     1)
-                                .otherwise(0)))
-
-    baseDF = baseDF.drop("tpaPrcdrCodes")
-
+    tpaPrcdrCodes = ("3E03317", "3E03317")                         
+    baseDF = (baseDF.withColumn("tpaPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {tpaPrcdrCodes})"))
+                    .withColumn("tpaPrcdr", F.when( F.size(F.col("tpaPrcdrCodes"))>0,     1).otherwise(0))
+                    .drop("tpaPrcdrCodes"))
     return baseDF
 
 def add_tpaDgns(baseDF):
-
     #this diagnostic code is: Status post administration of tPA (rtPA) in a different facility within the last 24 
     #hours prior to admission to current facility, so this code should not be used to identify tpa performed at the provider of the claim (I think)
     tpaDgnsCodes = ("Z9282", "Z9282")
-  
-    dgnsCodeColumns = [f"ICD_DGNS_CD{x}" for x in range(1,26)]
- 
-    baseDF = (baseDF.withColumn("dgnsCodeAll",
-                                F.array(dgnsCodeColumns))
-                    .withColumn("tpaDgnsCodes",
-                                F.expr( f"filter(dgnsCodeAll, x -> x in {tpaDgnsCodes})"))
-                    .withColumn("tpaDgns",
-                                F.when( F.size(F.col("tpaDgnsCodes"))>0,     1)
-                                .otherwise(0)))
-
-    baseDF = baseDF.drop("tpaDgnsCodes")
-   
+    baseDF = (baseDF.withColumn("tpaDgnsCodes", F.expr( f"filter(dgnsCodeAll, x -> x in {tpaDgnsCodes})")) 
+                    .withColumn("tpaDgns", F.when( F.size(F.col("tpaDgnsCodes"))>0,     1).otherwise(0))
+                    .drop("tpaDgnsCodes"))
     return baseDF
 
 def add_tpaCpt(baseDF):
-
     #CPT codes from: https://svn.bmj.com/content/6/2/194
     tpaCptCodes = ("37195", "37201", "37202")
-
     eachClaim = Window.partitionBy("CLAIMNO")
-
     #find tpa cpt codes in claims
-    baseDF = (baseDF.withColumn("hcpcsCodeAll",
-                                F.collect_set(F.col("HCPCS_CD")).over(eachClaim))
-                    .withColumn("tpaCptCodes",
-                                F.expr(f"filter(hcpcsCodeAll, x -> x in {tpaCptCodes})")))
-
-    #if tpa cpt codes are found, then tpaCpt was performed
-    baseDF = baseDF.withColumn("tpaCpt",
-                               F.when( F.size(F.col("tpaCptCodes"))>0,     1)
-                                .otherwise(0))
-
-    baseDF = baseDF.drop("tpaCptCodes")
-
+    baseDF = (baseDF.withColumn("hcpcsCodeAll", F.collect_set(F.col("HCPCS_CD")).over(eachClaim))
+                    .withColumn("tpaCptCodes", F.expr(f"filter(hcpcsCodeAll, x -> x in {tpaCptCodes})"))
+                    #if tpa cpt codes are found, then tpaCpt was performed
+                    .withColumn("tpaCpt", F.when( F.size(F.col("tpaCptCodes"))>0,     1).otherwise(0))
+                    .drop("tpaCptCodes"))
     return baseDF
 
 # main reference: https://svn.bmj.com/content/6/2/194
@@ -610,7 +543,6 @@ def add_tpaCpt(baseDF):
 # We did not use CPT codes to find tpa claims.
 # We use the 4 DRG codes they used but they coupled DRG code 65 with a DGNS code indicating alteplase receipt and we did not do that.
 def add_tpa(baseDF, inpatient=True):
-
     # tPA can take place in either outpatient or inpatient setting
     # however, in an efficient health care world, tPA would be administered at the outpatient setting
     # perhaps with the help of telemedicine and the bigger hub's guidance, and then the patient would be transferred to the bigger hospital
@@ -625,24 +557,28 @@ def add_tpa(baseDF, inpatient=True):
     #if (inpatient):
     #    tpaCondition = '(' + tpaDrgCondition + '|' + tpaPrcdrCondition + '|' + tpaDgnsCondition + ')' # inpatient condition
     #else:
-    #    tpaCondition = tpaPrcdrCondition # outpatient condition
-    
+    #    tpaCondition = tpaPrcdrCondition # outpatient condition   
     baseDF = add_tpaPrcdr(baseDF) #common for both inpatient and outpatient
-
     if (inpatient):
         baseDF = add_tpaDrg(baseDF) #used only in inpatient
         baseDF = add_tpaDgns(baseDF) #used only in inpatient
         tpaCondition = '( (F.col("tpaDrg")==1) | (F.col("tpaPrcdr")==1) | (F.col("tpaDgns")==1) )' # do NOT forget the parenthesis!!!
     else:
         tpaCondition = '( (F.col("tpaPrcdr")==1) )'
+    baseDF = baseDF.withColumn("tpa", F.when(eval(tpaCondition),1).otherwise(0))
+    return baseDF
 
-    baseDF = baseDF.withColumn("tpa",
-                               F.when(eval(tpaCondition),1) # 1 if tpa was done during visit
-                                .otherwise(0))
+def add_dgnsCodeAll(baseDF):
+    dgnsCodeColumns = [f"ICD_DGNS_CD{x}" for x in range(1,26)]
+    baseDF = baseDF.withColumn("dgnsCodeAll", F.array(dgnsCodeColumns))
+    return baseDF
+
+def add_prcdrCodeAll(baseDF):
+    prcdrCodeColumns = [f"ICD_PRCDR_CD{x}" for x in range(1,26)]
+    baseDF = baseDF.withColumn("prcdrCodeAll", F.array(prcdrCodeColumns))
     return baseDF
 
 def add_tpaOsu(baseDF):
-
     return baseDF.withColumn("tpaOsu", F.col("osu")*F.col("tpa"))
 
 #def add_beneficiary_info(baseDF,mbsfDF): #assumes add_ssaCounty
@@ -881,18 +817,11 @@ def test_get_aggregate_summary(summaryDF):
         print("No issues found.")
 
 def add_gach(baseDF, npiProvidersDF, primary=True):
-
     gachColName = "gachPrimary" if primary else "gachAll"
-
-    # join with general acute care hospital GACH flag
-    baseDF = baseDF.join(npiProvidersDF.select(
-                                            F.col("NPI"), F.col(gachColName).alias("gach")),
+    baseDF = (baseDF.join(npiProvidersDF.select( F.col("NPI"), F.col(gachColName).alias("gach") ),
                          on = [baseDF["ORGNPINM"] == npiProvidersDF["NPI"]],
                          how = "inner")
-
-    # the join will keep NPI as it is a different name
-    baseDF = baseDF.drop(F.col("NPI"))
-
+                    .drop(F.col("NPI")))
     return baseDF
 
 def add_rehabilitationFromTaxonomy(baseDF, npiProvidersDF, primary=True):
@@ -1120,27 +1049,16 @@ def add_providerRucc(baseDF, ersRuccDF):
     return baseDF
      
 def add_nihss(baseDF):
-
     #https://www.ahajournals.org/doi/10.1161/CIRCOUTCOMES.122.009215
     #https://www.cms.gov/files/document/2021-coding-guidelines-updated-12162020.pdf  page 80
-
-    dgnsColumnList = [f"ICD_DGNS_CD{x}" for x in range(1,26)] #all 25 DGNS columns
-
-    baseDF = (baseDF.withColumn("dgnsList", #add an array of all dgns codes found in their claims
-                               F.array(dgnsColumnList))
-                   .withColumn("nihssList", #keeps codes that match the regexp pattern
-                               F.expr(f'filter(dgnsList, x -> x rlike "R297[0-9][0-9]?")'))
-                   .withColumn("nihss",
-                               F.when(
-                                   F.size(F.col("nihssList")) == 1, F.substring(F.col("nihssList")[0],5,2))
-                                .otherwise(F.lit(None)))
+    baseDF = (baseDF.withColumn("nihssList", F.expr(f'filter(dgnsCodeAll, x -> x rlike "R297[0-9][0-9]?")'))
+                   .withColumn("nihss", F.when( F.size(F.col("nihssList")) == 1, F.substring(F.col("nihssList")[0],5,2))
+                                         .otherwise(F.lit(None)))
                    .withColumn("nihss", F.col("nihss").cast('int'))
                    .drop("dgnsList","nihssList"))
-
     return baseDF
 
 def add_nihssGroup(baseDF):
-
     baseDF = baseDF.withColumn("nihssGroup",
                                F.when( ((F.col("nihss")>=0)&(F.col("nihss")<10)), F.lit(0) )
                                 .when( ((F.col("nihss")>=10)&(F.col("nihss")<20)), F.lit(1) )
@@ -1151,25 +1069,19 @@ def add_nihssGroup(baseDF):
     return baseDF
 
 def add_nihss_info(baseDF):
-
     baseDF = add_nihss(baseDF)
     baseDF = add_nihssGroup(baseDF)
-
     return baseDF
 
 def add_claim_stroke_info(baseDF, inpatient=True):
-
     baseDF = add_claim_stroke_treatment_info(baseDF, inpatient=inpatient)
     baseDF = add_nihss_info(baseDF)
-
     return baseDF
 
 def add_claim_stroke_treatment_info(baseDF, inpatient=True):
-
     baseDF = add_tpa(baseDF, inpatient=inpatient)
     if (inpatient):
         baseDF = add_evt(baseDF)
-
     return baseDF
 
 def add_processed_name(baseDF,colToProcess="providerName"):

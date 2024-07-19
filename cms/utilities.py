@@ -198,6 +198,8 @@ def add_preliminary_info(dataframes):
                 dataframes[claimTypePart] = baseF.add_admission_date_info(dataframes[claimTypePart],claimType=claimType)
             if (claimType=="ip"):
                 dataframes[claimTypePart] = baseF.add_discharge_date_info(dataframes[claimTypePart],claimType=claimType)
+                dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
+                dataframes[claimTypePart] = baseF.add_dgnsCodeAll(dataframes[claimTypePart])
             if (claimType=="car"):
                  dataframes[claimTypePart] = baseF.add_denied(dataframes[claimTypePart])
         elif (claimPart=="Line"): 
