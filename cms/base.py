@@ -445,7 +445,7 @@ def add_provider_pos_info(baseDF, posDF):
                                         F.col("GNRL_CNTL_TYPE_CD"), F.col("cah").alias("providerIsCah") ),
                          on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
                          how="left_outer")
-                     .drop("PRVDR_NUM")
+                     .drop("PRVDR_NUM"))
     return baseDF
 
 def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF):
