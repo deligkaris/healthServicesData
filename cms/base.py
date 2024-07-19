@@ -126,9 +126,10 @@ def add_tiaStroke(baseDF):
     return baseDF
 
 def add_anyStroke(baseDF):
-    baseDF = baseDF.withColumn("anyStroke",
-                               F.when( (F.col("ishStroke")==1) | (F.col("ichStroke")==1) | (F.col("tiaStroke")==1) | (F.col("otherStroke")==1), 1)
-                                .otherwise(0))
+    '''anyStroke refers to any type of stroke that is at the moment present in the df'''
+    anyStrokeCondition = '(' + '|'.join(f"(F.col('{stroke}')==1)" for stroke in 
+                                        ["ishStroke", "otherStroke", "ichStroke","tiaStroke"] if stroke in baseDF.columns) + ')'
+    baseDF = baseDF.withColumn("anyStroke", F.when( eval(anyStrokeCondition), 1).otherwise(0))
     return baseDF
 
 def add_parkinsonsPrncpalDgns(baseDF):
@@ -1292,50 +1293,13 @@ def add_providerStrokeVol(baseDF, stroke="anyStroke"):
 
     return baseDF
 
-def add_providerEvtVol(baseDF):
-
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-
-    baseDF = baseDF.withColumn("providerEvtVol",
-                               F.sum( F.col("evt") ).over(eachProvider))
-
-    return baseDF
-
-def add_providerTpaVol(baseDF):
-
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-
-    baseDF = baseDF.withColumn("providerTpaVol",
-                               F.sum( F.col("tpa") ).over(eachProvider))
-
-    return baseDF
-
-def add_providerMeanEvt(baseDF):
-
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-
-    baseDF = baseDF.withColumn("providerMeanEvt",
-                               F.mean( F.col("evt") ).over(eachProvider))
-
-    return baseDF
-
-def add_providerMeanTpa(baseDF):
-
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-
-    baseDF = baseDF.withColumn("providerMeanTpa",
-                               F.mean( F.col("tpa") ).over(eachProvider))
-
-    return baseDF
-
 def add_provider_stroke_treatment_info(baseDF, inpatient=True):
-
-    baseDF = add_providerMeanTpa(baseDF)
-    baseDF = add_providerTpaVol(baseDF)
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    baseDF = (baseDF.withColumn("providerMeanTpa", F.mean( F.col("tpa") ).over(eachProvider))
+                    .withColumn("providerTpaVol", F.sum( F.col("tpa") ).over(eachProvider)))
     if (inpatient):
-        baseDF = add_providerMeanEvt(baseDF)   
-        baseDF = add_providerEvtVol(baseDF)
-
+        baseDF = (baseDF.withColumn("providerMeanEvt", F.mean( F.col("evt") ).over(eachProvider))
+                        .withColumn("providerEvtVol", F.sum( F.col("evt") ).over(eachProvider)))
     return baseDF
 
 def add_provider_stroke_info(baseDF, strokeCentersCamargoDF, inpatient=True, stroke="anyStroke"):
