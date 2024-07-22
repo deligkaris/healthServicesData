@@ -1285,12 +1285,8 @@ def add_numberOfResidents(baseDF, hospCostDF):
     return baseDF
 
 def add_providerStrokeVol(baseDF, stroke="anyStroke"):
-
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-
-    baseDF = baseDF.withColumn("providerStrokeVol",
-                               F.sum( F.col(stroke) ).over(eachProvider))
-
+    baseDF = baseDF.withColumn("providerStrokeVol", F.sum( F.col(stroke) ).over(eachProvider))
     return baseDF
 
 def add_provider_stroke_treatment_info(baseDF, inpatient=True):
@@ -1302,12 +1298,9 @@ def add_provider_stroke_treatment_info(baseDF, inpatient=True):
                         .withColumn("providerEvtVol", F.sum( F.col("evt") ).over(eachProvider)))
     return baseDF
 
-def add_provider_stroke_info(baseDF, strokeCentersCamargoDF, inpatient=True, stroke="anyStroke"):
-
+def add_provider_stroke_info(baseDF, inpatient=True, stroke="anyStroke"):
     baseDF = add_provider_stroke_treatment_info(baseDF, inpatient=inpatient)
     baseDF = add_providerStrokeVol(baseDF, stroke=stroke)
-    baseDF = add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF)
-
     return baseDF
 
 def add_numberOfClaims(baseDF):
