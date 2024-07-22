@@ -236,16 +236,19 @@ def add_lastClaimSum(baseDF):
 
     return baseDF
 
-def add_sameStay(baseDF):
-
+def add_moreThan1ClaimsPerStay(baseDF):
     # claims with same beneficiary, organization, and admission date as defined as one hospitalization stay
     eachStay = Window.partitionBy(["DSYSRTKY","ORGNPINM","ADMSN_DT"])
-
-    baseDF = baseDF.withColumn("sameStay",
-                                F.when(  F.count(F.col("DSYSRTKY")).over(eachStay) > 1, 1)
-                                 .otherwise(0))
-
+    baseDF = baseDF.withColumn("moreThan1ClaimsPerStay", F.when(  F.count(F.col("DSYSRTKY")).over(eachStay) > 1, 1).otherwise(0))
     return baseDF
+
+def add_minClaimNoPerStay(baseDF):
+    eachStay = Window.partitionBy(["DSYSRTKY","ORGNPINM","ADMSN_DT"])
+    baseDF = baseDF.withColumn("minClaimNoPerStay", F.min(F.col("CLAIMNO")).over(eachStay))
+    return baseDF
+
+def filter_minClaimNoPerStay(baseDF):
+    return add_minClaimNoPerStay(baseDF).filter(F.col("CLAIMNO")==F.col('minClaimNoPerStay'))
 
 #def add_inToInTransfer(baseDF):
 
