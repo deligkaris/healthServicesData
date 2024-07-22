@@ -203,24 +203,16 @@ def add_ohProvider(baseDF):
     return baseDF
             
 def add_firstClaim(baseDF):
-
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
-
-    baseDF = (baseDF.withColumn("firstADMSN_DT_DAY", # find the first claims for each beneficiary
-                                F.min(F.col("ADMSN_DT_DAY")).over(eachDsysrtky))
+    baseDF = (baseDF.withColumn("firstADMSN_DT_DAY", F.min(F.col("ADMSN_DT_DAY")).over(eachDsysrtky))
                     .withColumn("firstClaim", #and mark it/them (could be more than 1)
-                                F.when(F.col("ADMSN_DT_DAY")==F.col("firstADMSN_DT_DAY"),1)
-                                 .otherwise(0))
+                                F.when(F.col("ADMSN_DT_DAY")==F.col("firstADMSN_DT_DAY"),1).otherwise(0))
                     .drop("firstADMSN_DT_DAY"))
-
     return baseDF
 
 def add_firstClaimSum(baseDF):
-
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
-
     baseDF = (baseDF.withColumn("firstClaimSum", F.sum(F.col("firstClaim")).over(eachDsysrtky)))
-
     return baseDF
 
 def add_lastClaim(baseDF):
@@ -278,75 +270,23 @@ def add_numberOfXOverY(baseDF, X="ORGNPINM", Y=["DSYSRTKY","ADMSN_DT"]):
 
     return baseDF                            
 
-def add_providerName(baseDF, npiProviderDF):
-
-    baseDF = baseDF.join(
-                      npiProviderDF.select(
-                          F.col("NPI"),F.col("Provider Organization Name (Legal Business Name)").alias("providerName")),
-                      on = [F.col("ORGNPINM") == F.col("NPI")],
-                      how = "left_outer")
-
-    # drop the NPI column that was just added
-    baseDF = baseDF.drop(F.col("NPI"))
-
-    return baseDF
-
-def add_providerOtherName(baseDF, npiProviderDF):
-
-    baseDF = baseDF.join(
-                      npiProviderDF.select(
-                          F.col("NPI"),F.col("Provider Other Organization Name").alias("providerOtherName")),
-                      on = [F.col("ORGNPINM") == F.col("NPI")],
-                      how = "left_outer")
-
-    # drop the NPI column that was just added
-    baseDF = baseDF.drop(F.col("NPI"))
-
-    return baseDF
-
-def add_providerAddress(baseDF, npiProviderDF):
-
-    baseDF = baseDF.join(
-                         npiProviderDF.select(
-                                          F.col("NPI"),
-                                          F.concat_ws(",",
+def add_provider_npi_info(baseDF, npiProviderDF):
+    baseDF = (baseDF.join(npiProviderDF.select(
+                          F.col("NPI"),
+                          F.col("Provider Organization Name (Legal Business Name)").alias("providerName"),
+                          F.col("Provider Other Organization Name").alias("providerOtherName"),
+                          F.concat_ws(",",
                                               F.col("Provider First Line Business Practice Location Address"),
                                               F.col("Provider Second Line Business Practice Location Address"),
                                               F.col("Provider Business Practice Location Address City Name"),
                                               F.col("Provider Business Practice Location Address State Name"),
                                               F.col("Provider Business Practice Location Address Postal Code").substr(1,5))
-                                              .alias("providerAddress")),
-                         on = [F.col("ORGNPINM")==F.col("NPI")],
-                         how = "left_outer")
-
-    baseDF = baseDF.drop(F.col("NPI"))
-
-    return baseDF
-
-def add_providerZip(baseDF,npiProviderDF):
-
-    baseDF = baseDF.join(
-                         npiProviderDF.select(
-                                          F.col("NPI"),
-                                          F.col("Provider Business Practice Location Address Postal Code").substr(1,5).alias("providerZip")),
-                         on = [F.col("ORGNPINM")==F.col("NPI")],
-                         how = "left_outer")
-
-    baseDF = baseDF.drop(F.col("NPI"))
-
-    return baseDF
-
-def add_providerState(baseDF,npiProviderDF):
-
-    baseDF = baseDF.join(
-                         npiProviderDF.select(
-                                          F.col("NPI"),
-                                          F.col("Provider Business Practice Location Address State Name").alias("providerState")),
-                         on = [F.col("ORGNPINM")==F.col("NPI")],
-                         how = "left_outer")
-
-    baseDF = baseDF.drop(F.col("NPI"))
-
+                                              .alias("providerAddress"),
+                          F.col("Provider Business Practice Location Address Postal Code").substr(1,5).alias("providerZip"),
+                          F.col("Provider Business Practice Location Address State Name").alias("providerState")),
+                      on = [F.col("ORGNPINM") == F.col("NPI")],
+                      how = "left_outer")
+                    .drop(F.col("NPI")))
     return baseDF
 
 def add_providerCountyName(baseDF,cbsaDF): #assumes providerFIPS
@@ -411,16 +351,6 @@ def add_providerFIPSToNulls(baseDF,posDF,zipToCountyDF): #assumes add_providerCo
     #                            .otherwise( F.col("providerFIPS") ))
 
     #baseDF = baseDF.drop("providerFIPSzipToCounty")
-
-    return baseDF
-
-def add_provider_npi_info(baseDF, npiProvidersDF):
-
-    baseDF = add_providerName(baseDF,npiProvidersDF)
-    baseDF = add_providerOtherName(baseDF,npiProvidersDF)
-    baseDF = add_providerAddress(baseDF,npiProvidersDF)
-    baseDF = add_providerZip(baseDF,npiProvidersDF)
-    baseDF = add_providerState(baseDF,npiProvidersDF)
 
     return baseDF
 
@@ -894,8 +824,7 @@ def add_cbi_info(baseDF,cbiDF):
     return baseDF
 
 def add_provider_cost_report_info(baseDF,costReportDF):
-
-    baseDF = baseDF.join(costReportDF
+    baseDF = (baseDF.join(costReportDF
                            .select(
                                F.col("Provider CCN"),
                                F.col("Rural Versus Urban").alias("providerRuralVersusUrban"),
@@ -905,9 +834,7 @@ def add_provider_cost_report_info(baseDF,costReportDF):
                          #hospital cost report files include only the CMS Certification Number (Provider ID, CCN), they do not include NPI
                          on=[F.col("Provider CCN")==F.col("Provider")],
                          how="left_outer")
-
-    baseDF = baseDF.drop("Provider CCN")
-
+                    .drop("Provider CCN"))
     return baseDF
 
 def add_transferToIn(baseDF):
@@ -969,16 +896,12 @@ def add_365DaysAfterAdmissionDateDead(baseDF): #this is the 365 day mortality fl
                                                                   .otherwise(0))
     return baseDF 
 
-def add_los(baseDF): #length of stay = los, assumes add date infos
-
+def add_los(baseDF): #length of stay = los
     #https://resdac.org/cms-data/variables/day-count-length-stay
-    baseDF = baseDF.withColumn("los",
-                               F.col("THRU_DT_DAY")-F.col("ADMSN_DT_DAY")+1)
-
+    baseDF = baseDF.withColumn("los", F.col("THRU_DT_DAY")-F.col("ADMSN_DT_DAY")+1)
     #replace 0 with 1 in length of stay, that is how RESDAC calculates LOS
     #not needed any more, since I added the +1 above according to the definition on the resdac link
     #baseDF = baseDF.replace(0,1,subset="los") 
-
     return baseDF
 
 def add_losDays(baseDF): #adds an array of all days of the claim's duration
@@ -1343,7 +1266,6 @@ def add_denied(baseDF):
     return baseDF
 
 def add_aha_info(baseDF, ahaDF): #american hospital association info
-
     #dictionary can be found at https://www.ahadata.com/aha-data-resources
     #annual survey file layouts includes field explanations and information about data sources
     baseDF = baseDF.join(ahaDF.select(F.col("MCRNUM").alias("PROVIDER"),  
@@ -1363,7 +1285,6 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                                       F.col("residentToBedRatio").alias("providerAhaResidentToBedRatio")),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
-
     return baseDF
 
 #inputs: baseDF is probably an inpatient or outpatient claims DF, XDF is probably hosp, hha, snf, or ip claims, X specifies claim type
