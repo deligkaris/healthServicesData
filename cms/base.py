@@ -38,14 +38,12 @@ import re
 
 
 def add_admission_date_info(baseDF, claimType="op"):
-
     #unfortunately, SNF claims have a different column name for admission date
     #admissionColName = "CLM_ADMSN_DT" if claim=="snf" else "ADMSN_DT"
     if ( (claimType=="hha") ):
         baseDF = baseDF.withColumn( "ADMSN_DT", F.col("HHSTRTDT"))
     elif ( (claimType=="hosp") ):
         baseDF = baseDF.withColumn( "ADMSN_DT", F.col("HSPCSTRT") )
-
     baseDF = (baseDF.withColumn("ADMSN_DT_DAYOFYEAR", 
                                 F.date_format(
                                    #ADMSN_DT was read as bigint, need to convert it to string that can be understood by date_format
@@ -58,15 +56,12 @@ def add_admission_date_info(baseDF, claimType="op"):
                     .withColumn( "ADMSN_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("ADMSN_DT_YEAR")])
                     # days in years prior to admission + days in year of admission = day nunber
                     .withColumn("ADMSN_DT_DAY", (F.col("ADMSN_DT_DAYSINYEARSPRIOR") + F.col("ADMSN_DT_DAYOFYEAR")).cast('int')))
-
     return baseDF
 
 def add_discharge_date_info(baseDF, claimType="op"):
-
     #unfortunately, SNF claims have a different column name for discharge date
     if (claimType=="snf"):         
         baseDF = baseDF.withColumn( "DSCHRGDT", F.col("NCH_BENE_DSCHRG_DT"))
-
     baseDF = (baseDF.withColumn("DSCHRGDT_DAYOFYEAR",
                                 F.date_format(
                                     #THRU_DT was read as bigint, need to convert it to string that can be understood by date_format
@@ -79,27 +74,37 @@ def add_discharge_date_info(baseDF, claimType="op"):
                     .withColumn( "DSCHRGDT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("DSCHRGDT_YEAR")])
                     # days in years prior to admission + days in year of admission = day nunber
                     .withColumn( "DSCHRGDT_DAY", (F.col("DSCHRGDT_DAYSINYEARSPRIOR") + F.col("DSCHRGDT_DAYOFYEAR")).cast('int')))
-
     return baseDF
 
 def add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90):
-    
     baseDF = baseDF.withColumn(f"{X}DaysFrom{YDAY}", F.col(YDAY)+X )
-    
     return baseDF
 
-def add_ishStroke(baseDF):
+def add_ishStrokeDgns(baseDF):
     # PRNCPAL_DGNS_CD: diagnosis, condition problem or other reason for the admission/encounter/visit to 
     # be chiefly responsible for the services, redundantly stored as ICD_DGNS_CD1
     # ADMTG_DGNS_CD: initial diagnosis at admission, may not be confirmed after evaluation, 
     # may be different than the eventual diagnosis as in ICD_DGNS_CD1-25
     # which suggests that the ICD_DGNS_CDs are after evaluation, therefore ICD_DGNS_CDs are definitely not rule-out 
     # JB: well, you can never be certain that they are not rule-out, but the principal diagnostic code for stroke has been validated
-    baseDF = baseDF.withColumn("ishStroke",
+    baseDF = baseDF.withColumn("ishStrokeDgns",
                               # ^I63[\d]: beginning of string I63 matches 0 or more digit characters 0-9
                               # I63 cerebral infraction 
                               F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I63[\d]*',0) !='', 1)
                                .otherwise(0)) 
+    return baseDF
+
+def add_ishStrokeDrg(baseDF):
+    #https://svn.bmj.com/content/6/2/194
+    ishStrokeDrgCodes=[61,62,63]
+    ishStrokeDrgCondition = '(F.col("DRG_CD").isin(ishStrokeDrgCodes))'
+    baseDF = baseDF.withColumn("ishStrokeDrg", F.when( eval(ishStrokeDrgCondition), 1).otherwise(0))
+    return baseDF
+
+def add_ishStroke(baseDF):
+    baseDF = add_ishStrokeDgns(baseDF)
+    baseDF = add_ishStrokeDrg(baseDF)
+    baseDF = baseDF.withColumn("ishStroke", F.when( (F.col("ishStrokeDgns")==1) | (F.col("ishStrokeDrg")==1), 1).otherwise(0))
     return baseDF
 
 def add_otherStroke(baseDF):
@@ -404,9 +409,45 @@ def add_osu(baseDF):
     return baseDF
 
 def add_evtDrg(baseDF):
-    evtDrgCodes=[23,24]
-    evtDrgCondition = '(F.col("DRG_CD").isin(evtDrgCodes))'
-    baseDF = baseDF.withColumn("evtDrg", F.when( eval(evtDrgCondition), 1).otherwise(0))
+    #https://svn.bmj.com/content/6/2/194
+    baseDF = add_ccvPrcdr(baseDF)
+    drgCodes=[23,24]
+    drgCondition = '((F.col("DRG_CD").isin(drgCodes)) & (F.col("ccvPrcdr")==0) & (F.col("ishStrokeDgns")==1))'
+    baseDF = baseDF.withColumn("evtDrg", F.when( eval(drgCondition), 1).otherwise(0))
+    return baseDF
+
+def add_ccvPrcdr(baseDF):
+    #procedure codes for craniotomy or craniectomy
+    ccPrcdrCodes = ["00J00ZZ", "00W00JZ", "00W00KZ", "0N800ZZ", "0N803ZZ", "0N804ZZ", "0NC10ZZ", "0NC13ZZ", "0NC14ZZ", "0NC30ZZ", "0NC33ZZ",
+                  "0NC34ZZ", "0NC40ZZ", "0NC43ZZ", "0NC44ZZ", "0NC50ZZ", "0NC53ZZ", "0NC54ZZ", "0NC60ZZ", "0NC63ZZ", "0NC64ZZ", "0NC70ZZ",
+                  "0NC73ZZ", "0NC74ZZ", "0NH00MZ", "0NH03MZ", "0NH04MZ", "0NP000Z", "0NP004Z", "0NP005Z", "0NP007Z", "0NP007Z", "0NP00KZ",
+                  "0NP00SZ", "0NP030Z", "0NP034Z", "0NP037Z", "0NP03KZ", "0NP03SZ", "0NP040Z", "0NP044Z", "0NP047Z", "0NP04KZ", "0NP04SZ",
+                  "0NP0X4Z", "0NP0XSZ", "0NW000Z", "0NW004Z", "0NW005Z", "0NW007Z", "0NW00JZ", "0NW00KZ", "0NW00MZ", "0NW00SZ", "0NW030Z",
+                  "0NW034Z", "0NW035Z", "0NW037Z", "0NW03JZ", "0NW03KZ", "0NW03MZ", "0NW03SZ", "0NW040Z", "0NW044Z", "0NW045Z", "0NW047Z",
+                  "0NW04JZ", "0NW04KZ", "0NW04MZ", "0NW04SZ", "0W9100Z", "0W010ZZ", "0W9130Z", "0W913ZZ", "0W9140Z", "0W914ZZ", "0WC10ZZ",
+                  "0WC13ZZ", "0WC14ZZ", "0WH10YZ", "0WH13YZ", "0WH14YZ", "0WJ10ZZ", "0WP100Z", "0WP101Z", "0WP10JZ", "0WP10YZ", "0WP130Z", 
+                  "0WP131Z", "0WP13JZ", "0WP13YZ", "0WP140Z", "0WP141Z", "0WP14JZ", "0WP14HZ", "0WW00Z", "0WW101Z", "0WW103Z", "0WW10JZ", 
+                  "0WW10YZ", "0WW130Z", "0WW131Z", "0WW133Z", "0WW13JZ", "0WW13YZ", "0WW140Z", "0WW141Z", "0WW143Z", "0WW14JZ", "0WW14YZ",
+                  "0N500ZZ", "0N503ZZ", "0N504ZZ", "0NB00ZZ", "0NB03ZZ", "0NB04ZZ", "0NT10ZZ", "0NT30ZZ", "0NT40ZZ", "0NT50ZZ", "0NT60ZZ",
+                  "0NT70ZZ", "009100Z", "00910ZZ", "00C10ZZ", "00C13ZZ", "00C14ZZ", "009000Z", "00900ZZ", "009030Z", "00903ZZ", "009040Z",
+                  "00904ZZ", "00C00ZZ", "00C03ZZ", "00C04ZZ", "00H003Z", "00H003Z", "00H00YZ", "00H032Z", "00H033Z", "00H03YZ", "00H042Z",
+                  "00H043Z", "00H04YZ", "00H602Z", "00H603Z", "00H60YZ", "00H632Z", "00H633Z", "00H63YZ", "00H642Z", "00H643Z", "00H64YZ",
+                  "00P000Z", "00P002Z", "00P003Z", "00P007Z", "00P00JZ", "00P00KZ", "00P00YZ", "00P030Z", "00P032Z", "00P033Z", "00P037Z",
+                  "00P03JZ", "00P03KZ", "00P03YZ", "00P040Z", "00P042Z", "00P043Z", "00P047Z", "00P04JZ", "00P04KZ", "00P04YZ", "00P600Z",
+                  "00P602Z", "00P603Z", "00P60YZ", "00P630Z", "00P632Z", "00P633Z", "00P63YZ", "00P640Z", "00P642Z", "00P643Z", "00P64YZ",
+                  "00P6X2Z", "00W000Z", "00W002Z", "00W003Z", "00W007Z", "00W00MZ", "00W00YZ", "00W030Z", "00W032Z", "00W033Z", "00W037Z",
+                  "00W03JZ", "00W03KZ", "00W03MZ", "00W03YZ", "00W040Z", "00W042Z", "00W043Z", "00W047Z", "00W04JZ", "00W04KZ", "00W04MZ",
+                  "00W04YZ", "00W600Z", "00W602Z", "00W603Z", "00W60MZ", "00W60YZ", "00W630Z", "00W632Z", "00W633Z", "00W63MZ", "00W63YZ",
+                  "00W640Z", "00W642Z", "00W643Z", "00W64MZ", "00W64YZ", "00B70ZZ", "00B73ZZ", "00B74ZZ", "00500ZZ", "00503ZZ", "00504ZZ",
+                  "00B00ZZ", "00B03ZZ", "00B04ZZ"]
+    #procedure codes for ventriculostomy
+    vPrcdrCodes = ["Z982", "009600Z", "009630Z", "009640Z", "001607B", "00160JB", "00160KB", "001637B", "00163JB", "00163KB", "001647B",
+                   "00164JB", "00164KB", "009130Z", "00913ZZ", "009140Z", "00914ZZ", "009230Z", "00923ZZ", "009240Z", "00924ZZ", "009430Z",
+                   "00943ZZ", "009440Z", "00944ZZ", "009530Z", "009540Z", "00954ZZ", "00963ZZ", "00994ZZ"]  
+    baseDF = (baseDF.withColumn("ccPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {ccPrcdrCodes})"))
+                    .withColumn("vPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {vPrcdrCodes})"))
+                    .withColumn("ccvPrcdr", F.when( (F.size(F.col("ccPrcdrCodes"))>0) | (F.size(F.col("vPrcdrCodes"))>0), 1).otherwise(0))
+                    .drop("ccPrcdrCodes", "vPrcdrCodes"))
     return baseDF
 
 def add_evtPrcdr(baseDF):
@@ -439,8 +480,8 @@ def add_evtOsu(baseDF):
     return baseDF.withColumn("evtOsu", F.col("osu")*F.col("evt"))
 
 def add_tpaDrg(baseDF):
-    tpaDrgCodes = [61,62,63,65]
-    tpaDrgCondition = '(F.col("DRG_CD").isin(tpaDrgCodes))'
+    tpaDrgCodes = [61,62,63]
+    tpaDrgCondition = '( (F.col("DRG_CD").isin(tpaDrgCodes)) | ( (F.col("DRG_CD")==65) & ( (F.col("tpaPrcdr")==1)|(F.col("tpaDgns")==1) ) ) )'
     baseDF = baseDF.withColumn("tpaDrg", F.when( eval(tpaDrgCondition), 1).otherwise(0))
     return baseDF
 
@@ -494,8 +535,8 @@ def add_tpa(baseDF, inpatient=True):
     #    tpaCondition = tpaPrcdrCondition # outpatient condition   
     baseDF = add_tpaPrcdr(baseDF) #common for both inpatient and outpatient
     if (inpatient):
-        baseDF = add_tpaDrg(baseDF) #used only in inpatient
         baseDF = add_tpaDgns(baseDF) #used only in inpatient
+        baseDF = add_tpaDrg(baseDF)
         tpaCondition = '( (F.col("tpaDrg")==1) | (F.col("tpaPrcdr")==1) | (F.col("tpaDgns")==1) )' # do NOT forget the parenthesis!!!
     else:
         tpaCondition = '( (F.col("tpaPrcdr")==1) )'
