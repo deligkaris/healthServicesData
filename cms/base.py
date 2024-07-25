@@ -1146,26 +1146,11 @@ def add_acgmeX(baseDF,acgmeXDF, X="Site"):
 
     return baseDF
 
-def add_aamcTeachingHospital(baseDF,aamcHospitalsDF):
-
-    baseDF = baseDF.join(aamcHospitalsDF
-                            .select(F.col("Medicare ID"),F.col("teachingStatus").alias("aamcTeachingHospital")),
+def add_aamc_teaching_info(baseDF,aamcHospitalsDF):
+    baseDF = (baseDF.join(aamcHospitalsDF.select(F.col("Medicare ID"),F.col("aamcTeachingStatus"), F.col("aamcMajorTeachingStatus")),
                          on=[F.col("Medicare ID")==F.col("PROVIDER")],
                          how="left_outer")
-
-    baseDF = baseDF.drop("Medicare ID")
-
-    return baseDF
-
-def add_aamcMajorTeachingHospital(baseDF,aamcHospitalsDF):
-
-    baseDF = baseDF.join(aamcHospitalsDF
-                            .select(F.col("Medicare ID"),F.col("majorTeachingStatus").alias("aamcMajorTeachingHospital")),
-                         on=[F.col("Medicare ID")==F.col("PROVIDER")],
-                         how="left_outer")
-
-    baseDF = baseDF.drop("Medicare ID")
-
+                    .drop("Medicare ID"))
     return baseDF
 
 #did not have time to validate extensively this function
@@ -1316,10 +1301,10 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                                       F.col("year").alias("THRU_DT_YEAR"),
                                       F.col("LAT").alias("providerAhaLat"), 
                                       F.col("LONG").alias("providerAhaLong"), 
-                                      F.col("MAPP3").alias("providerAhaACGME"),        #one or more ACGME programs
-                                      F.col("MAPP5").alias("providerAhaMedSchoolAff"), #medical school affiliation
-                                      F.col("MAPP8").alias("providerAhaCOTH"),         #member of COTH
-                                      F.col("MAPP18").alias("providerAhaCah"),         #critical access hospital
+                                      F.col("ahaACGME"),        #one or more ACGME programs
+                                      F.col("ahaMedSchoolAff"), #medical school affiliation
+                                      F.col("ahaCOTH"),         #member of COTH
+                                      F.col("ahaCah"),         #critical access hospital
                                       F.col("STRCHOS").alias("providerAhaTStrHos"),    #telestroke care hospital
                                       F.col("STRCSYS").alias("providerAhaTStrSys"),    #telestroke care health system
                                       F.col("STRCVEN").alias("providerAhaTStrVen"),    #telestroke care joint venture

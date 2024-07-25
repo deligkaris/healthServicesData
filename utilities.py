@@ -186,31 +186,44 @@ def read_and_prep_dataframe(filename, file, spark):
     return df   
 
 def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
-
     filenames = get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal)
     data = read_data(spark, filenames)
-
     return data
 
-#note: some AHA columns are coded as 0=no, 1=yes, some are 2=no, 1=yes.....
 def prep_ahaDF(ahaDF, filename):
- 
+    #note: some AHA columns are coded as 0=no, 1=yes, some are 2=no, 1=yes.....
     ahaYear = int(re.compile(r'FY\d{4}').search(filename).group()[2:])
     #include a column so that I know which year the data was from, need this when I union the aha data from several years
     ahaDF = (ahaDF.withColumn("year", F.lit(ahaYear))
-                  .withColumn("MAPP3", F.col("MAPP3").cast('int'))
-                  .withColumn("MAPP5", F.col("MAPP5").cast('int'))
-                  .withColumn("MAPP8", F.col("MAPP8").cast('int'))
-                  .withColumn("MAPP18", F.col("MAPP18").cast('int'))
-                  .withColumn("BDH", F.col("BDH").cast('int'))
-                  .withColumn("FTERES", F.col("FTERES").cast('int'))
+                  .withColumn("ahaACGME", F.col("MAPP3").cast('int'))        #one or more ACGME programs
+                  .withColumn("ahaMedSchoolAff", F.col("MAPP5").cast('int')) #medical school affiliation
+                  .withColumn("ahaCOTH", F.col("MAPP8").cast('int'))         #member of COTH
+                  .withColumn("ahaCah", F.col("MAPP18").cast('int'))         #critical access hospital
+                  .withColumn("ahaBeds", F.col("BDH").cast('int'))           #total facility beds - nursing home beds
+                  .withColumn("ahaSize", F.when( F.col("ahaBeds").isNull(), F.lit(None))
+                                          .when( F.col("ahaBeds")<100, 0)
+                                          .when( (F.col("ahaBeds")>=100)&(F.col("ahaBeds")<400), 1)
+                                          .when( F.col("ahaBeds")>=400, 2)
+                                          .otherwise(F.lit(None)))
+                  .withColumn("FTERES", F.col("FTERES").cast('int'))         #full time equivalent residents and interns
                   .withColumn("LAT", F.col("LAT").cast('double'))
                   .withColumn("LONG", F.col("LONG").cast('double'))
                   .withColumn("residentToBedRatio", F.col("FTERES")/F.col("BDH"))
                   #NIS definition of teaching hospitals: https://hcup-us.ahrq.gov/db/vars/hosp_teach/nisnote.jsp
-                  .withColumn("teachingHospital", 
-                              F.when( (F.col("MAPP8")==1) | (F.col("MAPP3")==1) | (F.col("residentToBedRatio")>=0.25) , 1)
-                               .otherwise(0)))
+                  .withColumn("ahaNisTeachingHospital", 
+                              F.when( (F.col("ahaCOTH")==1) | (F.col("ahaACGME")==1) | (F.col("residentToBedRatio")>=0.25) , 1)
+                               .otherwise(0))
+                  .withColumn("ahaCbsaType", F.when( F.col("CBSATYPE")=="Metro", 0)
+                                              .when( F.col("CBSATYPE")=="Micro", 1)
+                                              .when( F.col("CBSATYPE")=="Rural", 2)
+                                              .otherwise(F.lit(None)))
+                  .withColumn("CNTRL", F.col("CNTRL").cast('int'))
+                  #0: public (government federal or non-federal), 1: not for profit, 2: for profit
+                  .withColumn("ahaOwner", F.when( F.col("CNTRL").isin([12,13,14,15,16]), 0) #government, non-federal
+                                           .when( F.col("CNTRL").isin([21,23]), 1)          #non-government, not-for-profit
+                                           .when( F.col("CNTRL").isin([31,32,33]), 2)       #investor-owned, for-profit
+                                           .when( F.col("CNTRL").isin([41,42,43,44,45,46,47,48]), 3) #government, federal
+                                           .otherwise(F.lit(None)))
 
     if ahaYear > 2016:
         ahaDF = (ahaDF.withColumn("STRCHOS", F.col("STRCHOS").cast('int'))
@@ -316,26 +329,25 @@ def prep_posDF(posDF):
     return posDF
 
 def prep_aamcHospitalsDF(aamcHospitalsDF):
-
-    aamcHospitalsDF = (aamcHospitalsDF.withColumn("cothMember",
-                                                  F.when( F.col("FY22 COTH Member")=="Y", "1")
-                                                   .when( F.col("FY22 COTH Member")=="N", "0")
-                                                   .otherwise(""))
-                                      .withColumn("cothMember", F.col("cothMember").cast('int')))
-
-    aamcHospitalsDF = (aamcHospitalsDF.withColumn("teachingStatus",
-                                                  F.when( F.col("Teaching Status")=="Teaching", "1")
-                                                   .when( F.col("Teaching Status")=="Non-Teaching", "0")
-                                                   .otherwise(""))
-                                      .withColumn("teachingStatus", F.col("teachingStatus").cast('int')))
-
-    aamcHospitalsDF = (aamcHospitalsDF.withColumn("majorTeachingStatus",
-                                                  F.when( F.col("Major Teaching Status")=="Major Teaching", "1")
-                                                   .when( F.col("Major Teaching Status")=="Other Teaching", "0")
-                                                   .when( F.col("Major Teaching Status")=="Non-Teaching", "0")
-                                                   .otherwise(""))
-                                      .withColumn("majorTeachingStatus", F.col("majorTeachingStatus").cast('int')))
-
+    #Email communication with AAMC:
+    #The AAMC member teaching hospitals represent a small portion of all teaching hospitals in the US – 
+    #there are approximately 1000 hospitals that offers some form of graduate medical education. 
+    #Teaching hospital “major/minor” is commonly defined by the intern-resident-bed ratio (IRB).  
+    #Major teaching hospitals are those with an IRB GE 0.25 (so, in a nutshell, one resident for every four staffed beds); 
+    #minor teaching hospitals are those with an IRB GT 0 but LT 0.25, and all other hospitals are non-teaching.  
+    #This data is only captured for hospitals that accept Medicare and participate in the inpatient prospective payment system.
+    #Data Source: These tables are based on AAMC's analysis of FY2020 Medicare cost report data, HCRIS July 2022 release. 
+    #If FY2020 isn't available, FY2019 data is used. AAMC membership as of September 2022.
+    aamcHospitalsDF = (aamcHospitalsDF.withColumn("aamcCothMemberFy22", F.when( F.col("FY22 COTH Member")=="Y", 1)
+                                                                         .when( F.col("FY22 COTH Member")=="N", 0)
+                                                                         .otherwise(F.lit(None)))
+                                      .withColumn("aamcTeachingStatus", F.when( F.col("Teaching Status")=="Teaching", 1)
+                                                                         .when( F.col("Teaching Status")=="Non-Teaching", 0)
+                                                                         .otherwise(F.lit(None)))
+                                      .withColumn("aamcMajorTeachingStatus", F.when( F.col("Major Teaching Status")=="Major Teaching", 1)
+                                                                              .when( F.col("Major Teaching Status")=="Other Teaching", 0)
+                                                                              .when( F.col("Major Teaching Status")=="Non-Teaching", 0)
+                                                                              .otherwise(F.lit(None))))
     return aamcHospitalsDF
 
 def add_processed_name(DF,colToProcess="providerName"):
