@@ -216,7 +216,7 @@ def prep_ahaDF(ahaDF, filename):
                   # Membership in the Council of Teaching Hospitals (COTH)
                   # A ratio of full-time equivalent interns and residents to beds of .25 or higher.
                   .withColumn("ahaNisTeachingHospital", 
-                              F.when( (F.col("ahaCOTH")==1) | (F.col("ahaACGME")==1) | (F.col("residentToBedRatio")>=0.25) , 1)
+                              F.when( (F.col("ahaCOTH")==1) | (F.col("ahaACGME")==1) | (F.col("ahaResidentToBedRatio")>=0.25) , 1)
                                .otherwise(0))
                   .withColumn("ahaCbsaType", F.when( F.col("CBSATYPE")=="Metro", 0)
                                               .when( F.col("CBSATYPE")=="Micro", 1)
