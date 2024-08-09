@@ -101,10 +101,13 @@ def add_ishStrokeDrg(baseDF):
     baseDF = baseDF.withColumn("ishStrokeDrg", F.when( eval(ishStrokeDrgCondition), 1).otherwise(0))
     return baseDF
 
-def add_ishStroke(baseDF):
+def add_ishStroke(baseDF, inpatient=True):
     baseDF = add_ishStrokeDgns(baseDF)
-    baseDF = add_ishStrokeDrg(baseDF)
-    baseDF = baseDF.withColumn("ishStroke", F.when( (F.col("ishStrokeDgns")==1) | (F.col("ishStrokeDrg")==1), 1).otherwise(0))
+    if inpatient:
+        baseDF = add_ishStrokeDrg(baseDF)
+        baseDF = baseDF.withColumn("ishStroke", F.when( (F.col("ishStrokeDgns")==1) | (F.col("ishStrokeDrg")==1), 1).otherwise(0))
+    else:
+        baseDF = baseDF.withColumn("ishStroke", F.when( F.col("ishStrokeDgns")==1, 1).otherwise(0))
     return baseDF
 
 def add_otherStroke(baseDF):
