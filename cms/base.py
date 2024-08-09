@@ -1301,17 +1301,15 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                                       F.col("year").alias("THRU_DT_YEAR"),
                                       F.col("LAT").alias("providerAhaLat"), 
                                       F.col("LONG").alias("providerAhaLong"), 
-                                      F.col("ahaACGME"),        #one or more ACGME programs
-                                      F.col("ahaMedSchoolAff"), #medical school affiliation
-                                      F.col("ahaCOTH"),         #member of COTH
-                                      F.col("ahaCah"),         #critical access hospital
-                                      F.col("STRCHOS").alias("providerAhaTStrHos"),    #telestroke care hospital
-                                      F.col("STRCSYS").alias("providerAhaTStrSys"),    #telestroke care health system
-                                      F.col("STRCVEN").alias("providerAhaTStrVen"),    #telestroke care joint venture
-                                      F.col("BDH").alias("providerAhaBdh"),            #total facility beds - nursing home beds
-                                      F.col("FTERES").alias("providerAhaFTERES"),      #full time equivalent residents and interns
-                                      F.col("teachingHospital").alias("providerAhaTeachingHospital"), 
-                                      F.col("residentToBedRatio").alias("providerAhaResidentToBedRatio")),
+                                      F.col("ahaCah"),                               #critical access hospital
+                                      F.col("STRCHOS").alias("ahaTelestrokeHos"),    #telestroke care hospital
+                                      F.col("STRCSYS").alias("ahaTelestrokeSys"),    #telestroke care health system
+                                      F.col("STRCVEN").alias("ahaTelestrokeVen"),    #telestroke care joint venture
+                                      F.col("ahaBeds"),                              #total facility beds - nursing home beds
+                                      F.col("ahaSize"),
+                                      F.col("ahaOwner"),
+                                      F.col("ahaCbsaType"),
+                                      F.col("ahaNisTeachingHospital")),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
     return baseDF

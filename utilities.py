@@ -208,8 +208,13 @@ def prep_ahaDF(ahaDF, filename):
                   .withColumn("FTERES", F.col("FTERES").cast('int'))         #full time equivalent residents and interns
                   .withColumn("LAT", F.col("LAT").cast('double'))
                   .withColumn("LONG", F.col("LONG").cast('double'))
-                  .withColumn("residentToBedRatio", F.col("FTERES")/F.col("BDH"))
+                  .withColumn("residentToBedRatio", F.col("FTERES")/F.col("ahaBeds"))
                   #NIS definition of teaching hospitals: https://hcup-us.ahrq.gov/db/vars/hosp_teach/nisnote.jsp
+                  #the definition was somewhat unclear so I asked for clarification, see email on 7/25/2024:
+                  #A hospital is considered to be a teaching hospital if it met any one of the following three criteria:
+                  # Residency training approval by the Accreditation Council for Graduate Medical Education (ACGME)
+                  # Membership in the Council of Teaching Hospitals (COTH)
+                  # A ratio of full-time equivalent interns and residents to beds of .25 or higher.
                   .withColumn("ahaNisTeachingHospital", 
                               F.when( (F.col("ahaCOTH")==1) | (F.col("ahaACGME")==1) | (F.col("residentToBedRatio")>=0.25) , 1)
                                .otherwise(0))
