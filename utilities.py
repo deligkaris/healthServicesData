@@ -228,7 +228,7 @@ def prep_ahaDF(ahaDF, filename):
                                            .when( F.col("CNTRL").isin([21,23]), 1)          #non-government, not-for-profit
                                            .when( F.col("CNTRL").isin([31,32,33]), 2)       #investor-owned, for-profit
                                            .when( F.col("CNTRL").isin([41,42,43,44,45,46,47,48]), 3) #government, federal
-                                           .otherwise(F.lit(None)))
+                                           .otherwise(F.lit(None))))
 
     if ahaYear > 2016:
         ahaDF = (ahaDF.withColumn("STRCHOS", F.col("STRCHOS").cast('int'))
