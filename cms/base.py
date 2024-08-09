@@ -1309,7 +1309,8 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                                       F.col("ahaSize"),
                                       F.col("ahaOwner"),
                                       F.col("ahaCbsaType"),
-                                      F.col("ahaNisTeachingHospital")),
+                                      F.col("ahaNisTeachingHospital"),
+                                      F.col("ahaResidentToBedRatio")),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
     return baseDF
