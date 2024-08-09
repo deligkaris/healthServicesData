@@ -202,8 +202,8 @@ def add_preliminary_info(dataframes):
                 dataframes[claimTypePart] = baseF.add_dgnsCodeAll(dataframes[claimTypePart])
             if (claimType=="car"):
                  dataframes[claimTypePart] = baseF.add_denied(dataframes[claimTypePart])
-             if (claimType=="op"):
-                dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
+            if (claimType=="op"):
+                 dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
         elif (claimPart=="Line"): 
             dataframes[claimTypePart] = lineF.add_level1HCPCS_CD(dataframes[claimTypePart])
             dataframes[claimTypePart] = lineF.add_allowed(dataframes[claimTypePart])
