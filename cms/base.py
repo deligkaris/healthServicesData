@@ -418,7 +418,7 @@ def add_evtDrg(baseDF):
 
 def add_ccvPrcdr(baseDF):
     #procedure codes for craniotomy or craniectomy
-    ccPrcdrCodes = ["00J00ZZ", "00W00JZ", "00W00KZ", "0N800ZZ", "0N803ZZ", "0N804ZZ", "0NC10ZZ", "0NC13ZZ", "0NC14ZZ", "0NC30ZZ", "0NC33ZZ",
+    ccPrcdrCodes = ("00J00ZZ", "00W00JZ", "00W00KZ", "0N800ZZ", "0N803ZZ", "0N804ZZ", "0NC10ZZ", "0NC13ZZ", "0NC14ZZ", "0NC30ZZ", "0NC33ZZ",
                   "0NC34ZZ", "0NC40ZZ", "0NC43ZZ", "0NC44ZZ", "0NC50ZZ", "0NC53ZZ", "0NC54ZZ", "0NC60ZZ", "0NC63ZZ", "0NC64ZZ", "0NC70ZZ",
                   "0NC73ZZ", "0NC74ZZ", "0NH00MZ", "0NH03MZ", "0NH04MZ", "0NP000Z", "0NP004Z", "0NP005Z", "0NP007Z", "0NP007Z", "0NP00KZ",
                   "0NP00SZ", "0NP030Z", "0NP034Z", "0NP037Z", "0NP03KZ", "0NP03SZ", "0NP040Z", "0NP044Z", "0NP047Z", "0NP04KZ", "0NP04SZ",
@@ -439,11 +439,11 @@ def add_ccvPrcdr(baseDF):
                   "00W03JZ", "00W03KZ", "00W03MZ", "00W03YZ", "00W040Z", "00W042Z", "00W043Z", "00W047Z", "00W04JZ", "00W04KZ", "00W04MZ",
                   "00W04YZ", "00W600Z", "00W602Z", "00W603Z", "00W60MZ", "00W60YZ", "00W630Z", "00W632Z", "00W633Z", "00W63MZ", "00W63YZ",
                   "00W640Z", "00W642Z", "00W643Z", "00W64MZ", "00W64YZ", "00B70ZZ", "00B73ZZ", "00B74ZZ", "00500ZZ", "00503ZZ", "00504ZZ",
-                  "00B00ZZ", "00B03ZZ", "00B04ZZ"]
+                  "00B00ZZ", "00B03ZZ", "00B04ZZ")
     #procedure codes for ventriculostomy
-    vPrcdrCodes = ["Z982", "009600Z", "009630Z", "009640Z", "001607B", "00160JB", "00160KB", "001637B", "00163JB", "00163KB", "001647B",
+    vPrcdrCodes = ("Z982", "009600Z", "009630Z", "009640Z", "001607B", "00160JB", "00160KB", "001637B", "00163JB", "00163KB", "001647B",
                    "00164JB", "00164KB", "009130Z", "00913ZZ", "009140Z", "00914ZZ", "009230Z", "00923ZZ", "009240Z", "00924ZZ", "009430Z",
-                   "00943ZZ", "009440Z", "00944ZZ", "009530Z", "009540Z", "00954ZZ", "00963ZZ", "00994ZZ"]  
+                   "00943ZZ", "009440Z", "00944ZZ", "009530Z", "009540Z", "00954ZZ", "00963ZZ", "00994ZZ")  
     baseDF = (baseDF.withColumn("ccPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {ccPrcdrCodes})"))
                     .withColumn("vPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {vPrcdrCodes})"))
                     .withColumn("ccvPrcdr", F.when( (F.size(F.col("ccPrcdrCodes"))>0) | (F.size(F.col("vPrcdrCodes"))>0), 1).otherwise(0))
