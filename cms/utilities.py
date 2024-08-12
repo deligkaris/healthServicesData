@@ -239,7 +239,11 @@ def get_data(pathCMS, yearI, yearF, spark, FFS=True):
     return dataframes
 
 def filter_FFS(dataframes):
+    """Filter for FFS, continuous FFS and continuous RFNRC_YR the mbsf dataframe, and then according to that
+    filter all base dataframes, and finally use the base dataframes to filter revenue and line dataframes."""
     dataframes["mbsf"]=mbsfF.filter_FFS(dataframes["mbsf"])
+    dataframes["mbsf"]=mbsfF.filter_continuousFfs(dataframes["mbsf"])
+    dataframes["mbsf"]=mbsfF.filter_continuousRfrncYr(dataframes["mbsf"])
     dataframes["opBase"]=baseF.filter_beneficiaries(dataframes["opBase"], dataframes["mbsf"])
     dataframes["ipBase"]=baseF.filter_beneficiaries(dataframes["ipBase"], dataframes["mbsf"])
     dataframes["hhaBase"]=baseF.filter_beneficiaries(dataframes["hhaBase"], dataframes["mbsf"])
