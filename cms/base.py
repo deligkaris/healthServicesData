@@ -383,7 +383,15 @@ def add_provider_pos_info(baseDF, posDF):
                      .drop("PRVDR_NUM"))
     return baseDF
 
-def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF):
+def add_providerSysId(baseDF, chspHospDF):
+    baseDF = baseDF.join(chspHospDF.select(F.col("ccn").alias("PROVIDER"),
+                                           F.col("health_sys_id").alias("providerSysId"),
+                                           F.col("year").alias("THRU_DT_YEAR")),
+                         on=["THRU_DT_YEAR","PROVIDER"],
+                         how="left_outer")
+    return baseDF
+
+def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF, chspHospDF):
 
     baseDF = add_provider_npi_info(baseDF, npiProvidersDF)
     baseDF = add_provider_pos_info(baseDF, posDF)
@@ -395,7 +403,7 @@ def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetr
     #baseDF = add_cbi_info(baseDF, cbiDF)
     baseDF = add_provider_cost_report_info(baseDF, costReportDF)
     baseDF = add_aha_info(baseDF, ahaDF)
-
+    baseDF = add_providerSysId(baseDF, chspHospDF)
     return baseDF
 
 def add_osu(baseDF):
