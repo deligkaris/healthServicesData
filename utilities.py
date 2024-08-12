@@ -36,6 +36,8 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     filenames = dict()
 
+    filenames["chsp"] = [pathToData + '/CHSP/chsp-hospital-linkage-2018.csv']
+
     filenames["aha"] = [pathToAHAData + f"/AHAAS Raw Data/FY{iYear} ASDB/COMMA/ASPUB" + f"{iYear}"[-2:] + ".CSV" for iYear in range(yearInitial,yearFinal+1)]
 
     # NPI numbers and other provider information obtained from CMS: https://download.cms.gov/nppes/NPI_Files.html
