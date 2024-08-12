@@ -36,7 +36,7 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     filenames = dict()
 
-    filenames["chsp"] = [pathToData + '/CHSP/chsp-hospital-linkage-2018.csv']
+    filenames["chsp"] = [pathToData + '/CHSP/chsp-hospital-linkage-year2018.csv']
 
     filenames["aha"] = [pathToAHAData + f"/AHAAS Raw Data/FY{iYear} ASDB/COMMA/ASPUB" + f"{iYear}"[-2:] + ".CSV" for iYear in range(yearInitial,yearFinal+1)]
 
@@ -194,7 +194,7 @@ def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
     return data
 
 def prep_chspDF(chspDF, filename):
-    chspYear = int(re.compile(r'\d{4}').search(filename).group())
+    chspYear = int(re.compile(r'year\d{4}').search(filename).group()[4:])
     chspDF = (chspDF.withColumn("year", F.lit(chspYear)))
     return chspDF
 
