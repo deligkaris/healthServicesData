@@ -36,7 +36,7 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     filenames = dict()
 
-    filenames["chsp"] = [pathToData + '/CHSP/chsp-hospital-linkage-year2018.csv']
+    filenames["chsp"] = [pathToData + f'/CHSP/chsp-hospital-linkage-year{year}.csv' for year in [2016, 2018, 2020, 2021]]
 
     filenames["aha"] = [pathToAHAData + f"/AHAAS Raw Data/FY{iYear} ASDB/COMMA/ASPUB" + f"{iYear}"[-2:] + ".CSV" for iYear in range(yearInitial,yearFinal+1)]
 
