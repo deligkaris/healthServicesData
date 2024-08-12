@@ -36,7 +36,8 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     filenames = dict()
 
-    filenames["chsp"] = [pathToData + f'/CHSP/chsp-hospital-linkage-year{year}.csv' for year in [2016, 2018, 2020, 2021]]
+    #AHRQ compendium of US health systems: https://www.ahrq.gov/chsp/data-resources/compendium.html
+    filenames["chspHosp"] = [pathToData + f'/CHSP/chsp-hospital-linkage-year{year}.csv' for year in [2016, 2018, 2020, 2021]]
 
     filenames["aha"] = [pathToAHAData + f"/AHAAS Raw Data/FY{iYear} ASDB/COMMA/ASPUB" + f"{iYear}"[-2:] + ".CSV" for iYear in range(yearInitial,yearFinal+1)]
 
@@ -184,8 +185,8 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_zipToCountyDF(df)
     elif file=="aha":
         df = prep_ahaDF(df, filename)
-    elif file=="chsp":
-        df = prep_chspDF(df, filename)
+    elif file=="chspHosp":
+        df = prep_chspHospDF(df, filename)
     return df   
 
 def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
@@ -193,10 +194,10 @@ def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
     data = read_data(spark, filenames)
     return data
 
-def prep_chspDF(chspDF, filename):
+def prep_chspHospDF(chspHospDF, filename):
     chspYear = int(re.compile(r'year\d{4}').search(filename).group()[4:])
-    chspDF = (chspDF.withColumn("year", F.lit(chspYear)))
-    return chspDF
+    chspDF = (chspHospDF.withColumn("year", F.lit(chspYear)))
+    return chspHospDF
 
 def prep_ahaDF(ahaDF, filename):
     #note: some AHA columns are coded as 0=no, 1=yes, some are 2=no, 1=yes.....
