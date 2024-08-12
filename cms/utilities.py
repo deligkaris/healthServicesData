@@ -223,8 +223,9 @@ def add_preliminary_info(dataframes):
     dataframes["mbsf"] = mbsfF.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"])
     return dataframes
 
-def get_data(pathCMS, yearI, yearF, spark):
-
+def get_data(pathCMS, yearI, yearF, spark, FFS=True):
+    """The FFS flag is here to prevent unintended errors.
+    If the project requires FFS data, then all dataframes must be filtered for FFS."""
     if ( years_within_code_limits(yearI, yearF)==False ):
         raise ValueError("code was not designed to operate for the years provided")
     elif( years_within_cms_data_limits(yearI, yearF)==False ):
@@ -233,11 +234,27 @@ def get_data(pathCMS, yearI, yearF, spark):
         filenames = get_filenames(pathCMS, yearI, yearF)
         dataframes = read_data(spark, filenames, yearI, yearF)
         dataframes = add_preliminary_info(dataframes)
+        if FFS: 
+            dataframes = filter_FFS(dataframes)
+    return dataframes
 
+def filter_FFS(dataframes):
+    dataframes["mbsf"]=mbsfF.filter_FFS(dataframes["mbsf"])
+    dataframes["opBase"]=baseF.filter_beneficiaries(dataframes["opBase"], dataframes["mbsf"])
+    dataframes["ipBase"]=baseF.filter_beneficiaries(dataframes["ipBase"], dataframes["mbsf"])
+    dataframes["hhaBase"]=baseF.filter_beneficiaries(dataframes["hhaBase"], dataframes["mbsf"])
+    dataframes["hospBase"]=baseF.filter_beneficiaries(dataframes["hospBase"], dataframes["mbsf"])
+    dataframes["snfBase"]=baseF.filter_beneficiaries(dataframes["snfBase"], dataframes["mbsf"])
+    dataframes["carBase"]=baseF.filter_beneficiaries(dataframes["carBase"], dataframes["mbsf"])
+    dataframes["opRevenue"]=revenueF.filter_claims(dataframes["opRevenue"], dataframes["opBase"])
+    dataframes["ipRevenue"]=revenueF.filter_claims(dataframes["ipRevenue"], dataframes["ipBase"])
+    dataframes["hhaRevenue"]=revenueF.filter_claims(dataframes["hhaRevenue"], dataframes["hhaBase"])
+    dataframes["hospRevenue"]=revenueF.filter_claims(dataframes["hospRevenue"], dataframes["hospBase"])
+    dataframes["snfRevenue"]=revenueF.filter_claims(dataframes["snfRevenue"], dataframes["snfBase"])
+    dataframes["carLine"]=lineF.filter_claims(dataframes["carLine"], dataframes["carBase"])
     return dataframes
 
 def add_through_date_info(df):
-
     df = (df.withColumn("THRU_DT_DAYOFYEAR",
                         F.date_format(
                             #THRU_DT was read as bigint, need to convert it to string that can be understood by date_format
