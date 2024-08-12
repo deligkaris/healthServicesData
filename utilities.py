@@ -196,7 +196,7 @@ def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
 
 def prep_chspHospDF(chspHospDF, filename):
     chspYear = int(re.compile(r'year\d{4}').search(filename).group()[4:])
-    chspDF = (chspHospDF.withColumn("year", F.lit(chspYear)))
+    chspHospDF = (chspHospDF.withColumn("year", F.lit(chspYear)))
     return chspHospDF
 
 def prep_ahaDF(ahaDF, filename):
