@@ -1005,26 +1005,21 @@ def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
     return baseDF
 
 def add_providerMaPenetration(baseDF, maPenetrationDF):
-
     #from one test with stroke inpatient claims, this was about 90% complete
     baseDF = baseDF.join(maPenetrationDF
-                          .select(F.col("FIPS"),F.col("Penetration").alias("providerMaPenetration"),F.col("Year")),
-                         on=[ (F.col("FIPS")==F.col("providerFIPS")) & (F.col("Year")==F.col("THRU_DT_YEAR")) ],
+                          .select(F.col("FIPS").alias("providerFIPS"),
+                                  F.col("Penetration").alias("providerMaPenetration"),
+                                  F.col("Year").alias("THRU_DT_YEAR")),
+                         on=["providerFIPS","THRU_DT_YEAR"],
                          how="left_outer")
-
-    baseDF = baseDF.drop("FIPS")
-
     return baseDF
 
 def add_providerRucc(baseDF, ersRuccDF):
-
     baseDF = baseDF.join(ersRuccDF
                              .select(F.col("FIPS"),F.col("RUCC_2013").alias("providerRucc")),
                           on=[F.col("FIPS")==F.col("providerFIPS")],
                           how="left_outer")
-
     baseDF = baseDF.drop("FIPS")
-
     return baseDF
      
 def add_nihss(baseDF):
