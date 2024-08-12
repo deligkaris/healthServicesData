@@ -184,13 +184,19 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_zipToCountyDF(df)
     elif file=="aha":
         df = prep_ahaDF(df, filename)
-
+    elif file=="chsp":
+        df = prep_chspDF(df, filename)
     return df   
 
 def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
     filenames = get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal)
     data = read_data(spark, filenames)
     return data
+
+def prep_chspDF(chspDF, filename):
+    chspYear = int(re.compile(r'\d{4}').search(filename).group())
+    chspDF = (chspDF.withColumn("year", F.lit(chspYear)))
+    return chspDF
 
 def prep_ahaDF(ahaDF, filename):
     #note: some AHA columns are coded as 0=no, 1=yes, some are 2=no, 1=yes.....
