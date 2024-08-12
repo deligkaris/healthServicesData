@@ -37,7 +37,8 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     filenames = dict()
 
     #AHRQ compendium of US health systems: https://www.ahrq.gov/chsp/data-resources/compendium.html
-    filenames["chspHosp"] = [pathToData + f'/CHSP/chsp-hospital-linkage-year{year}.csv' for year in [2016, 2018, 2020, 2021]]
+    #data exist only for years 2016, 2018, 2020, 2021, I copied the 2016 data to 2017 and the 2018 data to 2019
+    filenames["chspHosp"] = [pathToData + f'/CHSP/chsp-hospital-linkage-year{year}.csv' for year in range(2016,2022)]
 
     filenames["aha"] = [pathToAHAData + f"/AHAAS Raw Data/FY{iYear} ASDB/COMMA/ASPUB" + f"{iYear}"[-2:] + ".CSV" for iYear in range(yearInitial,yearFinal+1)]
 
