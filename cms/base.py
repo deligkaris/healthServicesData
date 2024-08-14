@@ -1338,7 +1338,7 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
                     on="DSYSRTKY",
                     #on=[ baseDF.DSYSRTKY==XDF.DSYSRTKY,
                     #     XDF.ADMSN_DT_DAY - baseDF.baseTHRU_DT_DAY >= 0 ],
-                    how="inner"))  #inner join ensures that each X claim is matched will all relevant base claims
+                    how="inner")  #inner join ensures that each X claim is matched will all relevant base claims
               .filter(F.col("ADMSN_DT_DAY") - F.col("baseTHRU_DT_DAY") >= 0))        
 
     XDF = add_losDays(XDF) #add a sequence of days that represents length of stay
