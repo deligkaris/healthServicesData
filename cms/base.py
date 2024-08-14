@@ -991,17 +991,12 @@ def add_losDaysOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
     return baseDF
 
 def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
-
-    #add a sequence of days that represents length of stay
-    baseDF = add_losDays(baseDF)
-    
     #find the sequence of los days over X until Y
     baseDF = add_losDaysOverXUntilY(baseDF,X=X,Y=Y)
     
     #length of stay is then the number of those days
     baseDF = baseDF.withColumn(f"losOver{X}Until{Y}",
                               F.size(F.col(f"losDaysOver{X}Until{Y}")))
-    
     return baseDF
 
 def add_providerMaPenetration(baseDF, maPenetrationDF):
@@ -1329,10 +1324,10 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90)
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=365)
 
-    XDF = (XDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) #need only 3 columns from this df
-              .join(baseDF.select("DSYSRTKY"),
-                    on="DSYSRTKY",
-                    how="left_semi")) #need claims only from the beneficiaries in baseDF 
+    #XDF = (XDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) #need only 3 columns from this df
+    #          .join(baseDF.select("DSYSRTKY"),
+    #                on="DSYSRTKY",
+    #                how="left_semi")) #need claims only from the beneficiaries in baseDF 
 
     #for every base claim, find the X claims that started after the base through date
     XDF = (XDF.join(baseDF.select(F.col("DSYSRTKY"), 
@@ -1340,11 +1335,13 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
                                   F.col("THRU_DT_DAY").alias("baseTHRU_DT_DAY"), 
                                   F.col("90DaysFromADMSN_DT_DAY"), 
                                   F.col("365DaysFromADMSN_DT_DAY")),
-                    on="DSYSRTKY",
-                    #on=[ baseDF.DSYSRTKY==XDF.DSYSRTKY,
-                    #     XDF.ADMSN_DT_DAY - baseDF.baseTHRU_DT_DAY >= 0 ],
+                    #on="DSYSRTKY",
+                    on=[ baseDF.DSYSRTKY==XDF.DSYSRTKY,
+                         XDF.ADMSN_DT_DAY - baseDF.baseTHRU_DT_DAY >= 0 ],
                     how="inner")  #inner join ensures that each X claim is matched will all relevant base claims
-              .filter(F.col("ADMSN_DT_DAY") - F.col("baseTHRU_DT_DAY") >= 0))        
+              #.filter(F.col("ADMSN_DT_DAY") - F.col("baseTHRU_DT_DAY") >= 0))        
+
+    XDF = add_losDays(XDF) #add a sequence of days that represents length of stay
 
     XDF = (add_losOverXUntilY(XDF, X="baseCLAIMNO", Y="90DaysFromADMSN_DT_DAY")
            .withColumnRenamed("losOverbaseCLAIMNOUntil90DaysFromADMSN_DT_DAY", f"losAt{X}90")
