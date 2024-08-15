@@ -1345,10 +1345,9 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
 
     XDF = add_losDays(XDF) #add a sequence of days that represents length of stay
 
-    X = ["baseCLAIMNO","baseTHRU_DT_DAY"]
-    XString = "".join(X)
+    XString = "".join(["baseCLAIMNO","baseTHRU_DT_DAY"])
 
-    XDF = (add_losOverXUntilY(XDF, X=X, Y="90DaysFromADMSN_DT_DAY")
+    XDF = (add_losOverXUntilY(XDF, X=["baseCLAIMNO","baseTHRU_DT_DAY"], Y="90DaysFromADMSN_DT_DAY")
            .withColumnRenamed(f"losOver{XString}Until90DaysFromADMSN_DT_DAY", f"losAt{X}90")
            .withColumnRenamed(f"losDaysOver{XString}Until90DaysFromADMSN_DT_DAY", f"losDaysAt{X}90"))
 
