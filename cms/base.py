@@ -5,6 +5,7 @@ from .revenue import filter_claims, add_ed, add_mri, add_ct, get_revenue_summary
 from .claims import get_claimsDF
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, daysInYearsPrior, usRegionFipsCodes
 import re
+from functools import reduce
 
 #CMS DUA email on my question about LDS claim numbers:
 #"The Claim ID is set by a sequence. A Part A (Institutional) and a Part B (Professional) Claim could have the same ID. 
