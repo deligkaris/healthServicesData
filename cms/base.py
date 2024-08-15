@@ -1351,7 +1351,7 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
            .withColumnRenamed(f"losOver{XString}Until90DaysFromADMSN_DT_DAY", f"losAt{X}90")
            .withColumnRenamed(f"losDaysOver{XString}Until90DaysFromADMSN_DT_DAY", f"losDaysAt{X}90"))
 
-    XDF = (add_losOverXUntilY(XDF,X=X,Y="365DaysFromADMSN_DT_DAY")
+    XDF = (add_losOverXUntilY(XDF,X=["baseCLAIMNO","baseTHRU_DT_DAY"],Y="365DaysFromADMSN_DT_DAY")
             .withColumnRenamed("losOver{XString}Until365DaysFromADMSN_DT_DAY", f"losAt{X}365")
             .withColumnRenamed("losDaysOver{XString}Until365DaysFromADMSN_DT_DAY", f"losDaysAt{X}365"))
 
