@@ -1345,13 +1345,16 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
 
     XDF = add_losDays(XDF) #add a sequence of days that represents length of stay
 
-    XDF = (add_losOverXUntilY(XDF, X=["baseCLAIMNO","baseTHRU_DT_DAY"], Y="90DaysFromADMSN_DT_DAY")
-           .withColumnRenamed("losOverbaseCLAIMNOUntil90DaysFromADMSN_DT_DAY", f"losAt{X}90")
-           .withColumnRenamed("losDaysOverbaseCLAIMNOUntil90DaysFromADMSN_DT_DAY", f"losDaysAt{X}90"))
+    X = ["baseCLAIMNO","baseTHRU_DT_DAY"]
+    XString = "".join(X)
 
-    XDF = (add_losOverXUntilY(XDF,X=["baseCLAIMNO","baseTHRU_DT_DAY"],Y="365DaysFromADMSN_DT_DAY")
-            .withColumnRenamed("losOverbaseCLAIMNOUntil365DaysFromADMSN_DT_DAY", f"losAt{X}365")
-            .withColumnRenamed("losDaysOverbaseCLAIMNOUntil365DaysFromADMSN_DT_DAY", f"losDaysAt{X}365"))
+    XDF = (add_losOverXUntilY(XDF, X=X, Y="90DaysFromADMSN_DT_DAY")
+           .withColumnRenamed(f"losOver{XString}Until90DaysFromADMSN_DT_DAY", f"losAt{X}90")
+           .withColumnRenamed(f"losDaysOver{XString}Until90DaysFromADMSN_DT_DAY", f"losDaysAt{X}90"))
+
+    XDF = (add_losOverXUntilY(XDF,X=X,Y="365DaysFromADMSN_DT_DAY")
+            .withColumnRenamed("losOver{XString}Until365DaysFromADMSN_DT_DAY", f"losAt{X}365")
+            .withColumnRenamed("losDaysOver{XString}Until365DaysFromADMSN_DT_DAY", f"losDaysAt{X}365"))
 
     #bring results back to base 
     baseDF = baseDF.join(XDF.select(F.col("baseCLAIMNO").alias("CLAIMNO"),
