@@ -1418,6 +1418,8 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
     
     baseDF = add_los_at_X_info(baseDF, allDF, X="all")
 
+    baseDF = add_los_total_info(baseDF)
+
     baseDF = (baseDF.withColumn("homeDaysTotal90", F.when( F.col("STUS_CD")==20, F.lit(None))
                                                     .when( F.col("90DaysAfterAdmissionDateDead")==1, F.lit(None))
                                                     .otherwise( 90-F.col("losTotal90") ))
