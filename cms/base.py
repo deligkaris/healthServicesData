@@ -995,10 +995,10 @@ def add_losDaysOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
 def add_losOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
     #find the sequence of los days over X until Y
     baseDF = add_losDaysOverXUntilY(baseDF,X=X,Y=Y)
-    
+    XString = "".join(X)
     #length of stay is then the number of those days
-    baseDF = baseDF.withColumn(f"losOver{X}Until{Y}",
-                              F.size(F.col(f"losDaysOver{X}Until{Y}")))
+    baseDF = baseDF.withColumn(f"losOver{XString}Until{Y}",
+                              F.size(F.col(f"losDaysOver{XString}Until{Y}")))
     return baseDF
 
 def add_providerMaPenetration(baseDF, maPenetrationDF):
