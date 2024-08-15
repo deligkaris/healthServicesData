@@ -1398,24 +1398,31 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
 
     #baseDF = add_los_total_info(baseDF)
 
-    snfDF = (snfDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-           .join(baseDF.select("DSYSRTKY"),
-                 on="DSYSRTKY",
-                 how="left_semi"))
-    hhaDF = (hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-           .join(baseDF.select("DSYSRTKY"),
-                 on="DSYSRTKY",
-                 how="left_semi"))
-    hospDF = (hospDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-           .join(baseDF.select("DSYSRTKY"),
-                 on="DSYSRTKY",
-                 how="left_semi"))
-    ipDF = (ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-           .join(baseDF.select("DSYSRTKY"),
-                 on="DSYSRTKY",
-                 how="left_semi"))
-    allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, hhaDF, ipDF])
+    #snfDF = (snfDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+    #       .join(baseDF.select("DSYSRTKY"),
+    #             on="DSYSRTKY",
+    #             how="left_semi"))
+    #hhaDF = (hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+    #       .join(baseDF.select("DSYSRTKY"),
+    #             on="DSYSRTKY",
+    #             how="left_semi"))
+    #hospDF = (hospDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+    #       .join(baseDF.select("DSYSRTKY"),
+    #             on="DSYSRTKY",
+    #             how="left_semi"))
+    #ipDF = (ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+    #       .join(baseDF.select("DSYSRTKY"),
+    #             on="DSYSRTKY",
+    #             how="left_semi"))
+    #allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, hhaDF, ipDF])
     
+    snfDF = snfDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY"))
+    hhaDF = hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+    hospDF = hospDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+    ipDF = ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, hhaDF, ipDF])
+             .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
+
     baseDF = add_los_at_X_info(baseDF, allDF, X="all")
 
     baseDF = add_los_total_info(baseDF)
