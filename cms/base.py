@@ -969,24 +969,26 @@ def add_losDays(baseDF): #adds an array of all days of the claim's duration
 def add_losDaysOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
     
     #add a sequence of days that represents length of stay
-    baseDF = add_losDays(baseDF)
+    #baseDF = add_losDays(baseDF)
     
     #everything here will be done using this X as a partition
     eachX = Window.partitionBy(X)
 
+    XString = "".join(X)
+
     #find the set of all length of stay days for each X
-    baseDF = baseDF.withColumn(f"losDaysOver{X}",
+    baseDF = baseDF.withColumn(f"losDaysOver{XString}",
                                F.array_distinct(
                                     F.flatten(
                                         F.collect_set(F.col("losDays")).over(eachX))))
     
     #now filter that set for all days prior to Y
-    baseDF = baseDF.withColumn(f"losDaysOver{X}Until{Y}",
-                              F.expr(f"filter(losDaysOver{X}, x -> x < {Y})"))
+    baseDF = baseDF.withColumn(f"losDaysOver{XString}Until{Y}",
+                              F.expr(f"filter(losDaysOver{XString}, x -> x < {Y})"))
 
     #replace null values with empty arrays [] so that any concatenation later will happen correctly
-    baseDF = baseDF.withColumn(f"losDaysOver{X}Until{Y}",
-                              F.coalesce( F.col(f"losDaysOver{X}Until{Y}"), F.array() ))
+    baseDF = baseDF.withColumn(f"losDaysOver{XString}Until{Y}",
+                              F.coalesce( F.col(f"losDaysOver{XString}Until{Y}"), F.array() ))
     
     return baseDF
 
@@ -1343,11 +1345,11 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
 
     XDF = add_losDays(XDF) #add a sequence of days that represents length of stay
 
-    XDF = (add_losOverXUntilY(XDF, X="baseCLAIMNO", Y="90DaysFromADMSN_DT_DAY")
+    XDF = (add_losOverXUntilY(XDF, X=["baseCLAIMNO","baseTHRU_DT_DAY"], Y="90DaysFromADMSN_DT_DAY")
            .withColumnRenamed("losOverbaseCLAIMNOUntil90DaysFromADMSN_DT_DAY", f"losAt{X}90")
            .withColumnRenamed("losDaysOverbaseCLAIMNOUntil90DaysFromADMSN_DT_DAY", f"losDaysAt{X}90"))
 
-    XDF = (add_losOverXUntilY(XDF,X="baseCLAIMNO",Y="365DaysFromADMSN_DT_DAY")
+    XDF = (add_losOverXUntilY(XDF,X=["baseCLAIMNO","baseTHRU_DT_DAY"],Y="365DaysFromADMSN_DT_DAY")
             .withColumnRenamed("losOverbaseCLAIMNOUntil365DaysFromADMSN_DT_DAY", f"losAt{X}365")
             .withColumnRenamed("losDaysOverbaseCLAIMNOUntil365DaysFromADMSN_DT_DAY", f"losDaysAt{X}365"))
 
@@ -1369,13 +1371,15 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
 
 def add_los_total_info(baseDF):
 
-    losDays90Columns = [c for c in baseDF.columns if re.match('^losDaysAt[a-zA-Z]+90$', c)]
-    losDays365Columns = [c for c in baseDF.columns if re.match('^losDaysAt[a-zA-Z]+365$', c)]
+    #losDays90Columns = [c for c in baseDF.columns if re.match('^losDaysAt[a-zA-Z]+90$', c)]
+    #losDays365Columns = [c for c in baseDF.columns if re.match('^losDaysAt[a-zA-Z]+365$', c)]
 
     #baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+90$`"))))
     #                .withColumn("losDaysTotal365", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+365$`"))))
-    baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( F.concat( *losDays90Columns  )))
-                    .withColumn("losDaysTotal365", F.array_distinct( F.concat( *losDays365Columns )))
+    #baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( F.concat( *losDays90Columns  )))
+    #                .withColumn("losDaysTotal365", F.array_distinct( F.concat( *losDays365Columns )))
+    baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( "losDaysAtall90" ))
+                    .withColumn("losDaysTotal365", F.array_distinct( "losDaysAtall365" ))
                     .withColumn("losTotal90", F.when( F.col("losDaysTotal90").isNull(), 0)
                                                .otherwise( F.size(F.col("losDaysTotal90"))))
                     .withColumn("losTotal365", F.when( F.col("losDaysTotal365").isNull(), 0)
@@ -1384,12 +1388,32 @@ def add_los_total_info(baseDF):
 
 def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
 
-    baseDF = add_los_at_X_info(baseDF, snfDF, X="snf")
-    baseDF = add_los_at_X_info(baseDF, hhaDF, X="hha")
-    baseDF = add_los_at_X_info(baseDF, hospDF, X="hosp")
-    baseDF = add_los_at_X_info(baseDF, ipDF, X="ip")
+    #baseDF = add_los_at_X_info(baseDF, snfDF, X="snf")
+    #baseDF = add_los_at_X_info(baseDF, hhaDF, X="hha")
+    #baseDF = add_los_at_X_info(baseDF, hospDF, X="hosp")
+    #baseDF = add_los_at_X_info(baseDF, ipDF, X="ip")
 
-    baseDF = add_los_total_info(baseDF)
+    #baseDF = add_los_total_info(baseDF)
+
+    snfDF = (snfDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+           .join(baseDF.select("DSYSRTKY"),
+                 on="DSYSRTKY",
+                 how="left_semi"))
+    hhaDF = (hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+           .join(baseDF.select("DSYSRTKY"),
+                 on="DSYSRTKY",
+                 how="left_semi"))
+    hospDF = (hospDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+           .join(baseDF.select("DSYSRTKY"),
+                 on="DSYSRTKY",
+                 how="left_semi"))
+    ipDF = (ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+           .join(baseDF.select("DSYSRTKY"),
+                 on="DSYSRTKY",
+                 how="left_semi"))
+    allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, hhaDF, ipDF])
+    
+    baseDF = add_los_at_X_info(baseDF, allDF, X="all")
 
     baseDF = (baseDF.withColumn("homeDaysTotal90", F.when( F.col("STUS_CD")==20, F.lit(None))
                                                     .when( F.col("90DaysAfterAdmissionDateDead")==1, F.lit(None))
