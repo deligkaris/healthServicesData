@@ -350,7 +350,12 @@ def filter_valid_dod(mbsfDF):
     mbsfDF = mbsfDF.filter( (F.col("DEATH_DT").isNull()) | (F.col("V_DOD_SW")=="V") )
     return mbsfDF
 
-def add_probablyDead(mbsfDF, ipBaseDF, opBaseDF):
+def add_willDie(mbsfDF):
+    eachDSYSRTKY = Window.partitionBy("DSYSRTKY")
+    mbsfDF = mbsfDF.withColumn("willDie", F.max( (~F.col("DEATH_DT").isNull()).cast('int')).over(eachDSYSRTKY))
+    return mbsfDF
+
+def add_probablyDead(mbsfDF, ipBaseDF, opBaseDF, snfBaseDF, hospBaseDF, hhaBaseDF):
     eachDSYSRTKY = Window.partitionBy("DSYSRTKY")
     mbsfDF = (mbsfDF
                  #CMS misses a few deaths so some beneficiaries included in MBSF are actually dead
@@ -358,13 +363,16 @@ def add_probablyDead(mbsfDF, ipBaseDF, opBaseDF):
                  #one approach: if there is no op or ip claim for someone older than 90 years old, remove them from MBSF
                  .join( ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_YEAR"))
                                 .union(opBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_YEAR")))
+                                .union(snfBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_YEAR")))
+                                .union((hospBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_YEAR"))))
+                                .union(hhaBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_YEAR")))
                                 .select(F.col("DSYSRTKY"), F.max(F.col("THRU_DT_YEAR")).over(eachDSYSRTKY).alias("lastYearWithClaim"))
                                 .distinct(),
                         on = "DSYSRTKY",
                         how="left_outer")
                  .fillna(0, subset="lastYearWithClaim")
                  .withColumn("probablyDead",
-                       F.when( (F.col("AGE")>90) & (F.col("RFRNC_YR")>F.col("lastYearWithClaim")), 1)
+                       F.when( (F.col("AGE")>90) & (F.col("RFRNC_YR")>F.col("lastYearWithClaim")) & (F.col("willDie")==0), 1)
                         .otherwise(0)))
     return mbsfDF
 

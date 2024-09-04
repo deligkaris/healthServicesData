@@ -216,11 +216,13 @@ def add_preliminary_info(dataframes):
                 dataframes[claimType] = mbsfF.add_death_date_info(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_ssaCounty(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_enrollment_info(dataframes[claimType])
+                dataframes[claimType] = mbsfF.add_willDie(dataframes[claimType])
         else:
             pass
 
     #this needs to be done when all dfs have been processed
-    dataframes["mbsf"] = mbsfF.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"])
+    dataframes["mbsf"] = mbsfF.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"], dataframes["snfBase"],
+                                                dataframes["hospBase"], dataframes["hhaBase"])
     return dataframes
 
 def get_data(pathCMS, yearI, yearF, spark, FFS=True):
