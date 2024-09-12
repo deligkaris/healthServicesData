@@ -146,7 +146,8 @@ def add_continuousFfs(mbsfDF):
     mbsfDF = (mbsfDF.withColumn("ffsSinceJanuaryDifference",
                                 (F.col("ffsSinceJanuary")-F.lag("ffsSinceJanuary",1).over(eachDsysrtkyOrdered))) 
                     .fillna(value=0,subset=["ffsSinceJanuaryDifference"])
-                    .withColumn("continuousFfs", F.when( F.min(F.col("ffsSinceJanuaryDifference")).over(eachDsysrtky)<0, 0)
+                    .withColumn("continuousFfs", F.when( (F.min(F.col("ffs")).over(eachDsysrtky)==0) | 
+                                                         (F.min(F.col("ffsSinceJanuaryDifference")).over(eachDsysrtky)<0), 0)
                                                   .otherwise(1)))
     return mbsfDF
 
