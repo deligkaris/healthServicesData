@@ -160,22 +160,14 @@ def filter_FFS(mbsfDF):
     return mbsfDF
 
 def add_rfrncYrDifference(mbsfDF):
-    #for every beneficiary, order their year of FFS coverage
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
     eachDsysrtkyOrdered=eachDsysrtky.orderBy("RFRNC_YR")
-
-    #and then calculate the difference between two consecutive years of FFS coverage
-    mbsfDF = mbsfDF.withColumn("rfrncYrDifference",
-                               (F.col("RFRNC_YR")-F.lag("RFRNC_YR",1).over(eachDsysrtkyOrdered)))
-
-    #for the first year, all difference entries will be null, replace them with 0
-    mbsfDF = mbsfDF.fillna(value=0,subset=["rfrncYrDifference"])
-
-    #each window now will keep values until the current row
     eachDsysrtkyOrderedUntilnow= eachDsysrtkyOrdered.rowsBetween(Window.unboundedPreceding,Window.currentRow)
 
-    #if a beneficiary has a year of no coverage (difference greater than 1) then propagate that to the future
-    mbsfDF = mbsfDF.withColumn("rfrncYrDifference", F.max(F.col("rfrncYrDifference")).over(eachDsysrtkyOrderedUntilnow))
+    mbsfDF = (mbsfDF.withColumn("rfrncYrDifference", (F.col("RFRNC_YR")-F.lag("RFRNC_YR",1).over(eachDsysrtkyOrdered)))
+                    .fillna(value=0,subset=["rfrncYrDifference"]) #for the first year, all difference entries will be null, replace them with 0
+                    #if a beneficiary has a year of no coverage (difference greater than 1) then propagate that to the future
+                    .withColumn("rfrncYrDifference", F.max(F.col("rfrncYrDifference")).over(eachDsysrtkyOrderedUntilnow)))
 
     #approach that uses a self-join 
     #find when a beneficiary, and which beneficiaries, had a gap in FFS coverage
@@ -260,9 +252,7 @@ def add_ohResident(mbsfDF): #also used in base.py
     # keep mbsf data for Ohio residents only
     #mbsf = mbsf.filter(eval(ohResidencyCondition))
 
-    mbsfDF = mbsfDF.withColumn("ohResident",
-                               F.when(eval(ohResidencyCondition),1)
-                                .otherwise(0))
+    mbsfDF = mbsfDF.withColumn("ohResident", F.when(eval(ohResidencyCondition),1).otherwise(0))
 
     #add a column with a list of years where beneficiaries were in FFS and in Ohio (just in case I need it)
     #mbsfDF = mbsfDF.join(mbsfDF
@@ -278,9 +268,7 @@ def add_cAppalachiaResident(mbsfDF):
     #cAppalachia: central Appalachia, Kentucky, North Carolina, Ohio, Tennessee, Virginia, West Virginia)
     cAppalachiaCond = 'F.col("STATE_CD").isin(["18","34","36","44","49","51"])'
 
-    mbsfDF = mbsfDF.withColumn("cAppalachiaResident",
-                               F.when( eval(cAppalachiaCond), 1)
-                                .otherwise(0))
+    mbsfDF = mbsfDF.withColumn("cAppalachiaResident", F.when( eval(cAppalachiaCond), 1).otherwise(0))
     return mbsfDF    
 
 def add_death_date_info(mbsfDF):
@@ -315,19 +303,13 @@ def add_death_date_info(mbsfDF):
     return mbsfDF
 
 def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
-    deadDF = (mbsfDF.filter(
-                      F.col("V_DOD_SW")=="V")
-                   .select(
-                      F.col("DSYSRTKY"),F.col("DEATH_DT_DAY")))
-
+    deadDF = (mbsfDF.filter( F.col("V_DOD_SW")=="V" ).select(F.col("DSYSRTKY"),F.col("DEATH_DT_DAY")))
     return deadDF
 
 def add_ssaCounty(mbsfDF):
-    mbsfDF = mbsfDF.withColumn("ssaCounty",
-                               F.concat( F.col("STATE_CD"), F.col("CNTY_CD") ))
+    mbsfDF = mbsfDF.withColumn("ssaCounty", F.concat( F.col("STATE_CD"), F.col("CNTY_CD") ))
                                     #F.col("STATE_CD").substr(1,2),
                                     #F.format_string("%03d",F.col("CNTY_CD"))))
-
     return mbsfDF
 
 def drop_unused_columns(mbsfDF): #mbsf is typically large and usually early on the code I no longer need these...
