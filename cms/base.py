@@ -812,7 +812,7 @@ def add_gach(baseDF, npiProvidersDF, primary=True):
     return baseDF
 
 def add_rehabilitationFromTaxonomy(baseDF, npiProvidersDF, primary=True):
-    rehabilitationColName = "rehabilitationPrimaryTaxonomy" if primary else "rehabilitationAllTaxonomy"
+    rehabilitationColName = "rehabilitationPrimary" if primary else "rehabilitationAll"
     baseDF = (baseDF.join(npiProvidersDF.select( F.col("NPI"), F.col(rehabilitationColName).alias("rehabilitationFromTaxonomy") ),
                          on = [baseDF["ORGNPINM"] == npiProvidersDF["NPI"]],
                          how = "left_outer")
