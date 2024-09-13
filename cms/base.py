@@ -1248,10 +1248,10 @@ def add_providerStrokeVol(baseDF, stroke="anyStroke"):
 
 def add_provider_stroke_treatment_info(baseDF, inpatient=True):
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    baseDF = (baseDF.withColumn("providerMeanTpa", F.mean( F.col("tpa") ).over(eachProvider))
+    baseDF = (baseDF.withColumn("providerTpaMean", F.mean( F.col("tpa") ).over(eachProvider))
                     .withColumn("providerTpaVol", F.sum( F.col("tpa") ).over(eachProvider)))
     if (inpatient):
-        baseDF = (baseDF.withColumn("providerMeanEvt", F.mean( F.col("evt") ).over(eachProvider))
+        baseDF = (baseDF.withColumn("providerEvtMean", F.mean( F.col("evt") ).over(eachProvider))
                         .withColumn("providerEvtVol", F.sum( F.col("evt") ).over(eachProvider)))
     return baseDF
 
