@@ -1027,7 +1027,8 @@ def add_nihss(baseDF):
                    .withColumn("nihss", F.when( F.size(F.col("nihssList")) == 1, F.substring(F.col("nihssList")[0],5,2))
                                          .otherwise(F.lit(None)))
                    .withColumn("nihss", F.col("nihss").cast('int'))
-                   .drop("dgnsList","nihssList"))
+                   .withColumn("nihss", F.when( F.col("nihss")>42, F.lit(None) ).otherwise(F.col("nihss")))
+                   .drop("nihssList"))
     return baseDF
 
 def add_nihssGroup(baseDF):
