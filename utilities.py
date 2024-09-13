@@ -502,8 +502,8 @@ def prep_npiProvidersDF(npiProvidersDF):
     npiProvidersDF = add_primaryTaxonomy(npiProvidersDF)
     npiProvidersDF = add_gach(npiProvidersDF, primary=True).withColumnRenamed("gach","gachPrimary")
     npiProvidersDF = add_gach(npiProvidersDF, primary=False).withColumnRenamed("gach","gachAll")
-    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=True).withColumnRenamed("rehabilitation","rehabilitationPrimaryTaxonomy")
-    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=False).withColumnRenamed("rehabilitation","rehabilitationAllTaxonomy")
+    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=True).withColumnRenamed("rehabilitation","rehabilitationPrimary")
+    npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=False).withColumnRenamed("rehabilitation","rehabilitationAll")
     return npiProvidersDF
 
 def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
