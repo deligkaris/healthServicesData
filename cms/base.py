@@ -259,6 +259,28 @@ def add_minClaimNoPerStay(baseDF):
 def filter_minClaimNoPerStay(baseDF):
     return add_minClaimNoPerStay(baseDF).filter(F.col("CLAIMNO")==F.col('minClaimNoPerStay'))
 
+def get_first_claims(baseDF):
+    '''Returns the claims that correspond to the first visit, even when there are more than 1 claims/stay (or visit).'''
+    baseDF = add_firstClaim(baseDF)
+    baseDF = add_firstClaimSum(baseDF)
+    baseDF = add_los(baseDF)
+    baseDF = add_numberOfXOverY(baseDF, X="ORGNPINM", Y=["DSYSRTKY","ADMSN_DT"])
+    baseDF = (baseDF
+                 .filter(F.col("firstClaim")==1)
+                         #single claim per stay and per day, keep them
+                 .filter((F.col("firstClaimSum")==1) | 
+                         #single claim per stay but more than 1 claims per day, keep the ones with LOS of 1
+                         ((F.col("firstClaimSum")>1) & (F.col('los')==1) & (F.col("numberOfORGNPINMOverDSYSRTKYADMSN_DT")>1) ) | 
+                         #more than 1 claims per stay, keep them for now
+                         ((F.col("firstClaimSum")>1) & (F.col("numberOfORGNPINMOverDSYSRTKYADMSN_DT")==1)) ))
+             #when there are more than 1 claims per day and both have LOS=1, I do not know their temporal order so filter them out
+    baseDF = (add_numberOfXOverY(baseDF, X="ORGNPINM", Y=["DSYSRTKY","ADMSN_DT"])
+                .filter(F.col("numberOfORGNPINMOverDSYSRTKYADMSN_DT")==1))
+    baseDF = add_moreThan1ClaimsPerStay(baseDF) #mark the stays that were broken in more than 1 claims (145 claims, 2017)
+    baseDF = add_minClaimNoPerStay(baseDF)
+    baseDF = add_firstClaimSum(baseDF) #update first claim sums
+    return baseDF
+
 #def add_inToInTransfer(baseDF):
 
     #inpatient -> inpatient transfer is defined as the same beneficiary having claims from two different organizations on the same day
@@ -605,77 +627,41 @@ def add_beneficiary_info(baseDF, mbsfDF, cbsaDF, ersRuccDF, claimType="op"):
     return baseDF
 
 def add_age(baseDF,mbsfDF):
-
-    baseDF = baseDF.join(
-                         mbsfDF
-                             .select(
-                                F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR")),
-                         on = [ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
-                                F.col("THRU_DT_YEAR")==F.col("RFRNC_YR")],
+    baseDF = baseDF.join(mbsfDF.select( F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR").alias("THRU_DT_YEAR")),
+                         on = ["DSYSRTKY", "THRU_DT_YEAR"],
                          how = "left_outer")
-
-    baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
-
     return baseDF
 
 def add_ssaCounty(baseDF):
-
-    baseDF = baseDF.withColumn("ssaCounty",
-                               F.concat(
-                                    #F.col("STATE_CD").substr(1,2),
-                                    #F.format_string("%03d",F.col("CNTY_CD"))))
-                                    F.col("STATE_CD"), F.col("CNTY_CD")))
-
+    baseDF = baseDF.withColumn("ssaCounty", F.concat( F.col("STATE_CD"), F.col("CNTY_CD")))
+                                    #F.col("STATE_CD").substr(1,2), F.format_string("%03d",F.col("CNTY_CD"))))
     return baseDF
 
 def add_fipsCounty(baseDF, cbsaDF):
-
-    baseDF = baseDF.join(
-                         cbsaDF
-                            .select(
-                                F.col("ssaCounty"),F.col("fipsCounty")),
+    baseDF = baseDF.join(cbsaDF.select(F.col("ssaCounty"),F.col("fipsCounty")),
                          on=["ssaCounty"],
                          how="left_outer")
-
-    #drop the duplicate ssacounty, no longer needed
-    #baseDF = baseDF.drop(F.col("ssaCounty"))
-
     return baseDF
 
 def add_fipsState(baseDF):
-
     baseDF = baseDF.withColumn("fipsState", F.col("fipsCounty").substr(1,2))
-
     return baseDF
 
 def add_fips_info(baseDF, cbsaDF):
-
     baseDF = add_fipsCounty(baseDF, cbsaDF)
     baseDF = add_fipsState(baseDF)
-
     return baseDF
 
 def add_countyName(baseDF,cbsaDF):
-
-    baseDF = baseDF.join(
-                         cbsaDF
-                            .select(F.col("countyName"),F.col("ssaCounty")),
+    baseDF = baseDF.join(cbsaDF.select(F.col("countyName"),F.col("ssaCounty")),
                          on = ["ssaCounty"],
                          how = "inner")
-
-    #baseDF = baseDF.drop(F.col("ssaCounty"))
-
-    return(baseDF)
+    return baseDF
 
 def add_rucc(baseDF, ersRuccDF):
-
-    baseDF = baseDF.join(ersRuccDF
-                             .select(F.col("FIPS"),F.col("RUCC_2013").alias("rucc")),
-                          on=[F.col("FIPS")==F.col("fipsCounty")],
+    baseDF = baseDF.join(ersRuccDF.select(F.col("FIPS").alias("fipsCounty"),F.col("RUCC_2013").alias("rucc")),
+                          on="fipsCounty",
                           how="left_outer")
-
-    baseDF = baseDF.drop("FIPS")
-
     return baseDF
 
 def add_region(baseDF): 
@@ -876,17 +862,16 @@ def add_cbi_info(baseDF,cbiDF):
     return baseDF
 
 def add_provider_cost_report_info(baseDF,costReportDF):
-    baseDF = (baseDF.join(costReportDF
+    baseDF = baseDF.join(costReportDF
                            .select(
-                               F.col("Provider CCN"),
+                               F.col("Provider CCN").alias("Provider"),
                                F.col("Rural Versus Urban").alias("providerRuralVersusUrban"),
                                F.col("Number of Beds").alias("providerNumberOfBeds"),
                                F.col("Number of Interns and Residents (FTE)").alias("providerNumberOfResidents")),
                          #see note on add_cbi_info on why I am not using ORGNPINM for the join
                          #hospital cost report files include only the CMS Certification Number (Provider ID, CCN), they do not include NPI
-                         on=[F.col("Provider CCN")==F.col("Provider")],
+                         on=["Provider"],
                          how="left_outer")
-                    .drop("Provider CCN"))
     return baseDF
 
 def add_transferToIn(baseDF):
@@ -895,18 +880,10 @@ def add_transferToIn(baseDF):
     return baseDF
 
 def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
-
     baseDF = baseDF.join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
-                                .select( F.col("DSYSRTKY"),
-                                         F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") ),
-                                         #F.col("RFRNC_YR")),
-                          #on=[ baseDF["DSYSRTKY"]==mbsfDF["DSYSRTKY"],
-                          #      F.col("THRU_DT_YEAR")==F.col("RFRNC_YR") ],
+                                .select( F.col("DSYSRTKY"),F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") ),
                           on="DSYSRTKY",            
-                          how="left_outer") #uses null when the beneficiary does not have a valid death date in mbsfDF
-
-    #baseDF=baseDF.drop(mbsfDF["DSYSRTKY"]).drop(mbsfDF["RFRNC_YR"]) #no longer need these
-
+                          how="left_outer") 
     return baseDF
 
 def add_daysDeadAfterThroughDate(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
