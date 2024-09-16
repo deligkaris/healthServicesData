@@ -839,11 +839,7 @@ def add_rehabilitation(baseDF, npiProvidersDF, primary=True):
     return baseDF
 
 def add_hospital(baseDF):
-
-    baseDF = baseDF.withColumn( "hospital",
-                                F.when( F.col("FAC_TYPE") == 1, 1)
-                                 .otherwise(0))
-
+    baseDF = baseDF.withColumn( "hospital", F.when( F.col("FAC_TYPE") == 1, 1).otherwise(0))
     return baseDF
 
 #two ways of adding some useful hospital information (rural/urban, number of beds etc): from community benefits insight (CBI), from hospital cost report
