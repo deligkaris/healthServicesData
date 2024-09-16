@@ -890,11 +890,8 @@ def add_provider_cost_report_info(baseDF,costReportDF):
     return baseDF
 
 def add_transferToIn(baseDF):
-
-    baseDF = baseDF.withColumn( "transferToIn", #transfer implies that it was a different organization
-                                F.when( F.col("STUS_CD").isin([2,5]), 1) #visits that resulted in a discharge to short term hospital (code 2) or other IPT care (code 5)
-                                 .otherwise(0))
-
+    #visits that resulted in a discharge to short term hospital (code 2) or other IPT care (code 5)
+    baseDF = baseDF.withColumn( "transferToIn", F.when( F.col("STUS_CD").isin([2,5]), 1).otherwise(0))
     return baseDF
 
 def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
@@ -1009,11 +1006,9 @@ def add_providerMaPenetration(baseDF, maPenetrationDF):
     return baseDF
 
 def add_providerRucc(baseDF, ersRuccDF):
-    baseDF = baseDF.join(ersRuccDF
-                             .select(F.col("FIPS"),F.col("RUCC_2013").alias("providerRucc")),
-                          on=[F.col("FIPS")==F.col("providerFIPS")],
-                          how="left_outer")
-    baseDF = baseDF.drop("FIPS")
+    baseDF = baseDF.join(ersRuccDF.select(F.col("FIPS").alias("providerFIPS"),F.col("RUCC_2013").alias("providerRucc")),
+                         on=["providerFIPS"],
+                         how="left_outer")
     return baseDF
      
 def add_nihss(baseDF):
@@ -1213,16 +1208,11 @@ def clean_base(baseDF, claim="snf"):
     return baseDF
 
 def add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF):
-
-    baseDF = baseDF.join(strokeCentersCamargoDF.select(
-                                                   F.col("CCN"),F.col("strokeCenterCamargo")),
+    baseDF = (baseDF.join(strokeCentersCamargoDF.select(F.col("CCN"),F.col("strokeCenterCamargo")),
                          on=[F.col("CCN")==F.col("PROVIDER")],
                          how="left_outer")
-
-    baseDF = baseDF.fillna(0,subset="strokeCenterCamargo")
-
-    baseDF = baseDF.drop("CCN")
-
+                    .fillna(0,subset="strokeCenterCamargo")
+                    .drop("CCN"))
     return baseDF    
 
 def add_numberOfResidents(baseDF, hospCostDF):
