@@ -50,17 +50,6 @@ def add_ct(revenueDF, inClaim=False):
                                           .otherwise(0))
     return revenueDF
 
-def add_provider_revenue_info(revenueSummaryDF):
-    '''Must be called using the revenue summary.'''
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    revenueSummaryDF = (revenueSummaryDF.withColumn("providerEdMean", F.mean( F.col("ed") ).over(eachProvider))
-                                        .withColumn("providerEdVol", F.sum( F.col("ed") ).over(eachProvider))
-                                        .withColumn("providerCtMean", F.mean( F.col("ct") ).over(eachProvider))
-                                        .withColumn("providerCtVol", F.sum( F.col("ct") ).over(eachProvider))
-                                        .withColumn("providerMriMean", F.mean( F.col("mri") ).over(eachProvider))
-                                        .withColumn("providerMriVol", F.sum( F.col("mri") ).over(eachProvider)))
-    return revenueSummaryDF
-
 def add_echo(revenueDF, inClaim=False):
     echoCodes = ["93304", "93306", "93307", "93320", "93321", "93312", "93313", "93314","93315", "93316", "93317"]
     echoCondition = '(F.col("HCPCS_CD").isin(echoCodes))'
@@ -78,7 +67,7 @@ def add_echo(revenueDF, inClaim=False):
 
 def filter_claims(revenueDF, baseDF):
     #CLAIMNO resets every year, so I need CLAIMNO, DSYSRTKY and THRU_DT to uniquely link base and revenue files
-    revenueDF = revenueDF.join(baseDF.select(F.col("CLAIMNO"),F.col("DSYSRTKY"),F.col("THRU_DT"),F.col("ORGNPINM"),F.col("THRU_DT_YEAR")),
+    revenueDF = revenueDF.join(baseDF.select(F.col("CLAIMNO"),F.col("DSYSRTKY"),F.col("THRU_DT")),
                                on=["CLAIMNO","DSYSRTKY","THRU_DT"],
                                how="left_semi")
     return revenueDF
@@ -104,5 +93,4 @@ def get_revenue_info(revenueDF, baseDF, inClaim=True):
     revenueDF = add_revenue_info(revenueDF, inClaim=inClaim)
     if inClaim:
         revenueDF = get_revenue_summary(revenueDF)
-        revenueDF = add_provider_revenue_info(revenueDF)
     return revenueDF
