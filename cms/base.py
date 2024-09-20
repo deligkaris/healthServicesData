@@ -1446,16 +1446,6 @@ def add_nonPPS_info(ipClaimsDF, opBaseDF, opRevenueDF):
 
     return ipClaimsDF
 
-def add_provider_revenue_info(baseDF):
-    '''Must be called using the revenue summary.'''
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    baseDF = (baseDF.withColumn("providerEdMean", F.mean( F.col("ed") ).over(eachProvider))
-                    .withColumn("providerEdVol", F.sum( F.col("ed") ).over(eachProvider))
-                    .withColumn("providerCtMean", F.mean( F.col("ct") ).over(eachProvider))
-                    .withColumn("providerCtVol", F.sum( F.col("ct") ).over(eachProvider))
-                    .withColumn("providerMriMean", F.mean( F.col("mri") ).over(eachProvider))
-                    .withColumn("providerMriVol", F.sum( F.col("mri") ).over(eachProvider)))
-    return baseDF
 
 
 
