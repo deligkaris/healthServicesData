@@ -191,6 +191,8 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_ahaDF(df, filename)
     elif file=="chspHosp":
         df = prep_chspHospDF(df, filename)
+    elif file=="cmi":
+        df = prep_cmiDF(df)
     return df   
 
 def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
@@ -202,6 +204,13 @@ def prep_chspHospDF(chspHospDF, filename):
     chspYear = int(re.compile(r'year\d{4}').search(filename).group()[4:])
     chspHospDF = (chspHospDF.withColumn("year", F.lit(chspYear)))
     return chspHospDF
+
+def prep_cmiDF(cmiDF):
+    cmiDF = (cmiDF.withColumn("cases", F.col("cases").cast('int'))
+                  .withColumn("casemixindex", F.col("casemixindex").cast('double'))
+                  .withColumn("sumcasemix", F.col("sumcasemix").cast('double'))
+                  .withColumn("year", F.col("year").cast('int')))
+    return cmiDF
 
 def prep_ahaDF(ahaDF, filename):
     #note: some AHA columns are coded as 0=no, 1=yes, some are 2=no, 1=yes.....

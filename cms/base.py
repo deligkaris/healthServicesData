@@ -414,8 +414,13 @@ def add_providerSysId(baseDF, chspHospDF):
                          how="left_outer")
     return baseDF
 
-def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF, chspHospDF):
+def add_providerCmi(baseDF, cmiDF):
+    baseDF = baseDF.join(cmiDF.select(F.col("provider").alias("PROVIDER"), F.col("year").alias("THRU_DT_YEAR"), F.col("casemixindex").alias("providerCmi")),
+                         on=["THRU_DT_YEAR","PROVIDER"],
+                         how="left_outer")
+    return baseDF
 
+def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF, chspHospDF, cmiDF):
     baseDF = add_provider_npi_info(baseDF, npiProvidersDF)
     baseDF = add_provider_pos_info(baseDF, posDF)
     baseDF = add_providerRegion(baseDF)
@@ -427,6 +432,7 @@ def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetr
     baseDF = add_provider_cost_report_info(baseDF, costReportDF)
     baseDF = add_aha_info(baseDF, ahaDF)
     baseDF = add_providerSysId(baseDF, chspHospDF)
+    baseDF = add_providerCmi(baseDF, cmiDF)
     return baseDF
 
 def add_osu(baseDF):
