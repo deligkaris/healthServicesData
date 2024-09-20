@@ -50,6 +50,17 @@ def add_ct(revenueDF, inClaim=False):
                                           .otherwise(0))
     return revenueDF
 
+def add_provider_revenue_info(revenueSummaryDF):
+    '''Must be called using the revenue summary.'''
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    revenueSummaryDF = (revenueSummaryDF.withColumn("providerEdMean", F.mean( F.col("edInClaim") ).over(eachProvider))
+                                        .withColumn("providerEdVol", F.sum( F.col("edInClaim") ).over(eachProvider))
+                                        .withColumn("providerCtMean", F.mean( F.col("ctInClaim") ).over(eachProvider))
+                                        .withColumn("providerCtVol", F.sum( F.col("ctInClaim") ).over(eachProvider))
+                                        .withColumn("providerMriMean", F.mean( F.col("mriInClaim") ).over(eachProvider))
+                                        .withColumn("providerMriVol", F.sum( F.col("mriInClaim") ).over(eachProvider)))
+    return revenueSummaryDF
+
 def add_echo(revenueDF, inClaim=False):
     echoCodes = ["93304", "93306", "93307", "93320", "93321", "93312", "93313", "93314","93315", "93316", "93317"]
     echoCondition = '(F.col("HCPCS_CD").isin(echoCodes))'
@@ -81,4 +92,17 @@ def get_revenue_summary(revenueDF):
     revenueSummaryDF = revenueSummaryDF.toDF(*namesWithoutInClaim)
     return revenueSummaryDF
 
+def add_revenue_info(revenueDF, inClaim=True):
+    revenueDF = add_ed(revenueDF, inClaim=inClaim) 
+    revenueDF = add_mri(revenueDF, inClaim=inClaim)
+    revenueDF = add_ct(revenueDF, inClaim=inClaim)
+    return revenueDF
 
+def get_revenue_info(revenueDF, baseDF, inClaim=True):
+    '''inClaim = True will cause the summary to be returned.'''
+    revenueDF = filter_claims(revenueDF, baseDF)
+    revenueDF = add_revenue_info(revenueDF, inClaim=inClaim)
+    if inClaim:
+        revenueDF = get_revenue_summary(revenueDF)
+        revenueDF = add_provider_revenue_info(revenueDF)
+    return revenueDF
