@@ -40,6 +40,9 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #data exist only for years 2016, 2018, 2020, 2021, I copied the 2016 data to 2017 and the 2018 data to 2019
     filenames["chspHosp"] = [pathToData + f'/CHSP/chsp-hospital-linkage-year{year}.csv' for year in range(2016,2022)]
 
+    #case mix index from https://www.nber.org/research/data/centers-medicare-medicaid-services-cms-casemix-file-hospital-ipps
+    filenames["cmi"] = [pathToData + f'/CASE-MIX-INDEX/casemix{year}.csv' for year in range(2016,2025)]
+
     filenames["aha"] = [pathToAHAData + f"/AHAAS Raw Data/FY{iYear} ASDB/COMMA/ASPUB" + f"{iYear}"[-2:] + ".CSV" for iYear in range(yearInitial,yearFinal+1)]
 
     # NPI numbers and other provider information obtained from CMS: https://download.cms.gov/nppes/NPI_Files.html
@@ -311,36 +314,17 @@ def prep_hospCostDF(hospCostDF):
                                        F.max(F.col("Total Bed Days Available").cast('int')).over(eachCCN))
                             .filter(F.col("maxTotalBedDaysAvailable")==(F.col("Total Bed Days Available").cast('int')))
                             .drop("maxTotalBedDaysAvailable"))
-
     return hospCostDF
 
 def prep_posDF(posDF):
-
     #https://data.cms.gov/sites/default/files/2022-10/58ee74d6-9221-48cf-b039-5b7a773bf39a/Layout%20Sep%2022%20Other.pdf
     #posDF = posDF.withColumn("providerName", F.col("FAC_NAME"))
-
-    posDF = posDF.withColumn("providerStateFIPS", F.col("FIPS_STATE_CD"))  
-
-    posDF = posDF.withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
-
-    posDF = posDF.withColumn("hospital",
-                             F.when( F.col("PRVDR_CTGRY_CD")=="01", 1)
-                              .otherwise(0))
-
-    posDF = posDF.withColumn("cah",  #critical access hospital
-                             F.when( 
-                                 (F.col("hospital")==1) &  
-                                 (F.col("PRVDR_CTGRY_SBTYP_CD")=="11"), 1)
-                              .otherwise(0))
-
-    posDF = posDF.withColumn("shortTerm",  #short term hospital
-                             F.when( 
-                                 (F.col("hospital")==1) &
-                                 (F.col("PRVDR_CTGRY_SBTYP_CD")=="01"), 1)
-                              .otherwise(0))
-
+    posDF = (posDF.withColumn("providerStateFIPS", F.col("FIPS_STATE_CD"))  
+                  .withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
+                  .withColumn("hospital", F.when( F.col("PRVDR_CTGRY_CD")=="01", 1).otherwise(0))
+                  .withColumn("cah", F.when( (F.col("hospital")==1) &  (F.col("PRVDR_CTGRY_SBTYP_CD")=="11"), 1).otherwise(0))
+                  .withColumn("shortTerm",  F.when( (F.col("hospital")==1) & (F.col("PRVDR_CTGRY_SBTYP_CD")=="01"), 1).otherwise(0)))
     posDF = add_processed_name(posDF,colToProcess="FAC_NAME")
-
     return posDF
 
 def prep_aamcHospitalsDF(aamcHospitalsDF):
