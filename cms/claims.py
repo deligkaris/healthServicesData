@@ -1,4 +1,5 @@
 from pyspark.sql.window import Window
+import pyspark.sql.functions as F
 
 def get_claimsDF(baseDF,summaryDF): #assumes I have already summarized the revenue dataframe
 
