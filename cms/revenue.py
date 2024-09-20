@@ -53,12 +53,12 @@ def add_ct(revenueDF, inClaim=False):
 def add_provider_revenue_info(revenueSummaryDF):
     '''Must be called using the revenue summary.'''
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    revenueSummaryDF = (revenueSummaryDF.withColumn("providerEdMean", F.mean( F.col("edInClaim") ).over(eachProvider))
-                                        .withColumn("providerEdVol", F.sum( F.col("edInClaim") ).over(eachProvider))
-                                        .withColumn("providerCtMean", F.mean( F.col("ctInClaim") ).over(eachProvider))
-                                        .withColumn("providerCtVol", F.sum( F.col("ctInClaim") ).over(eachProvider))
-                                        .withColumn("providerMriMean", F.mean( F.col("mriInClaim") ).over(eachProvider))
-                                        .withColumn("providerMriVol", F.sum( F.col("mriInClaim") ).over(eachProvider)))
+    revenueSummaryDF = (revenueSummaryDF.withColumn("providerEdMean", F.mean( F.col("ed") ).over(eachProvider))
+                                        .withColumn("providerEdVol", F.sum( F.col("ed") ).over(eachProvider))
+                                        .withColumn("providerCtMean", F.mean( F.col("ct") ).over(eachProvider))
+                                        .withColumn("providerCtVol", F.sum( F.col("ct") ).over(eachProvider))
+                                        .withColumn("providerMriMean", F.mean( F.col("mri") ).over(eachProvider))
+                                        .withColumn("providerMriVol", F.sum( F.col("mri") ).over(eachProvider)))
     return revenueSummaryDF
 
 def add_echo(revenueDF, inClaim=False):
