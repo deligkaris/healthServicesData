@@ -249,7 +249,7 @@ def prep_ahaDF(ahaDF, filename):
                   .withColumn("ahaOwner", F.when( F.col("CNTRL").isin([12,13,14,15,16]), 0) #government, non-federal
                                            .when( F.col("CNTRL").isin([21,23]), 1)          #non-government, not-for-profit
                                            .when( F.col("CNTRL").isin([31,32,33]), 2)       #investor-owned, for-profit
-                                           .when( F.col("CNTRL").isin([41,42,43,44,45,46,47,48]), 3) #government, federal
+                                           .when( F.col("CNTRL").isin([40,41,42,43,44,45,46,47,48]), 3) #government, federal
                                            .otherwise(F.lit(None))))
 
     if ahaYear > 2016:
