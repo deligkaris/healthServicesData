@@ -1411,16 +1411,16 @@ def add_nonPPS_info(ipClaimsDF, opBaseDF, opRevenueDF):
     #so for non-PPS hospitals I need to search in the outpatient file...
     #as a test, doing this for the PPS hospitals (PPS_IND==2) should yield exactly zero
 
-    opBaseDF = opBaseDF.join(ipClaimsDF.filter(F.col("PPS_IND").isNull())
-                              .select(F.col("ORGNPINM"), F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY")),
-                             on=[ipClaimsDF.ADMSN_DT_DAY == opBaseDF.THRU_DT_DAY,
-                                 #ipClaimsStrokes.ADMSN_DT_DAY >= opBase.THRU_DT_DAY,
-                                 #ipClaimsStrokes.ADMSN_DT_DAY <= opBase.THRU_DT_DAY+1,
-                                 ipClaimsDF.DSYSRTKY==opBaseDF.DSYSRTKY, 
-                                 ipClaimsDF.ORGNPINM==opBaseDF.ORGNPINM],
-                             how="left_semi")
+    #opBaseDF = opBaseDF.join(ipClaimsDF.filter(F.col("PPS_IND").isNull())
+    #                          .select(F.col("ORGNPINM"), F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY")),
+    #                         on=[ipClaimsDF.ADMSN_DT_DAY == opBaseDF.THRU_DT_DAY,
+    #                             #ipClaimsStrokes.ADMSN_DT_DAY >= opBase.THRU_DT_DAY,
+    #                             #ipClaimsStrokes.ADMSN_DT_DAY <= opBase.THRU_DT_DAY+1,
+    #                             ipClaimsDF.DSYSRTKY==opBaseDF.DSYSRTKY, 
+    #                             ipClaimsDF.ORGNPINM==opBaseDF.ORGNPINM],
+    #                         how="left_semi")
 
-    opRevenueDF = filter_claims(opRevenueDF, opBaseDF)
+    #opRevenueDF = filter_claims(opRevenueDF, opBaseDF)
     opRevenueDF = add_ed(opRevenueDF, inClaim=True)
     opRevenueDF = add_mri(opRevenueDF, inClaim=True)
     opRevenueDF = add_ct(opRevenueDF, inClaim=True)
