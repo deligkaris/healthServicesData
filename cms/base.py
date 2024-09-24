@@ -1420,7 +1420,9 @@ def add_nonPPS_info(ipClaimsDF, opBaseDF, opRevenueDF):
     #                             ipClaimsDF.ORGNPINM==opBaseDF.ORGNPINM],
     #                         how="left_semi")
 
-    #opRevenueDF = filter_claims(opRevenueDF, opBaseDF)
+    opBaseDF = opBaseDF.filter(F.col("PPS_IND").isNull())
+
+    opRevenueDF = filter_claims(opRevenueDF, opBaseDF)
     opRevenueDF = add_ed(opRevenueDF, inClaim=True)
     opRevenueDF = add_mri(opRevenueDF, inClaim=True)
     opRevenueDF = add_ct(opRevenueDF, inClaim=True)
