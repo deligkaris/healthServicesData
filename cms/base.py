@@ -1428,11 +1428,11 @@ def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
                                            F.col("ct").alias("opct")),
                                   on=["ORGNPINM","DSYSRTKY","ADMSN_DT_DAY"],
                                   how="left_outer")
-                   .fillna(0, subset=["oped","opmri","opct"])
-                   .withColumn("ed", ((F.col("ed").cast("boolean"))|(F.col("oped").cast("boolean"))).cast('int'))
-                   .withColumn("mri", ((F.col("mri").cast("boolean"))|(F.col("opmri").cast("boolean"))).cast('int'))
-                   .withColumn("ct", ((F.col("ct").cast("boolean")) | ((F.col("opct").cast("boolean")))).cast('int'))
-                   .drop("oped","opmri","opct"))
+                   .fillna(0, subset=["oped","opmri","opct"]))
+           #        .withColumn("ed", ((F.col("ed").cast("boolean"))|(F.col("oped").cast("boolean"))).cast('int'))
+           #        .withColumn("mri", ((F.col("mri").cast("boolean"))|(F.col("opmri").cast("boolean"))).cast('int'))
+           #        .withColumn("ct", ((F.col("ct").cast("boolean")) | ((F.col("opct").cast("boolean")))).cast('int'))
+           #        .drop("oped","opmri","opct"))
     return ipClaimsDF
 
 
