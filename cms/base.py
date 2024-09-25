@@ -1411,28 +1411,19 @@ def add_nonPPS_info(ipClaimsDF, opBaseDF, opRevenueDF):
     #so for non-PPS hospitals I need to search in the outpatient file...
     #as a test, doing this for the PPS hospitals (PPS_IND==2) should yield exactly zero
 
-    #opBaseDF = opBaseDF.join(ipClaimsDF.filter(F.col("PPS_IND").isNull())
-    #                          .select(F.col("ORGNPINM"), F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY")),
-    #                         on=[ipClaimsDF.ADMSN_DT_DAY == opBaseDF.THRU_DT_DAY,
-    #                             #ipClaimsStrokes.ADMSN_DT_DAY >= opBase.THRU_DT_DAY,
-    #                             #ipClaimsStrokes.ADMSN_DT_DAY <= opBase.THRU_DT_DAY+1,
-    #                             ipClaimsDF.DSYSRTKY==opBaseDF.DSYSRTKY, 
-    #                             ipClaimsDF.ORGNPINM==opBaseDF.ORGNPINM],
-    #                         how="left_semi")
+    opBaseDF = opBaseDF.join(ipClaimsDF.filter(F.col("PPS_IND").isNull())
+                              .select(F.col("ORGNPINM"), F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY")),
+                             on=[ipClaimsDF.ADMSN_DT_DAY == opBaseDF.THRU_DT_DAY,
+                                 #ipClaimsStrokes.ADMSN_DT_DAY >= opBase.THRU_DT_DAY,
+                                 #ipClaimsStrokes.ADMSN_DT_DAY <= opBase.THRU_DT_DAY+1,
+                                 ipClaimsDF.DSYSRTKY==opBaseDF.DSYSRTKY, 
+                                 ipClaimsDF.ORGNPINM==opBaseDF.ORGNPINM],
+                             how="left_semi")
 
-    opBaseDF = opBaseDF.filter(F.col("PPS_IND").isNull())
-
-    opRevenueDF = filter_claims(opRevenueDF, opBaseDF)
-    opRevenueDF = add_ed(opRevenueDF, inClaim=True)
-    opRevenueDF = add_mri(opRevenueDF, inClaim=True)
-    opRevenueDF = add_ct(opRevenueDF, inClaim=True)
-
-    opRevenueDFSummary = get_revenue_summary(opRevenueDF)
-
+    opRevenueDFSummary = get_revenue_info(opRevenueDF, opBaseDF, inClaim=True)
     opClaimsDF = get_claimsDF(opBaseDF,opRevenueDFSummary).filter(F.col("ed")==1)
 
-    #now bring back to the ip claims the updated information about the non-PPS hospitals
-    ipClaimsDF = (ipClaimsDF.join(opClaimsDF
+    ipClaimsDF = (ipClaimsDF.join(opClaimsDF #now bring back to the ip claims the updated information about the non-PPS hospitals
                                    .select(F.col("ORGNPINM"),F.col("DSYSRTKY"),
                                            F.col("THRU_DT_DAY").alias("ADMSN_DT_DAY"),
                                            F.col("ed").alias("oped"),
@@ -1440,12 +1431,11 @@ def add_nonPPS_info(ipClaimsDF, opBaseDF, opRevenueDF):
                                            F.col("ct").alias("opct")),
                                   on=["ORGNPINM","DSYSRTKY","ADMSN_DT_DAY"],
                                   how="left_outer")
-                   .fillna(0, subset=["oped","opmri","opct"])
-                   .withColumn("ed", ((F.col("ed").cast("boolean"))|(F.col("oped").cast("boolean"))).cast('int'))
-                   .withColumn("mri", ((F.col("mri").cast("boolean"))|(F.col("opmri").cast("boolean"))).cast('int'))
-                   .withColumn("ct", ((F.col("ct").cast("boolean")) | ((F.col("opct").cast("boolean")))).cast('int'))
-                   .drop("oped","opmri","opct"))
-
+                   .fillna(0, subset=["oped","opmri","opct"]))
+                   #.withColumn("ed", ((F.col("ed").cast("boolean"))|(F.col("oped").cast("boolean"))).cast('int'))
+                   #.withColumn("mri", ((F.col("mri").cast("boolean"))|(F.col("opmri").cast("boolean"))).cast('int'))
+                   #.withColumn("ct", ((F.col("ct").cast("boolean")) | ((F.col("opct").cast("boolean")))).cast('int')))
+                   #.drop("oped","opmri","opct"))
     return ipClaimsDF
 
 
