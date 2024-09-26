@@ -353,12 +353,10 @@ def add_providerCountyName(baseDF,cbsaDF): #assumes providerFIPS
     return baseDF
 
 def add_providerRegion(baseDF):
-
     westCondition = '(F.col("providerStateFIPS").isin(usRegionFipsCodes["west"]))' 
     southCondition = '(F.col("providerStateFIPS").isin(usRegionFipsCodes["south"]))'
     midwestCondition = '(F.col("providerStateFIPS").isin(usRegionFipsCodes["midwest"]))'
     northeastCondition = '(F.col("providerStateFIPS").isin(usRegionFipsCodes["northeast"]))'
-
     baseDF = baseDF.withColumn("providerRegion",
                                F.when( eval(westCondition), 4)
                                 .when( eval(southCondition), 3)
@@ -366,6 +364,13 @@ def add_providerRegion(baseDF):
                                 .when( eval(northeastCondition), 1) 
                                 .otherwise(F.lit(None)))
 
+    return baseDF
+
+def add_ccnCah(baseDF):
+    #https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r29soma.pdf   this is the CMS manual system
+    baseDF = baseDF.withColumn("ccnCah", F.when( ((F.substring(F.col("PROVIDER"),3,4).cast('int') >= 1300) & 
+                                                  (F.substring(F.col("PROVIDER"),3,4).cast('int') <= 1399) ), 1)
+                                          .otherwise(0))
     return baseDF
 
 def add_providerFIPSToNulls(baseDF,posDF,zipToCountyDF): #assumes add_providerCounty
@@ -399,11 +404,10 @@ def add_provider_pos_info(baseDF, posDF):
     #                     #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
     #                     how="left_outer")
     #the posDF will give me ~99.9%of the providerFIPS codes
-    baseDF = (baseDF.join(posDF.select( F.col("PRVDR_NUM"),F.col("providerFIPS"), F.col("providerStateFIPS"),
-                                        F.col("GNRL_CNTL_TYPE_CD"), F.col("cah").alias("providerIsCah") ),
-                         on=[F.col("PRVDR_NUM")==F.col("PROVIDER")],
-                         how="left_outer")
-                     .drop("PRVDR_NUM"))
+    baseDF = (baseDF.join(posDF.select( F.col("PRVDR_NUM").alias("PROVIDER"), F.col("providerFIPS"), F.col("providerStateFIPS"),
+                                        F.col("GNRL_CNTL_TYPE_CD"), F.col("cah").alias("posCah") ),
+                         on=["PROVIDER"],
+                         how="left_outer"))
     return baseDF
 
 def add_providerSysId(baseDF, chspHospDF):
@@ -424,6 +428,7 @@ def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetr
     baseDF = add_provider_npi_info(baseDF, npiProvidersDF)
     baseDF = add_provider_pos_info(baseDF, posDF)
     baseDF = add_providerRegion(baseDF)
+    baseDF = add_ccnCah(baseDF)
     baseDF = add_providerCountyName(baseDF, cbsaDF)
     baseDF = add_providerRucc(baseDF, ersRuccDF)
     baseDF = add_providerMaPenetration(baseDF, maPenetrationDF)
@@ -1360,49 +1365,33 @@ def add_los_total_info(baseDF):
     return baseDF 
 
 def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
-
-    #baseDF = add_los_at_X_info(baseDF, snfDF, X="snf")
-    #baseDF = add_los_at_X_info(baseDF, hhaDF, X="hha")
-    #baseDF = add_los_at_X_info(baseDF, hospDF, X="hosp")
-    #baseDF = add_los_at_X_info(baseDF, ipDF, X="ip")
-
-    #baseDF = add_los_total_info(baseDF)
-
-    #snfDF = (snfDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-    #       .join(baseDF.select("DSYSRTKY"),
-    #             on="DSYSRTKY",
-    #             how="left_semi"))
-    #hhaDF = (hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-    #       .join(baseDF.select("DSYSRTKY"),
-    #             on="DSYSRTKY",
-    #             how="left_semi"))
-    #hospDF = (hospDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-    #       .join(baseDF.select("DSYSRTKY"),
-    #             on="DSYSRTKY",
-    #             how="left_semi"))
-    #ipDF = (ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-    #       .join(baseDF.select("DSYSRTKY"),
-    #             on="DSYSRTKY",
-    #             how="left_semi"))
-    #allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, hhaDF, ipDF])
-    
+    #here I am using the definition of Fonarow2016, with the difference that I am including hospice
     snfDF = snfDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY"))
-    hhaDF = hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
     hospDF = hospDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
     ipDF = ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, hhaDF, ipDF])
+    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF])
              .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
-
     baseDF = add_los_at_X_info(baseDF, allDF, X="all")
-
     baseDF = add_los_total_info(baseDF)
-
-    baseDF = (baseDF.withColumn("homeDaysTotal90", F.when( F.col("STUS_CD")==20, F.lit(None))
+    baseDF = (baseDF.withColumn("homeDaysTotal90", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                     .when( F.col("90DaysAfterAdmissionDateDead")==1, F.lit(None))
                                                     .otherwise( 90-F.col("losTotal90") ))
-                    .withColumn("homeDaysTotal365", F.when( F.col("STUS_CD")==20, F.lit(None))
+                    .withColumn("homeDaysTotal365", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                     .when( F.col("365DaysAfterAdmissionDateDead")==1, F.lit(None))
                                                     .otherwise( 365-F.col("losTotal365") )))
+
+    #now include HHA and label these as home living independently rates
+    hhaDF = hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
+    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [allDF, hhaDF])
+             .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
+    baseDF = add_los_at_X_info(baseDF, allDF, X="all")
+    baseDF = add_los_total_info(baseDF)
+    baseDF = (baseDF.withColumn("homeDaysIndependentTotal90", F.when( F.col("STUS_CD")==20, F.lit(0))
+                                                               .when( F.col("90DaysAfterAdmissionDateDead")==1, F.lit(None))
+                                                               .otherwise( 90-F.col("losTotal90") ))
+                    .withColumn("homeDaysIndependentTotal365", F.when( F.col("STUS_CD")==20, F.lit(0))
+                                                                .when( F.col("365DaysAfterAdmissionDateDead")==1, F.lit(None))
+                                                                .otherwise( 365-F.col("losTotal365") )))
     return baseDF
 
 def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
