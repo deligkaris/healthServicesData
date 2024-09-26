@@ -1332,11 +1332,11 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
             .withColumnRenamed(f"losDaysOver{XString}Until365DaysFromADMSN_DT_DAY", f"losDaysAt{X}365"))
 
     #bring results back to base 
-    baseDF = baseDF.join(XDF.select(F.col("baseCLAIMNO").alias("CLAIMNO"),
+    baseDF = baseDF.join(XDF.select(F.col("baseCLAIMNO").alias("CLAIMNO"), F.col("DSYSRTKY"),
                                     F.col(f"losAt{X}90"), F.col(f"losDaysAt{X}90"),
                                     F.col(f"losAt{X}365"), F.col(f"losDaysAt{X}365"))
                             .distinct(),
-                         on="CLAIMNO",
+                         on=["CLAIMNO","DSYSRTKY"],
                          how="left_outer")
 
     # if a beneficiary does not have other X claims, put a 0
