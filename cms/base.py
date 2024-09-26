@@ -1347,7 +1347,7 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
 
     return baseDF
 
-def add_los_total_info(baseDF):
+def add_los_total_info(baseDF, X="all"):
 
     #losDays90Columns = [c for c in baseDF.columns if re.match('^losDaysAt[a-zA-Z]+90$', c)]
     #losDays365Columns = [c for c in baseDF.columns if re.match('^losDaysAt[a-zA-Z]+365$', c)]
@@ -1356,12 +1356,12 @@ def add_los_total_info(baseDF):
     #                .withColumn("losDaysTotal365", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+365$`"))))
     #baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( F.concat( *losDays90Columns  )))
     #                .withColumn("losDaysTotal365", F.array_distinct( F.concat( *losDays365Columns )))
-    baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( "losDaysAtall90" ))
-                    .withColumn("losDaysTotal365", F.array_distinct( "losDaysAtall365" ))
-                    .withColumn("losTotal90", F.when( F.col("losDaysTotal90").isNull(), 0)
-                                               .otherwise( F.size(F.col("losDaysTotal90"))))
-                    .withColumn("losTotal365", F.when( F.col("losDaysTotal365").isNull(), 0)
-                                               .otherwise( F.size(F.col("losDaysTotal365")))))
+    baseDF = (baseDF.withColumn("losDaysAt{X}Total90", F.array_distinct( f"losDaysAt{X}90" ))
+                    .withColumn("losDaysAt{X}Total365", F.array_distinct( f"losDaysAt{X}365" ))
+                    .withColumn("losAt{X}Total90", F.when( F.col("losDaysAt{X}Total90").isNull(), 0)
+                                                    .otherwise( F.size(F.col("losDaysAt{X}Total90"))))
+                    .withColumn("losAt{X}Total365", F.when( F.col("losDaysAt{X}Total365").isNull(), 0)
+                                                     .otherwise( F.size(F.col("losDaysAt{X}Total365")))))
     return baseDF 
 
 def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
@@ -1371,27 +1371,27 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
     ipDF = ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
     allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF])
              .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
-    baseDF = add_los_at_X_info(baseDF, allDF, X="all")
-    baseDF = add_los_total_info(baseDF)
+    baseDF = add_los_at_X_info(baseDF, allDF, X="allMinusHha")
+    baseDF = add_los_total_info(baseDF, X="allMinusHha")
     baseDF = (baseDF.withColumn("homeDaysTotal90", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                     .when( F.col("90DaysAfterAdmissionDateDead")==1, F.lit(None))
-                                                    .otherwise( 90-F.col("losTotal90") ))
+                                                    .otherwise( 90-F.col("losAtallMinusHhaTotal90") ))
                     .withColumn("homeDaysTotal365", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                     .when( F.col("365DaysAfterAdmissionDateDead")==1, F.lit(None))
-                                                    .otherwise( 365-F.col("losTotal365") )))
+                                                    .otherwise( 365-F.col("losAtallMinusHhaTotal365") )))
 
     #now include HHA and label these as home living independently rates
     hhaDF = hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
     allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [allDF, hhaDF])
              .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
     baseDF = add_los_at_X_info(baseDF, allDF, X="all")
-    baseDF = add_los_total_info(baseDF)
+    baseDF = add_los_total_info(baseDF, X="all")
     baseDF = (baseDF.withColumn("homeDaysIndependentTotal90", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                                .when( F.col("90DaysAfterAdmissionDateDead")==1, F.lit(None))
-                                                               .otherwise( 90-F.col("losTotal90") ))
+                                                               .otherwise( 90-F.col("losAtallTotal90") ))
                     .withColumn("homeDaysIndependentTotal365", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                                 .when( F.col("365DaysAfterAdmissionDateDead")==1, F.lit(None))
-                                                                .otherwise( 365-F.col("losTotal365") )))
+                                                                .otherwise( 365-F.col("losAtallTotal365") )))
     return baseDF
 
 def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
