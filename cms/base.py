@@ -1356,12 +1356,12 @@ def add_los_total_info(baseDF, X="all"):
     #                .withColumn("losDaysTotal365", F.array_distinct( F.concat( baseDF.colRegex("`^losDaysAt[a-zA-Z]+365$`"))))
     #baseDF = (baseDF.withColumn("losDaysTotal90", F.array_distinct( F.concat( *losDays90Columns  )))
     #                .withColumn("losDaysTotal365", F.array_distinct( F.concat( *losDays365Columns )))
-    baseDF = (baseDF.withColumn("losDaysAt{X}Total90", F.array_distinct( f"losDaysAt{X}90" ))
-                    .withColumn("losDaysAt{X}Total365", F.array_distinct( f"losDaysAt{X}365" ))
-                    .withColumn("losAt{X}Total90", F.when( F.col("losDaysAt{X}Total90").isNull(), 0)
-                                                    .otherwise( F.size(F.col("losDaysAt{X}Total90"))))
-                    .withColumn("losAt{X}Total365", F.when( F.col("losDaysAt{X}Total365").isNull(), 0)
-                                                     .otherwise( F.size(F.col("losDaysAt{X}Total365")))))
+    baseDF = (baseDF.withColumn(f"losDaysAt{X}Total90", F.array_distinct( f"losDaysAt{X}90" ))
+                    .withColumn(f"losDaysAt{X}Total365", F.array_distinct( f"losDaysAt{X}365" ))
+                    .withColumn(f"losAt{X}Total90", F.when( F.col(f"losDaysAt{X}Total90").isNull(), 0)
+                                                    .otherwise( F.size(F.col(f"losDaysAt{X}Total90"))))
+                    .withColumn(f"losAt{X}Total365", F.when( F.col(f"losDaysAt{X}Total365").isNull(), 0)
+                                                     .otherwise( F.size(F.col(f"losDaysAt{X}Total365")))))
     return baseDF 
 
 def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
