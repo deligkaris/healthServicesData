@@ -218,11 +218,11 @@ def prep_ahaDF(ahaDF, filename):
     #include a column so that I know which year the data was from, need this when I union the aha data from several years
     ahaDF = (ahaDF.withColumn("year", F.lit(ahaYear))
                   .withColumn("ahaACGME", F.col("MAPP3").cast('int'))        #one or more ACGME programs
-                  .withColumn("ahaACGME", F.when( F.col("ahaACGME")==2, 0).otherwise(F.col("ahaACGME")
+                  .withColumn("ahaACGME", F.when( F.col("ahaACGME")==2, 0).otherwise(F.col("ahaACGME")))
                   .withColumn("ahaMedSchoolAff", F.col("MAPP5").cast('int')) #medical school affiliation
-                  .withColumn("ahaMedSchoolAff", F.when( F.col("ahaMedSchoolAff")==2, 0).otherwise(F.col("ahaMedSchoolAff")
+                  .withColumn("ahaMedSchoolAff", F.when( F.col("ahaMedSchoolAff")==2, 0).otherwise(F.col("ahaMedSchoolAff")))
                   .withColumn("ahaCOTH", F.col("MAPP8").cast('int'))         #member of COTH
-                  .withColumn("ahaCOTH", F.when( F.col("ahaCOTH")==2, 0).otherwise(F.col("ahaCOTH")
+                  .withColumn("ahaCOTH", F.when( F.col("ahaCOTH")==2, 0).otherwise(F.col("ahaCOTH")))
                   .withColumn("ahaCah", F.col("MAPP18").cast('int'))         #critical access hospital
                   .withColumn("ahaCah", F.when( F.col("ahaCah")==2, 0).otherwise(F.col("ahaCah")))
                   .withColumn("ahaBeds", F.col("BDH").cast('int'))           #total facility beds - nursing home beds
