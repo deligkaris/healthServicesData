@@ -1384,7 +1384,7 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
 
     #now include HHA and label these as home living independently rates
     hhaDF = hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
-    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [allDF, hhaDF])
+    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF])
              .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
     baseDF = add_los_at_X_info(baseDF, allDF, X="all")
     baseDF = add_los_total_info(baseDF, X="all")
