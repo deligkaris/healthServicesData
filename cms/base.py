@@ -1374,10 +1374,12 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
     baseDF = add_los_at_X_info(baseDF, allDF, X="allMinusHha")
     baseDF = add_los_total_info(baseDF, X="allMinusHha")
     baseDF = (baseDF.withColumn("homeDaysTotal90", F.when( F.col("STUS_CD")==20, F.lit(0))
-                                                    .when( F.col("90DaysAfterAdmissionDateDead")==1, F.lit(None))
+                                                    .when( F.col("90DaysAfterAdmissionDateDead")==1, 
+                                                               F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") - F.col("losAtallMinusHhaTotal90"))
                                                     .otherwise( 90-F.col("losAtallMinusHhaTotal90") ))
                     .withColumn("homeDaysTotal365", F.when( F.col("STUS_CD")==20, F.lit(0))
-                                                    .when( F.col("365DaysAfterAdmissionDateDead")==1, F.lit(None))
+                                                    .when( F.col("365DaysAfterAdmissionDateDead")==1, 
+                                                               F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") - F.col("losAtallMinusHhaTotal365"))
                                                     .otherwise( 365-F.col("losAtallMinusHhaTotal365") )))
 
     #now include HHA and label these as home living independently rates
@@ -1387,10 +1389,12 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
     baseDF = add_los_at_X_info(baseDF, allDF, X="all")
     baseDF = add_los_total_info(baseDF, X="all")
     baseDF = (baseDF.withColumn("homeDaysIndependentTotal90", F.when( F.col("STUS_CD")==20, F.lit(0))
-                                                               .when( F.col("90DaysAfterAdmissionDateDead")==1, F.lit(None))
+                                                               .when( F.col("90DaysAfterAdmissionDateDead")==1, 
+                                                                           F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") - F.col("losAtallTotal90"))
                                                                .otherwise( 90-F.col("losAtallTotal90") ))
                     .withColumn("homeDaysIndependentTotal365", F.when( F.col("STUS_CD")==20, F.lit(0))
-                                                                .when( F.col("365DaysAfterAdmissionDateDead")==1, F.lit(None))
+                                                                .when( F.col("365DaysAfterAdmissionDateDead")==1, 
+                                                                            F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") - F.col("losAtallTotal365"))
                                                                 .otherwise( 365-F.col("losAtallTotal365") )))
     return baseDF
 
