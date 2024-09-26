@@ -1345,7 +1345,7 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
     baseDF = (baseDF.withColumn(f"losDaysAt{X}90", F.coalesce( F.col(f"losDaysAt{X}90"), F.array()))
                     .withColumn(f"losDaysAt{X}365",F.coalesce( F.col(f"losDaysAt{X}365"), F.array())))
 
-    return baseDF, XDF
+    return baseDF
 
 def add_los_total_info(baseDF, X="all"):
 
