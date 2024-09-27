@@ -1310,14 +1310,17 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
     #for every base claim, find the X claims that started after the base through date
     XDF = (XDF.join(baseDF.select(F.col("DSYSRTKY"), 
                                   F.col("CLAIMNO").alias("baseCLAIMNO"), 
-                                  F.col("THRU_DT_DAY").alias("baseTHRU_DT_DAY"), 
+                                  F.col("THRU_DT_DAY").alias("baseTHRU_DT_DAY"),
+                                  F.col("DEATH_DT_DAY"), 
                                   F.col("90DaysFromADMSN_DT_DAY"), 
                                   F.col("365DaysFromADMSN_DT_DAY")),
                     on="DSYSRTKY",
                     #on=[ baseDF.DSYSRTKY==XDF.DSYSRTKY,
                     #     XDF.ADMSN_DT_DAY - baseDF.baseTHRU_DT_DAY >= 0 ],
                     how="inner")  #inner join ensures that each X claim is matched will all relevant base claims
-              .filter(F.col("ADMSN_DT_DAY") - F.col("baseTHRU_DT_DAY") >= 0))        
+              .filter(F.col("ADMSN_DT_DAY") - F.col("baseTHRU_DT_DAY") >= 0)
+              #for a small number of beneficiaries and claims, the claims through date is after the death date, then manually set it to death date
+              .withColumn("THRU_DT_DAY", F.when( F.col("DEATH_DT_DAY")<F.col("THRU_DT_DAY"), F.col("DEATH_DT_DAY")).otherwise(F.col("THRU_DT_DAY"))))        
 
     XDF = add_losDays(XDF) #add a sequence of days that represents length of stay
 
@@ -1375,11 +1378,11 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
     baseDF = add_los_total_info(baseDF, X="allMinusHha")
     baseDF = (baseDF.withColumn("homeDaysTotal90", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                     .when( F.col("90DaysAfterAdmissionDateDead")==1, 
-                                                               F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") - F.col("losAtallMinusHhaTotal90"))
+                                                               F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtallMinusHhaTotal90"))
                                                     .otherwise( 90-F.col("losAtallMinusHhaTotal90") ))
                     .withColumn("homeDaysTotal365", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                     .when( F.col("365DaysAfterAdmissionDateDead")==1, 
-                                                               F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") - F.col("losAtallMinusHhaTotal365"))
+                                                               F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtallMinusHhaTotal365"))
                                                     .otherwise( 365-F.col("losAtallMinusHhaTotal365") )))
 
     #now include HHA and label these as home living independently rates
@@ -1390,11 +1393,11 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
     baseDF = add_los_total_info(baseDF, X="all")
     baseDF = (baseDF.withColumn("homeDaysIndependentTotal90", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                                .when( F.col("90DaysAfterAdmissionDateDead")==1, 
-                                                                           F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") - F.col("losAtallTotal90"))
+                                                                           F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtallTotal90"))
                                                                .otherwise( 90-F.col("losAtallTotal90") ))
                     .withColumn("homeDaysIndependentTotal365", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                                 .when( F.col("365DaysAfterAdmissionDateDead")==1, 
-                                                                            F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") - F.col("losAtallTotal365"))
+                                                                            F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtallTotal365"))
                                                                 .otherwise( 365-F.col("losAtallTotal365") )))
     return baseDF
 
