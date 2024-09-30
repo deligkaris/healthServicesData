@@ -621,8 +621,7 @@ def add_tpaOsu(baseDF):
 
 def add_beneficiary_info(baseDF, mbsfDF, cbsaDF, ersRuccDF, claimType="op"):
 
-    baseDF = add_age(baseDF, mbsfDF)
-    baseDF = add_death_date_info(baseDF,mbsfDF)
+    baseDF = add_mbsf_info(baseDF,mbsfDF)
     baseDF = add_daysDeadAfterThroughDate(baseDF)
     baseDF = add_90DaysAfterThroughDateDead(baseDF)
     baseDF = add_365DaysAfterThroughDateDead(baseDF)
@@ -637,10 +636,14 @@ def add_beneficiary_info(baseDF, mbsfDF, cbsaDF, ersRuccDF, claimType="op"):
 
     return baseDF
 
-def add_age(baseDF,mbsfDF):
-    baseDF = baseDF.join(mbsfDF.select( F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR").alias("THRU_DT_YEAR")),
-                         on = ["DSYSRTKY", "THRU_DT_YEAR"],
-                         how = "left_outer")
+def add_mbsf_info(baseDF,mbsfDF):
+    baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("ffsFirstMonth")),
+                          on = ["DSYSRTKY", "THRU_DT_YEAR"], #this join must be done on both dsysrtky and year
+                          how = "left_outer")
+                    .join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
+                                .select( F.col("DSYSRTKY"),F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") ),
+                          on="DSYSRTKY",    #this join must be done on dsysrtky only        
+                          how="left_outer")) 
     return baseDF
 
 def add_ssaCounty(baseDF):
@@ -890,12 +893,12 @@ def add_transferToIn(baseDF):
     baseDF = baseDF.withColumn( "transferToIn", F.when( F.col("STUS_CD").isin([2,5]), 1).otherwise(0))
     return baseDF
 
-def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
-    baseDF = baseDF.join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
-                                .select( F.col("DSYSRTKY"),F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") ),
-                          on="DSYSRTKY",            
-                          how="left_outer") 
-    return baseDF
+#def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
+#    baseDF = baseDF.join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
+#                                .select( F.col("DSYSRTKY"),F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") ),
+#                          on="DSYSRTKY",            
+#                          how="left_outer") 
+#    return baseDF
 
 def add_daysDeadAfterThroughDate(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
 
