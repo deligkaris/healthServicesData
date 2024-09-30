@@ -8,7 +8,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.types import StructType
 import re
 from functools import reduce
-from utilities import yearMin, yearMax, daysInYearsPrior
+from utilities import yearMin, yearMax, daysInYearsPrior, monthsInYearsPrior
 
 yearJKTransition = 2016 #year CMS switched from J to K format
 yearMinWithCMSData = 2012
