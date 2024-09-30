@@ -27,7 +27,8 @@ def add_allPartAB(mbsfDF):
     mbsfDF = (mbsfDF.withColumn("partABArray", 
                                 F.array( [F.when( F.col("BUYIN" + str(x)).isin(partABCodes), 1 ).otherwise(0) for x in range(1,13)]))
                     .withColumn("partABFirstMonthOfYear", F.array_position(F.col("partABArray"), 1).cast('int'))
-                    .withColumn("partABLastMonthOfYear", F.when( F.col("DEATH_DT_MONTH").isNull(), 12).otherwise(F.col("DEATH_DT_MONTH")))
+                    .withColumn("partABLastMonthOfYear", F.when( (F.col("DEATH_DT_MONTH").isNull()) | (F.col("DEATH_DT_YEAR")>F.col("RFRNC_YR")) , 12)
+                                                          .otherwise(F.col("DEATH_DT_MONTH")))
                     .withColumn("partABArraySliced",
                                 F.when( F.col("partABFirstMonthOfYear")>0, 
                                         F.expr("slice(partABArray, partABFirstMonthOfYear, partABLastMonthOfYear-partABFirstMonthOfYear+1)"))
