@@ -1440,7 +1440,7 @@ def add_hospitalization_info(baseDF, ipBaseDF):
     ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"))
 
     baseDF = (baseDF.join(
-                       ipBaseDF.join(baseDF.select("DSYSRTKY"),
+                       ipBaseDF.join(baseDF.select("DSYSRTKY","THRU_DT_DAY","CLAIMNO"),
                                      on="DSYSRTKY",
                                      how="inner")
                                .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") <= 365)
@@ -1454,7 +1454,7 @@ def add_hospitalization_info(baseDF, ipBaseDF):
                     .fillna(0, subset="hospitalizationsIn12Months"))
 
     baseDF = (baseDF.join(
-                       ipBaseDF.join(baseDF.select("DSYSRTKY"),
+                       ipBaseDF.join(baseDF.select("DSYSRTKY","THRU_DT_DAY","CLAIMNO"),
                                      on="DSYSRTKY",
                                      how="inner")
                                .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") <= 182)
