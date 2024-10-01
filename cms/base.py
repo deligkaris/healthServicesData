@@ -1460,7 +1460,7 @@ def add_hospitalization_info(baseDF, ipBaseDF):
                                      how="inner")
                                .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") <= 182)
                                .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") >= 1)
-                               .withColumn("hospitalizationsIn12Months", F.count(F.col("DSYSRTKY")).over(eachOpClaim))
+                               .withColumn("hospitalizationsIn6Months", F.count(F.col("DSYSRTKY")).over(eachOpClaim))
                                .select(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO","hospitalizationsIn6Months"])
                                .distinct(),
                                #.withColumn("hospitalizationsIn12Months", F.size(F.collect_list(F.col("ipCLAIMNO")).over(eachOpClaim))) #same results
