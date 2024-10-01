@@ -1434,6 +1434,29 @@ def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
                    .drop("oped","opmri","opct"))
     return ipClaimsDF
 
+def add_hospitalization_info(baseDF, ipBaseDF):
+    eachOpClaim = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO"])
+
+    ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"))
+    baseDF = baseDF.select(F.col("DSYSRTKY"), F.col("CLAIMNO"), F.col("THRU_DT_DAY"))
+
+    ipBaseDF = (ipBaseDF.join(baseDF,
+                              on="DSYSRTKY",
+                              how="inner")
+                        .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") <= 365)
+                        .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") >= 1)
+                        .withColumn("hospitalizationsIn12Months", F.count(F.col("DSYSRTKY")).over(eachOpClaim))
+                        #.withColumn("hospitalizationsIn12Months", F.size(F.collect_list(F.col("ipCLAIMNO")).over(eachOpClaim))) #produces same results 
+                        .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") <= 182)
+                        .withColumn("hospitalizationsIn6Months", F.count(F.col("DSYSRTKY")).over(eachOpClaim))
+                        .select(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO","hospitalizationsIn12Months", "hospitalizationsIn6Months"])
+                        .distinct())
+
+    baseDF = (baseDF.join(ipBaseDF,
+                          on=["DSYSRTKY", "CLAIMNO", "THRU_DT_DAY"],
+                          how="left_outer")
+                    .fillna(0, subset="hospitalizationsIn12Months").fillna(0, subset="hospitalizationsIn6Months"))
+    return baseDF
 
 
 
