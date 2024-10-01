@@ -1437,7 +1437,7 @@ def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
 def add_hospitalization_info(baseDF, ipBaseDF):
     eachBaseClaim = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO"])
 
-    ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_DAY").alias("ipTHRU_DT_DAY")
+    ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_DAY").alias("ipTHRU_DT_DAY"))
 
     baseDF = (baseDF.join(
                        ipBaseDF.join(baseDF.select("DSYSRTKY","THRU_DT_DAY","CLAIMNO"),
