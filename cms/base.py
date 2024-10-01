@@ -1435,17 +1435,17 @@ def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
     return ipClaimsDF
 
 def add_hospitalization_info(baseDF, ipBaseDF):
-    eachOpClaim = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO"])
+    eachBaseClaim = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO"])
 
-    ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"))
+    ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_DAY").alias("ipTHRU_DT_DAY")
 
     baseDF = (baseDF.join(
                        ipBaseDF.join(baseDF.select("DSYSRTKY","THRU_DT_DAY","CLAIMNO"),
                                      on="DSYSRTKY",
                                      how="inner")
-                               .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") <= 365)
-                               .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") >= 1)
-                               .withColumn("hospitalizationsIn12Months", F.count(F.col("DSYSRTKY")).over(eachOpClaim))
+                               .filter(F.col("THRU_DT_DAY") - F.col("ipTHRU_DT_DAY") <= 365)
+                               .filter(F.col("THRU_DT_DAY") - F.col("ipTHRU_DT_DAY") >= 1)
+                               .withColumn("hospitalizationsIn12Months", F.count(F.col("DSYSRTKY")).over(eachBaseClaim))
                                .select(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO","hospitalizationsIn12Months"])
                                .distinct(),
                                #.withColumn("hospitalizationsIn12Months", F.size(F.collect_list(F.col("ipCLAIMNO")).over(eachOpClaim))) #same results
@@ -1457,9 +1457,9 @@ def add_hospitalization_info(baseDF, ipBaseDF):
                        ipBaseDF.join(baseDF.select("DSYSRTKY","THRU_DT_DAY","CLAIMNO"),
                                      on="DSYSRTKY",
                                      how="inner")
-                               .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") <= 182)
-                               .filter(F.col("THRU_DT_DAY") - F.col("ADMSN_DT_DAY") >= 1)
-                               .withColumn("hospitalizationsIn6Months", F.count(F.col("DSYSRTKY")).over(eachOpClaim))
+                               .filter(F.col("THRU_DT_DAY") - F.col("ipTHRU_DT_DAY") <= 182)
+                               .filter(F.col("THRU_DT_DAY") - F.col("ipTHRU_DT_DAY") >= 1)
+                               .withColumn("hospitalizationsIn6Months", F.count(F.col("DSYSRTKY")).over(eachBaseClaim))
                                .select(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO","hospitalizationsIn6Months"])
                                .distinct(),
                                #.withColumn("hospitalizationsIn12Months", F.size(F.collect_list(F.col("ipCLAIMNO")).over(eachOpClaim))) #same results
