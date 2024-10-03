@@ -825,9 +825,8 @@ def add_rehabilitationFromCCN(baseDF):
 
 def add_rehabilitation(baseDF):
     baseDF = add_rehabilitationFromCCN(baseDF)
-    baseDF = (baseDF.withColumn("rehabilitation", F.when( (F.col("rehabilitationFromCCN")==1) | (F.col("rehabilitationFromTaxonomyPrimary")==1), 1)
-                                                   .otherwise(0))
-                    .drop("rehabilitationFromCCN", "rehabilitationFromTaxonomyPrimary"))
+    baseDF = baseDF.withColumn("rehabilitation", F.when( (F.col("rehabilitationFromCCN")==1) | (F.col("rehabilitationFromTaxonomyPrimary")==1), 1)
+                                                  .otherwise(0))
     return baseDF
 
 def add_hospitalFromClaim(baseDF):
