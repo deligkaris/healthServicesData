@@ -323,7 +323,7 @@ def add_provider_npi_info(baseDF, npiProviderDF, primary=True):
                                               .alias("providerAddress"),
                           F.col("Provider Business Practice Location Address Postal Code").substr(1,5).alias("providerZip"),
                           F.col("Provider Business Practice Location Address State Name").alias("providerState")),
-                      on = [F.col("ORGNPINM") == F.col("NPI")],
+                      on = ["ORGNPINM"],
                       how = "left_outer")
     return baseDF
 
