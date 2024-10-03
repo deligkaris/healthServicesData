@@ -225,6 +225,19 @@ def add_anyEsrd(mbsfDF):
     #ESRD_IND==Y OR CREC in (2,3) OR OREC in (2,3) OR MDCR_STUS_CD in (11,21,31) (any of the 12)
     #I got to a number of beneficiaries that when multiplied by 100/67 is fairly close to the 760,000 that I see as the estimated ESRD 
     #prevalence rate for 2017.
+    #Another Resdac note:
+    #I do know that the USRDS data is the ‘gold standard' for studying ESRD, so if your project focuses on that population you might 
+    #look into requesting that data.
+    #https://resdac.org/articles/data-resources-studying-end-stage-renal-disease-esrd
+    #I heard back from our analyst, and she was also slightly skeptical of the statement, “excluding Medicare managed care and end stage 
+    #renal disease beneficiaries due to incomplete claims data in these groups”, especially because the study population sighted was an over 65 population.
+    #Studying ESRD in a younger population could result in incomplete claims due to enrollment limitations, plus the entitlement ends 36 months after 
+    #transplant. Another potential limitation: perhaps the authors were concerned about the impact of the ESRD PPS bundling, but we do not believe 
+    #this would impact the ability to see hospital transfers.
+    #Other than that, we’re really not aware of any reason why the claims would be incomplete for a population with ESRD over age 65. The gold standard 
+    #data source, USRDS, combines CMS administrative claims data as part of their data set.
+    #We believe the FFS data for benes with ESRD to be representative.
+
     mbsfDF = (mbsfDF.withColumn("mdcrStusArray", F.array(["MDCR_STUS_CD_" + str(x).zfill(2) for x in range(1,13)]))
                     .withColumn("anyEsrdInMdcrStus", 
                                 F.when( F.size( F.expr(f"filter(mdcrStusArray, x -> x in (11,21,31))") )>0, 1).otherwise(0))
