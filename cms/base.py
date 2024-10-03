@@ -304,9 +304,14 @@ def add_numberOfXOverY(baseDF, X="ORGNPINM", Y=["DSYSRTKY","ADMSN_DT"]):
 
     return baseDF                            
 
-def add_provider_npi_info(baseDF, npiProviderDF):
-    baseDF = (baseDF.join(npiProviderDF.select(
-                          F.col("NPI"),
+def add_provider_npi_info(baseDF, npiProviderDF, primary=True):
+    gachColName = "gachPrimary" if primary else "gachAll"
+    rehabilitationColName = "rehabilitationPrimary" if primary else "rehabilitationAll"
+
+    baseDF = baseDF.join(npiProviderDF.select(
+                          F.col("NPI").alias("ORGNPINM"),
+                          F.col(gachColName).alias("gach"), 
+                          F.col(rehabilitationColName).alias("rehabilitationFromTaxonomy"),
                           F.col("Provider Organization Name (Legal Business Name)").alias("providerName"),
                           F.col("Provider Other Organization Name").alias("providerOtherName"),
                           F.concat_ws(",",
@@ -320,7 +325,6 @@ def add_provider_npi_info(baseDF, npiProviderDF):
                           F.col("Provider Business Practice Location Address State Name").alias("providerState")),
                       on = [F.col("ORGNPINM") == F.col("NPI")],
                       how = "left_outer")
-                    .drop(F.col("NPI")))
     return baseDF
 
 def add_providerCountyName(baseDF,cbsaDF): #assumes providerFIPS
@@ -429,6 +433,8 @@ def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetr
     baseDF = add_provider_pos_info(baseDF, posDF)
     baseDF = add_providerRegion(baseDF)
     baseDF = add_ccnCah(baseDF)
+    baseDF = add_rehabilitation(baseDF)
+    baseDF = add_hospitalFromClaim(baseDF)
     baseDF = add_providerCountyName(baseDF, cbsaDF)
     baseDF = add_providerRucc(baseDF, ersRuccDF)
     baseDF = add_providerMaPenetration(baseDF, maPenetrationDF)
@@ -803,22 +809,6 @@ def test_get_aggregate_summary(summaryDF):
     if (allWell==1):
         print("No issues found.")
 
-def add_gach(baseDF, npiProvidersDF, primary=True):
-    gachColName = "gachPrimary" if primary else "gachAll"
-    baseDF = (baseDF.join(npiProvidersDF.select( F.col("NPI"), F.col(gachColName).alias("gach") ),
-                         on = [baseDF["ORGNPINM"] == npiProvidersDF["NPI"]],
-                         how = "inner")
-                    .drop(F.col("NPI")))
-    return baseDF
-
-def add_rehabilitationFromTaxonomy(baseDF, npiProvidersDF, primary=True):
-    rehabilitationColName = "rehabilitationPrimary" if primary else "rehabilitationAll"
-    baseDF = (baseDF.join(npiProvidersDF.select( F.col("NPI"), F.col(rehabilitationColName).alias("rehabilitationFromTaxonomy") ),
-                         on = [baseDF["ORGNPINM"] == npiProvidersDF["NPI"]],
-                         how = "left_outer")
-                    .drop(F.col("NPI")))
-    return baseDF
-
 def add_rehabilitationFromCCN(baseDF):
     #https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r29soma.pdf
     #this function is using CCN numbers to flag rehabilitation hospitals and rehabilitation units within hospitals
@@ -830,16 +820,15 @@ def add_rehabilitationFromCCN(baseDF):
                                 .otherwise(0))
     return baseDF 
 
-def add_rehabilitation(baseDF, npiProvidersDF, primary=True):
-    baseDF = add_rehabilitationFromTaxonomy(baseDF, npiProvidersDF, primary=primary)
+def add_rehabilitation(baseDF):
     baseDF = add_rehabilitationFromCCN(baseDF)
     baseDF = (baseDF.withColumn("rehabilitation", F.when( (F.col("rehabilitationFromCCN")==1) | (F.col("rehabilitationFromTaxonomy")==1), 1)
                                                    .otherwise(0))
                     .drop("rehabilitationFromCCN", "rehabilitationFromTaxonomy"))
     return baseDF
 
-def add_hospital(baseDF):
-    baseDF = baseDF.withColumn( "hospital", F.when( F.col("FAC_TYPE") == 1, 1).otherwise(0))
+def add_hospitalFromClaim(baseDF):
+    baseDF = baseDF.withColumn( "hospitalFromClaim", F.when( F.col("FAC_TYPE") == 1, 1).otherwise(0))
     return baseDF
 
 #two ways of adding some useful hospital information (rural/urban, number of beds etc): from community benefits insight (CBI), from hospital cost report
