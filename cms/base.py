@@ -1425,37 +1425,44 @@ def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
     return ipClaimsDF
 
 def add_hospitalization_info(baseDF, ipBaseDF):
-    eachBaseClaim = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO"])
+    '''Calculates the number of inpatient claims in the 12 and 6 months prior to the admission date of the baseDF.
+    It uses the inpatient claim through date and compares it to the baseDF admission date.
+    If there is not enough FFS coverage for a beneficiary, then the value is Null.'''
+    eachBaseClaim = Window.partitionBy(["DSYSRTKY", "ADMSN_DT_DAY","CLAIMNO"])
 
     ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_DAY").alias("ipTHRU_DT_DAY"))
 
     baseDF = (baseDF.join(
-                       ipBaseDF.join(baseDF.select("DSYSRTKY","THRU_DT_DAY","CLAIMNO"),
+                       ipBaseDF.join(baseDF.select("DSYSRTKY","ADMSN_DT_DAY","CLAIMNO"),
                                      on="DSYSRTKY",
                                      how="inner")
-                               .filter(F.col("THRU_DT_DAY") - F.col("ipTHRU_DT_DAY") <= 365)
-                               .filter(F.col("THRU_DT_DAY") - F.col("ipTHRU_DT_DAY") >= 1)
+                               .filter(F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY") <= 365)
+                               .filter(F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY") >= 1)
                                .withColumn("hospitalizationsIn12Months", F.count(F.col("DSYSRTKY")).over(eachBaseClaim))
-                               .select(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO","hospitalizationsIn12Months"])
+                               .select(["DSYSRTKY", "ADMSN_DT_DAY","CLAIMNO","hospitalizationsIn12Months"])
                                .distinct(),
                                #.withColumn("hospitalizationsIn12Months", F.size(F.collect_list(F.col("ipCLAIMNO")).over(eachOpClaim))) #same results
-                          on=["DSYSRTKY", "CLAIMNO", "THRU_DT_DAY"],
+                          on=["DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY"],
                           how="left_outer")
-                    .fillna(0, subset="hospitalizationsIn12Months"))
+                    .fillna(0, subset="hospitalizationsIn12Months")
+                    .withColumn("hospitalizationsIn12Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") < 12, F.lit(None) )
+                                                               .otherwise( F.col("hospitalizationsIn12Months") )))
 
     baseDF = (baseDF.join(
-                       ipBaseDF.join(baseDF.select("DSYSRTKY","THRU_DT_DAY","CLAIMNO"),
+                       ipBaseDF.join(baseDF.select("DSYSRTKY","ADMSN_DT_DAY","CLAIMNO"),
                                      on="DSYSRTKY",
                                      how="inner")
-                               .filter(F.col("THRU_DT_DAY") - F.col("ipTHRU_DT_DAY") <= 182)
-                               .filter(F.col("THRU_DT_DAY") - F.col("ipTHRU_DT_DAY") >= 1)
+                               .filter(F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY") <= 182)
+                               .filter(F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY") >= 1)
                                .withColumn("hospitalizationsIn6Months", F.count(F.col("DSYSRTKY")).over(eachBaseClaim))
-                               .select(["DSYSRTKY", "THRU_DT_DAY","CLAIMNO","hospitalizationsIn6Months"])
+                               .select(["DSYSRTKY", "ADMSN_DT_DAY","CLAIMNO","hospitalizationsIn6Months"])
                                .distinct(),
                                #.withColumn("hospitalizationsIn12Months", F.size(F.collect_list(F.col("ipCLAIMNO")).over(eachOpClaim))) #same results
-                          on=["DSYSRTKY", "CLAIMNO", "THRU_DT_DAY"],
+                          on=["DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY"],
                           how="left_outer")
-                    .fillna(0, subset="hospitalizationsIn6Months"))
+                    .fillna(0, subset="hospitalizationsIn6Months")
+                    .withColumn("hospitalizationsIn6Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") < 6, F.lit(None) )
+                                                               .otherwise( F.col("hospitalizationsIn6Months") )))
 
     return baseDF
 
