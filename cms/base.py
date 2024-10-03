@@ -313,7 +313,9 @@ def add_provider_npi_info(baseDF, npiProviderDF, primary=True):
 
     baseDF = baseDF.join(npiProviderDF.select(
                           F.col("NPI").alias("ORGNPINM"),
-                          F.col(gachColName).alias("gach"), 
+                          #F.col(gachColName).alias("gach"), 
+                          F.col("gachPrimary"), F.col("gachAll"),
+                          F.col("rehabilitationPrimary"), F.col("rehabilitationAll"), 
                           F.col(rehabilitationColName).alias("rehabilitationFromTaxonomy"),
                           F.col("Provider Organization Name (Legal Business Name)").alias("providerName"),
                           F.col("Provider Other Organization Name").alias("providerOtherName"),
