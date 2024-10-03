@@ -626,7 +626,7 @@ def add_tpaOsu(baseDF):
 
     #return baseDF
 
-def add_beneficiary_info(baseDF, mbsfDF, cbsaDF, ersRuccDF, claimType="op"):
+def add_beneficiary_info(baseDF, mbsfDF, data, claimType="op"):
 
     baseDF = add_mbsf_info(baseDF,mbsfDF)
     baseDF = add_daysDeadAfterThroughDate(baseDF)
@@ -637,8 +637,8 @@ def add_beneficiary_info(baseDF, mbsfDF, cbsaDF, ersRuccDF, claimType="op"):
         baseDF = add_90DaysAfterAdmissionDateDead(baseDF)
         baseDF = add_365DaysAfterAdmissionDateDead(baseDF)
  
-    baseDF = add_fips_info(baseDF, cbsaDF) 
-    baseDF = add_rucc(baseDF, ersRuccDF)
+    baseDF = add_fips_info(baseDF, data["cbsa"]) 
+    baseDF = add_rucc(baseDF, data["ersRucc"])
     baseDF = add_region(baseDF)
 
     return baseDF
