@@ -307,16 +307,14 @@ def add_numberOfXOverY(baseDF, X="ORGNPINM", Y=["DSYSRTKY","ADMSN_DT"]):
 
     return baseDF                            
 
-def add_provider_npi_info(baseDF, npiProviderDF, primary=True):
-    gachColName = "gachPrimary" if primary else "gachAll"
-    rehabilitationColName = "rehabilitationPrimary" if primary else "rehabilitationAll"
-
+def add_provider_npi_info(baseDF, npiProviderDF):
+    #gachColName = "gachPrimary" if primary else "gachAll"
+    #rehabilitationColName = "rehabilitationPrimary" if primary else "rehabilitationAll"
     baseDF = baseDF.join(npiProviderDF.select(
                           F.col("NPI").alias("ORGNPINM"),
-                          #F.col(gachColName).alias("gach"), 
                           F.col("gachPrimary"), F.col("gachAll"),
-                          F.col("rehabilitationPrimary"), F.col("rehabilitationAll"), 
-                          F.col(rehabilitationColName).alias("rehabilitationFromTaxonomy"),
+                          F.col("rehabilitationPrimary").alias("rehabilitationFromTaxonomyPrimary"), 
+                          F.col("rehabilitationAll").alias("rehabilitationFromTaxonomyAll"), 
                           F.col("Provider Organization Name (Legal Business Name)").alias("providerName"),
                           F.col("Provider Other Organization Name").alias("providerOtherName"),
                           F.concat_ws(",",
@@ -433,7 +431,6 @@ def add_providerCmi(baseDF, cmiDF):
                          how="left_outer")
     return baseDF
 
-#def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF, chspHospDF, cmiDF):
 def add_provider_info(baseDF, data):
     baseDF = add_provider_npi_info(baseDF, data["npi"])
     baseDF = add_provider_pos_info(baseDF, data["pos"])
@@ -828,9 +825,9 @@ def add_rehabilitationFromCCN(baseDF):
 
 def add_rehabilitation(baseDF):
     baseDF = add_rehabilitationFromCCN(baseDF)
-    baseDF = (baseDF.withColumn("rehabilitation", F.when( (F.col("rehabilitationFromCCN")==1) | (F.col("rehabilitationFromTaxonomy")==1), 1)
+    baseDF = (baseDF.withColumn("rehabilitation", F.when( (F.col("rehabilitationFromCCN")==1) | (F.col("rehabilitationFromTaxonomyPrimary")==1), 1)
                                                    .otherwise(0))
-                    .drop("rehabilitationFromCCN", "rehabilitationFromTaxonomy"))
+                    .drop("rehabilitationFromCCN", "rehabilitationFromTaxonomyPrimary"))
     return baseDF
 
 def add_hospitalFromClaim(baseDF):
