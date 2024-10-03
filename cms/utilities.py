@@ -186,7 +186,7 @@ def enforce_schema(df, claimType, claimPart):
 
 #inputs: original CMS dataframes
 #outputs: input dataframes with additional columns appended that are needed almost always
-def add_preliminary_info(dataframes):
+def add_preliminary_info(dataframes, data):
 
     for claimTypePart in list(dataframes.keys()):
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
@@ -200,11 +200,13 @@ def add_preliminary_info(dataframes):
                 dataframes[claimTypePart] = baseF.add_discharge_date_info(dataframes[claimTypePart],claimType=claimType)
                 dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
                 dataframes[claimTypePart] = baseF.add_dgnsCodeAll(dataframes[claimTypePart])
+                dataframes[claimTypePart] = baseF.add_provider_info(dataframes[claimTypePart], data)
             if (claimType=="car"):
                  dataframes[claimTypePart] = baseF.add_denied(dataframes[claimTypePart])
             if (claimType=="op"):
                  dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
                  dataframes[claimTypePart] = baseF.add_dgnsCodeAll(dataframes[claimTypePart])
+                 dataframes[claimTypePart] = baseF.add_provider_info(dataframes[claimTypePart], data)
         elif (claimPart=="Line"): 
             dataframes[claimTypePart] = lineF.add_level1HCPCS_CD(dataframes[claimTypePart])
             dataframes[claimTypePart] = lineF.add_allowed(dataframes[claimTypePart])
@@ -225,9 +227,10 @@ def add_preliminary_info(dataframes):
                                                 dataframes["hospBase"], dataframes["hhaBase"])
     return dataframes
 
-def get_data(pathCMS, yearI, yearF, spark, FFS=True):
+def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True):
     """The FFS flag is here to prevent unintended errors.
-    If the project requires FFS data, then all dataframes must be filtered for FFS."""
+    If the project requires FFS data, then all dataframes must be filtered for FFS.
+    data is a dictionary of spark dataframes with supporting information, eg provider of services, NPI, etc"""
     if ( years_within_code_limits(yearI, yearF)==False ):
         raise ValueError("code was not designed to operate for the years provided")
     elif( years_within_cms_data_limits(yearI, yearF)==False ):
@@ -235,7 +238,7 @@ def get_data(pathCMS, yearI, yearF, spark, FFS=True):
     else:
         filenames = get_filenames(pathCMS, yearI, yearF)
         dataframes = read_data(spark, filenames, yearI, yearF)
-        dataframes = add_preliminary_info(dataframes)
+        dataframes = add_preliminary_info(dataframes, data)
         if FFS: 
             dataframes = filter_FFS(dataframes)
     return dataframes

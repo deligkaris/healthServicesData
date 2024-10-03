@@ -428,22 +428,23 @@ def add_providerCmi(baseDF, cmiDF):
                          how="left_outer")
     return baseDF
 
-def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF, chspHospDF, cmiDF):
-    baseDF = add_provider_npi_info(baseDF, npiProvidersDF)
-    baseDF = add_provider_pos_info(baseDF, posDF)
+#def add_provider_info(baseDF, npiProvidersDF, cbsaDF, posDF, ersRuccDF, maPenetrationDF, costReportDF, ahaDF, chspHospDF, cmiDF):
+def add_provider_info(baseDF, data):
+    baseDF = add_provider_npi_info(baseDF, data["npi"])
+    baseDF = add_provider_pos_info(baseDF, data["pos"])
     baseDF = add_providerRegion(baseDF)
     baseDF = add_ccnCah(baseDF)
     baseDF = add_rehabilitation(baseDF)
     baseDF = add_hospitalFromClaim(baseDF)
-    baseDF = add_providerCountyName(baseDF, cbsaDF)
-    baseDF = add_providerRucc(baseDF, ersRuccDF)
-    baseDF = add_providerMaPenetration(baseDF, maPenetrationDF)
+    baseDF = add_providerCountyName(baseDF, data["cbsa"])
+    baseDF = add_providerRucc(baseDF, data["ersRucc"])
+    baseDF = add_providerMaPenetration(baseDF, data["maPenetration"])
     #right now I prefer cost report data because they seem to be about 99.5% complete, vs 80% complete for cbi
     #baseDF = add_cbi_info(baseDF, cbiDF)
-    baseDF = add_provider_cost_report_info(baseDF, costReportDF)
-    baseDF = add_aha_info(baseDF, ahaDF)
-    baseDF = add_providerSysId(baseDF, chspHospDF)
-    baseDF = add_providerCmi(baseDF, cmiDF)
+    baseDF = add_provider_cost_report_info(baseDF, data["hospCost2018"])
+    baseDF = add_aha_info(baseDF, data["aha"])
+    baseDF = add_providerSysId(baseDF, data["chspHosp"])
+    baseDF = add_providerCmi(baseDF, data["cmi"])
     return baseDF
 
 def add_osu(baseDF):
