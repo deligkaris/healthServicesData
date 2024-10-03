@@ -53,6 +53,9 @@ def add_admission_date_info(baseDF, claimType="op"):
                                 ).cast('int'))
                     # keep the year too
                     .withColumn( "ADMSN_DT_YEAR", F.col("ADMSN_DT").substr(1,4).cast('int'))
+                    .withColumn("ADMSN_DT_MONTHSINYEARSPRIOR", monthsInYearsPrior[F.col("ADMSN_DT_YEAR")])
+                    .withColumn("ADMSN_DT_MONTHOFYEAR", F.col("ADMSN_DT").substr(5,2).cast('int'))
+                    .withColumn("ADMSN_DT_MONTH", F.col("ADMSN_DT_MONTHOFYEAR") + F.col("ADMSN_DT_MONTHSINYEARSPRIOR"))
                     # find number of days from yearStart-1 to year of admission -1
                     .withColumn( "ADMSN_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("ADMSN_DT_YEAR")])
                     # days in years prior to admission + days in year of admission = day nunber
