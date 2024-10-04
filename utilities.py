@@ -546,5 +546,5 @@ def add_ccn_from_pos(DF,posDF, providerZip="providerZip",providerName="providerN
     return DF
 
 def print_partition_sizes(df):
-    print(df.withColumn("partID", F.spark_partition_id()).groupBy("partID").count().orderBy("count", ascending=False).show(300))
+    print(df.withColumn("partID", F.spark_partition_id()).groupBy("partID").count().describe("count").show())
 
