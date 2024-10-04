@@ -244,6 +244,7 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True):
         dataframes = add_preliminary_info(dataframes, data)
         if FFS: 
             dataframes = filter_FFS(dataframes)
+        dataframes = repartition_dfs(dataframes)
     return dataframes
 
 def filter_FFS(dataframes):
@@ -286,4 +287,7 @@ def add_through_date_info(df):
 
     return df
 
-
+def repartition_dfs(dataframes):
+    for key in dataframes.keys():
+        dataframes[key] = dataframes[key].repartition(80,"DSYSRTKY") 
+    return dataframes
