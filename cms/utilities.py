@@ -222,7 +222,6 @@ def add_preliminary_info(dataframes, data):
                 dataframes[claimType] = mbsfF.add_ssaCounty(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_enrollment_info(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_willDie(dataframes[claimType])
-                dataframes["mbsf"] = mbsfF.drop_unused_columns(dataframes["mbsf"])
                 dataframes["mbsf"].persist()
         else:
             pass
@@ -246,6 +245,7 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True):
         dataframes = add_preliminary_info(dataframes, data)
         if FFS: 
             dataframes = filter_FFS(dataframes)
+        dataframes["mbsf"] = mbsfF.drop_unused_columns(dataframes["mbsf"])
         dataframes = repartition_dfs(dataframes)
     return dataframes
 
