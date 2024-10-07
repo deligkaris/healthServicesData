@@ -1467,7 +1467,33 @@ def add_hospitalization_info(baseDF, ipBaseDF):
 
     return baseDF
 
-
+def drop_unused_columns(baseDF):
+    dropColumns = (list(map(lambda x: f"ICD_DGNS_CD{x}",range(1,26))) + #some of these are in IP some are in OP claims, this is not a problem
+               list(map(lambda x: f"CLM_POA_IND_SW{x}", range(1,26))) +
+               list(map(lambda x: f"ICD_DGNS_E_CD{x}",range(1,13))) +
+               list(map(lambda x: f"CLM_E_POA_IND_SW{x}", range(1,13))) +
+               list(map(lambda x: f"ICD_PRCDR_CD{x}",range(1,26))) +
+               list(map(lambda x: f"PRCDR_DT{x}",range(1,26))) +
+               list(map(lambda x: f"CLM_CARE_IMPRVMT_MODEL_CD{x}", range(1,5))) +
+               list(map(lambda x: f"CLM_NEXT_GNRTN_ACO_IND_CD{x}", range(1,6))) + 
+               list(map(lambda x: f"RSN_VISIT_CD{x}", range(1,4))) +
+                ["FST_DGNS_E_CD", "RIC_CD", "QUERY_CD","FREQ_CD","NOPAY_CD","PMT_AMT","PRPAYAMT",
+                 "PRPAY_CD","TOT_CHRG","ACTIONCD", "AT_UPIN", "AT_NPI", "AT_PHYSN_SPCLTY_CD", "OP_UPIN", "OP_NPI",
+                 "OP_PHYSN_SPCLTY_CD", "OT_UPIN", "OT_NPI", "OT_PHYSN_SPCLTY_CD",
+                 "RNDRNG_PHYSN_NPI", "RNDRNG_PHYSN_SPCLTY_CD", "MCOPDSW",
+                 "TOT_CHRG", "PER_DIEM", "DED_AMT", "COIN_AMT", "BLDDEDAM","PCCHGAMT",
+                "NCCHGAMT", "PPS_CPTL", "CPTL_FSP", "CPTLOUTL", "DISP_SHR", "IME_AMT", "CPTL_EXP", "HLDHRMLS",
+                "UTIL_DAY", "COIN_DAY", "LRD_USE", "NUTILDAY", "BLDFRNSH", "NCOVFROM", "NCOVTHRU", "EXHST_DT","OUTLRPMT",
+                "CLM_TRTMT_AUTHRZTN_NUM", "CLM_PRCR_RTRN_CD", "CLM_IP_LOW_VOL_PMT_AMT", "CLM_BNDLD_MODEL_1_DSCNT_PCT", 
+                 "CLM_BASE_OPRTG_DRG_AMT", "CLM_VBP_PRTCPNT_IND_CD", "CLM_VBP_ADJSTMT_PCT",
+                "CLM_HRR_PRTCPNT_IND_CD", "CLM_HRR_ADJSTMT_PCT", "CLM_MODEL_4_READMSN_IND_CD", "CLM_UNCOMPD_CARE_PMT_AMT",
+                "CLM_BNDLD_ADJSTMT_PMT_AMT", "CLM_VBP_ADJSTMT_PMT_AMT", "CLM_HRR_ADJSTMT_PMT_AMT", 
+                "EHR_PYMT_ADJSTMT_AMT", "PPS_STD_VAL_PYMT_AMT", "FINL_STD_AMT", "HAC_PGM_RDCTN_IND_SW", 
+                "EHR_PGM_RDCTN_IND_SW", "CLM_SITE_NTRL_PYMT_CST_AMT", "CLM_SITE_NTRL_PYMT_IPPS_AMT", 
+                "CLM_FULL_STD_PYMT_AMT", "CLM_SS_OUTLIER_STD_PYMT_AMT", "ACO_ID_NUM", "FI_NUM",
+                "PTB_DED", "PTB_COIN", "PRVDRPMT", "BENEPMT", "RFR_PHYSN_NPI", "RFR_PHYSN_SPCLTY_CD", 
+                 "CLM_OP_TRANS_TYPE_CD", "CLM_OP_ESRD_MTHD_CD"])
+    return baseDF.drop(*dropColumns)
 
 
 
