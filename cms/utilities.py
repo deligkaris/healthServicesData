@@ -228,6 +228,7 @@ def add_preliminary_info(dataframes, data):
     #this needs to be done when all dfs have been processed
     dataframes["mbsf"] = mbsfF.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"], dataframes["snfBase"],
                                                 dataframes["hospBase"], dataframes["hhaBase"])
+    dataframes["mbsf"] = mbsfF.drop_unused_columns(dataframes["mbsf"])
     return dataframes
 
 def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True):
