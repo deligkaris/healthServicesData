@@ -198,7 +198,6 @@ def add_preliminary_info(dataframes, data):
                 dataframes[claimType] = mbsfF.add_ssaCounty(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_enrollment_info(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_willDie(dataframes[claimType])
-                dataframes["mbsf"].persist()
         else:
             pass
     #this needs to be done when all dfs have been processed
