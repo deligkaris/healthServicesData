@@ -14,34 +14,26 @@ yearJKTransition = 2016 #year CMS switched from J to K format
 yearMinWithCMSData = 2012
 yearMaxWithCMSData = 2021
 
-#inputs: year initial and final requested
-#outputs: boolean if years requested are within limits that the code was designed to operate
 def years_within_code_limits(yearI, yearF):
-
+    '''inputs: year initial and final requested
+       outputs: boolean if years requested are within limits that the code was designed to operate'''
     return True if ( (yearI>=yearMin) & (yearF<=yearMax) ) else False
 
-#inputs: year initial and final requested
-#outputs: boolean if years requested CMS data exists
 def years_within_cms_data_limits(yearI, yearF):
-
+    '''inputs: year initial and final requested
+       outputs: boolean if years requested CMS data exists'''
     return True if ( (yearI>=yearMinWithCMSData) & (yearF<=yearMaxWithCMSData) ) else False
 
-#inputs: claimTypePart eg opBase, snfRevenue etc
-#outputs: claimType eg op, snf, etc and claimPart eg Base, Revenue, Line
 def get_claimType_claimPart(claimTypePart):
-
-    #claimType refers to ip, op, snf, etc
-    claimType = re.match(r'^[a-z]+', claimTypePart).group()
-
-    #claimPart refers to Base, Revenue, Line (does not apply to mbsf claimTypes)
-    claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2) if (claimType!="mbsf") else None
-
+    '''inputs: claimTypePart eg opBase, snfRevenue etc
+       outputs: claimType eg op, snf, etc and claimPart eg Base, Revenue, Line'''
+    claimType = re.match(r'^[a-z]+', claimTypePart).group() #claimType refers to ip, op, snf, etc
+    claimPart = re.match(r'(^[a-z]+)([A-Z][a-z]*)',claimTypePart).group(2) if (claimType!="mbsf") else None #Base, Revenue, Line (not for mbsf claimTypes)
     return (claimType, claimPart)
 
-#inputs: path to the central CMS directory, yearInitial, yearFinal
-#outputs: full path filenames that will be read by spark, a dictionary
 def get_filenames(pathCMS, yearI, yearF):
-
+    '''inputs: path to the central CMS directory, yearInitial, yearFinal
+       outputs: full path filenames that will be read by spark, a dictionary'''
     paths = {"ip": pathCMS + '/INP',
              "op": pathCMS + '/OUT',
              "mbsf": pathCMS + '/Denom',
@@ -78,31 +70,25 @@ def get_filenames(pathCMS, yearI, yearF):
                             [paths["car"]+f"/car_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
                  "carLine": [paths["car"]+f"/car_linej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
                             [paths["car"]+f"/car_linek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)]}
-
     return filenames
 
-#inputs: spark instance, filenames dictionary, initial year, final year
-#outputs: dataframes dictionary, each value is a spark dataframe that holds rows from yearI to yearF
 def read_data(spark, filenames, yearI, yearF):
-
+    '''inputs: spark instance, filenames dictionary, initial year, final year
+       outputs: dataframes dictionary, each value is a spark dataframe that holds rows from yearI to yearF'''
     dataframes = dict()
     #claimType refers to ip, op, snf, etc...claimPart refers to Base, Revenue, Line...claimTypePart includes both of these, opBase, carLine, etc
     for claimTypePart in list(filenames.keys()):
-
         #idea is to enforce the same schema on the dfs (so same column names for the same type of data) 
         #and then do unionByName with allowMissingColumns=True to fill in with nulls
         dataframes[claimTypePart] = map(lambda x: read_and_prep_dataframe(x,claimTypePart, spark), filenames[claimTypePart])
-
         #using reduce might utilize more memory than necessary since it is creating a dataframe with every single union
         #could find a way to do all unions (eg make the string with all unions and then eval) and then at the end return the result
         dataframes[claimTypePart] = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=True), dataframes[claimTypePart])
-
     return dataframes
 
-#inputs: single filename of specific claim type and part (eg opBase), and spark instance
-#outputs: single dataframe with consistent schema and the short column names
 def read_and_prep_dataframe(filename, claimTypePart, spark):
-
+    '''inputs: single filename of specific claim type and part (eg opBase), and spark instance
+       outputs: single dataframe with consistent schema and the short column names'''
     (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
 
     df = spark.read.parquet(filename)
@@ -117,35 +103,30 @@ def read_and_prep_dataframe(filename, claimTypePart, spark):
     #in some dataframes the first row is a copy of the header, enforce_schema has made the "DSYSRTKY" string of that first row a null value
     #so I need to remove that row, assumes that the DSYSRTKY col is cast to an int in schema.py
     df = enforce_schema(df, claimType=claimType, claimPart=claimPart).filter(~(F.col("DSYSRTKY").isNull()))
-    
     return df
 
-#inputs: dataframe that uses long column names
-#outputs: dataframe with short column names
 def enforce_short_names(df, claimType, claimPart):
-
+    '''inputs: dataframe that uses long column names
+       outputs: dataframe with short column names'''
     #get the right xw, the xws are a superset of all column names from both versions J and K
     xw = longToShortXW[f"{claimType}{claimPart}"] if (claimType!="mbsf") else longToShortXW["mbsf"]
     #rename
     df = df.select( [(F.col(c).alias(xw[c])) for c in df.columns] )
     return df 
 
-#inputs: dataframe with inferred schema by spark
-#outputs: dataframe with state and county codes properly formatted
 def pad_zeros(df, claimType, claimPart):
-
+    '''inputs: dataframe with inferred schema by spark
+       outputs: dataframe with state and county codes properly formatted'''
     #some times the state, county columns are inferred as double (eg 33.0), or even worse as double cast as strings ("33.0")
     #so I need to cast those columns as ints first, to be on the safe side, and then as strings to be processed by lpad 
 
-    #logic for op, ip, snf, hha, hosp, car   
-    if (claimPart=="Base"):
+    if (claimPart=="Base"): #logic for op, ip, snf, hha, hosp, car 
         df = (df.withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast('int').cast("string"),2,'0'))
                 .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast('int').cast("string"),3,'0')))
         if (claimType in ["op","ip","snf","hha","hosp"]):
             df = df.withColumn("PRSTATE", F.lpad(F.col("PRSTATE").cast('int').cast("string"),2,'0'))
 
-    #logic for mbsf
-    if (claimType=="mbsf"):
+    if (claimType=="mbsf"): #logic for mbsf
         stCntCols = [f"STATE_CNTY_FIPS_CD_{x:02d}" for x in range(1,13)]
         df = (df.withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast('int').cast("string"),2,'0'))
                 .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast('int').cast("string"),3,'0'))
@@ -160,10 +141,9 @@ def pad_zeros(df, claimType, claimPart):
                 #.select([ F.when( ~F.col(c).isNull(), F.format_string("%05d",F.col(c))).alias(c)  if c in stCntCols else F.col(c) for c in df.columns ]))
     return df  
 
-#inputs: df, mbsf, with incomplete RFRNC_YR (eg 15)
-#outputs: df, mbsf, with RFRNC_YR complete (eg 2015)
 def fix_year(df, claimType, claimPart):
-
+    '''inputs: df, mbsf, with incomplete RFRNC_YR (eg 15)
+       outputs: df, mbsf, with RFRNC_YR complete (eg 2015)'''
     if (claimType=="mbsf"):
         df = (df.withColumn("lengthRFRNC_YR", F.length(F.col("RFRNC_YR").cast('string')))
                 .withColumn("RFRNC_YR",
@@ -172,26 +152,22 @@ def fix_year(df, claimType, claimPart):
                 .withColumn("RFRNC_YR", F.col("RFRNC_YR").cast('int')))
     return df
 
-#inputs: dataframe with inferred schema by spark
-#outputs: dataframe with schema defined in schema.py
 def enforce_schema(df, claimType, claimPart):
-
+    '''inputs: dataframe with inferred schema by spark
+       outputs: dataframe with schema defined in schema.py'''
     #get the schema, this schema is a superset of the schemas for versions J and K 
     schema = schemas[f"{claimType}{claimPart}"] if (claimType!="mbsf") else schemas["mbsf"]
     #the schema for this df is a subset of the one I just loaded, so adjust it
     schema = StructType( [field for field in schema.fields if field.name in df.columns] )
     #cast right schema
     df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])
-
     return df
 
-#inputs: original CMS dataframes
-#outputs: input dataframes with additional columns appended that are needed almost always
 def add_preliminary_info(dataframes, data):
-
+    '''inputs: original CMS dataframes
+       outputs: input dataframes with additional columns appended that are needed almost always'''
     for claimTypePart in list(dataframes.keys()):
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
-
         if (claimPart=="Base"):
             dataframes[claimTypePart] = add_through_date_info(dataframes[claimTypePart])
             dataframes[claimTypePart] = baseF.add_ssaCounty(dataframes[claimTypePart])
@@ -225,7 +201,6 @@ def add_preliminary_info(dataframes, data):
                 dataframes["mbsf"].persist()
         else:
             pass
-
     #this needs to be done when all dfs have been processed
     dataframes["mbsf"] = mbsfF.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"], dataframes["snfBase"],
                                                 dataframes["hospBase"], dataframes["hhaBase"])
