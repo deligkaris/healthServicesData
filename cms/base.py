@@ -650,7 +650,8 @@ def add_mbsf_info(baseDF,mbsfDF):
                           on = ["DSYSRTKY", "THRU_DT_YEAR"], #this join must be done on both dsysrtky and year
                           how = "left_outer")
                     .join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
-                                .select( F.col("DSYSRTKY"),F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") ),
+                                 .select( F.col("DSYSRTKY"),F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") )
+                                 .distinct(), #some beneficiaries death dates appear in two mbsf files, for two years...
                           on="DSYSRTKY",    #this join must be done on dsysrtky only        
                           how="left_outer")) 
     return baseDF
