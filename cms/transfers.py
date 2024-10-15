@@ -48,7 +48,7 @@ def add_transfernihss(opIpDF):
     return opIpDF.withColumn("transfernihss", F.when( F.col("opnihss").isNull(), F.col("ipnihss")).otherwise(F.col("opnihss")))
 
 def add_trasfernihssGroup(opIpDF):
-    return opIpDF.withColumn("transfernihssGroup", F.when( F.col("opnihssGroup").isNull(), F.col("ipnihssGroup")).otherwise(F.col("opnihssGroup"))))   
+    return opIpDF.withColumn("transfernihssGroup", F.when( F.col("opnihssGroup").isNull(), F.col("ipnihssGroup")).otherwise(F.col("opnihssGroup")))   
 
 def add_stroke_info(opIpDF):
     opIpDF = add_transfertpa(opIpDF)
