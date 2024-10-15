@@ -31,7 +31,7 @@ def get_clean_transfers(opIpDF):
     opIpDF = remove_uncertain_transfers(opIpDF)
     return opIpDF
 
-def get_tranfers(opClaimsDF, ipClaimsDF):
+def get_transfers(opClaimsDF, ipClaimsDF):
     opIpDF = opClaimsDF.join(ipClaimsDF,    
                              on = [(F.col("opDSYSRTKY")==F.col("ipDSYSRTKY")) &
                                    (F.col("opTHRU_DT_DAY")<=F.col("ipADMSN_DT_DAY")) &
