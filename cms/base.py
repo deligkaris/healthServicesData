@@ -1426,7 +1426,7 @@ def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
                    .drop("oped","opmri","opct"))
     return ipClaimsDF
 
-def add_hospitalization_info(baseDF, ipBaseDF):
+def add_prior_hospitalization_info(baseDF, ipBaseDF):
     '''Calculates the number of inpatient claims in the 12 and 6 months prior to the admission date of the baseDF.
     It uses the inpatient claim through date and compares it to the baseDF admission date.
     If there is not enough FFS coverage for a beneficiary, then the value is Null.'''

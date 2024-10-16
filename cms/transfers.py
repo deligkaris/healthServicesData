@@ -1,5 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
+import .base as baseF
 
 def get_closest_ip_claim(opIpDF):
     eachOpClaim=Window.partitionBy("opTHRU_DT_DAY", "opCLAIMNO")
@@ -71,3 +72,28 @@ def add_provider_transfer_volume_info(transferDF):
     transferDF = (transferDF.withColumn("providerTransferOutVol", F.count( F.col("opCLAIMNO") ).over(eachOpProvider))
                             .withColumn("providerTransferInVol", F.count( F.col("ipCLAIMNO") ).over(eachIpProvider)))
     return transferDF
+
+def add_prior_hospitalization_info(transferDF, ipBaseDF):
+    transferDF = baseF.add_prior_hospitalization_info(
+                          transferDF.withColumnRenamed("ipDSYSRTKY", "DSYSRTKY")
+                                    .withColumnRenamed("ipADMSN_DT_DAY", "ADMSN_DT_DAY")
+                                    .withColumnRenamed("ipADMSN_DT_MONTH", "ADMSN_DT_MONTH")
+                                    .withColumnRenamed("ipCLAIMNO", "CLAIMNO"), 
+                          ipBaseDF)
+    return transferDF
+
+def add_days_at_home_info(transferDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF):
+    columnsInitial = transferDF.columns
+    columnsTemp = [re.sub("^ip","",c) for c in columnsInitial] #need to rename transfers df because days_at_home needs standard column names
+    transferDF = transferDF.toDF(*columnsTemp)
+    transferDF = baseF.add_days_at_home_info(transferDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF)
+    revertColumnRenaming = dict(zip(columnsTemp,columnsInitial)) #and now change the column names back to their initial ones
+    columnsAll = transferDF.columns
+    columnsFinal = columnsAll
+    for i in range(len(columnsAll)):
+        c = columnsAll[i]
+        if c in columnsTemp:
+            columnsFinal[i] = revertColumnRenaming[c]     
+    transferDF = transferDF.toDF(*columnsFinal)
+    return transferDF
+
