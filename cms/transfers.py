@@ -78,7 +78,8 @@ def add_prior_hospitalization_info(transferDF, ipBaseDF):
                           transferDF.withColumnRenamed("ipDSYSRTKY", "DSYSRTKY")
                                     .withColumnRenamed("ipADMSN_DT_DAY", "ADMSN_DT_DAY")
                                     .withColumnRenamed("ipADMSN_DT_MONTH", "ADMSN_DT_MONTH")
-                                    .withColumnRenamed("ipCLAIMNO", "CLAIMNO"), 
+                                    .withColumnRenamed("ipCLAIMNO", "CLAIMNO")
+                                    .withColumnRenamed("ipffsFirstMonth", "ffsFirstMonth"), 
                           ipBaseDF)
     return transferDF
 
