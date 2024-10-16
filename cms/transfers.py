@@ -32,6 +32,9 @@ def get_clean_transfers(opIpDF):
     return opIpDF
 
 def get_transfers(opClaimsDF, ipClaimsDF):
+    # rename the dataframe columns because pandas cannot handle two columns with the same name, just in case pd is used in analysis 
+    ipClaimsDF = ipClaimsDF.toDF(*("ip"+c for c in ipClaimsDF.columns))
+    opClaimsDF = opClaimsDF.toDF(*("op"+c for c in opClaimsDF.columns))
     opIpDF = opClaimsDF.join(ipClaimsDF,    
                              on = [(F.col("opDSYSRTKY")==F.col("ipDSYSRTKY")) &
                                    (F.col("opTHRU_DT_DAY")<=F.col("ipADMSN_DT_DAY")) &
@@ -60,4 +63,11 @@ def add_firstTransfer(transferDF):
     '''Assumes that get_clean_transfers has been run on the transferDF.'''
     eachDsysrtky=Window.partitionBy("opDSYSRTKY")
     transferDF = transferDF.withColumn("firstTransfer", (F.col("opTHRU_DT_DAY") == F.min(F.col("opTHRU_DT_DAY")).over(eachDsysrtky)).cast('int') )
+    return transferDF
+
+def add_provider_transfer_volume_info(transferDF):
+    eachOpProvider = Window.partitionBy(["opORGNPINM","opTHRU_DT_YEAR"])
+    eachIpProvider = Window.partitionBy(["ipORGNPINM","ipTHRU_DT_YEAR"])
+    transferDF = (transferDF.withColumn("providerTransferOutVol", F.count( F.col("opCLAIMNO") ).over(eachOpProvider))
+                            .withColumn("providerTransferInVol", F.count( F.col("ipCLAIMNO") ).over(eachIpProvider)))
     return transferDF
