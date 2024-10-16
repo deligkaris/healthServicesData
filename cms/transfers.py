@@ -55,3 +55,9 @@ def add_stroke_info(opIpDF):
     opIpDF = add_transfernihss(opIpDF)
     opIpDF = add_transfernihssGroup(opIpDF)
     return opIpDF
+
+def add_firstTransfer(transferDF):
+    '''Assumes that get_clean_transfers has been run on the transferDF.'''
+    eachDsysrtky=Window.partitionBy("opDSYSRTKY")
+    transferDF = transferDF.withColumn("firstTransfer", (F.col("opTHRU_DT_DAY") == F.min(F.col("opTHRU_DT_DAY")).over(eachDsysrtky)).cast('int') )
+    return transferDF
