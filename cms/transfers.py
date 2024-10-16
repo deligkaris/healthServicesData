@@ -1,6 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
-import .base as baseF
+import cms.base as baseF
 
 def get_closest_ip_claim(opIpDF):
     eachOpClaim=Window.partitionBy("opTHRU_DT_DAY", "opCLAIMNO")
