@@ -216,10 +216,7 @@ def add_ohProvider(baseDF):
             
 def add_firstClaim(baseDF):
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
-    baseDF = (baseDF.withColumn("firstADMSN_DT_DAY", F.min(F.col("ADMSN_DT_DAY")).over(eachDsysrtky))
-                    .withColumn("firstClaim", #and mark it/them (could be more than 1)
-                                F.when(F.col("ADMSN_DT_DAY")==F.col("firstADMSN_DT_DAY"),1).otherwise(0))
-                    .drop("firstADMSN_DT_DAY"))
+    baseDF = baseDF.withColumn("firstClaim", ( F.col("ADMSN_DT_DAY")==F.min(F.col("ADMSN_DT_DAY")).over(eachDsysrtky) ).cast('int'))
     return baseDF
 
 def add_firstClaimSum(baseDF):
