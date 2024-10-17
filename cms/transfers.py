@@ -75,13 +75,18 @@ def add_provider_transfer_volume_info(transferDF):
     return transferDF
 
 def add_prior_hospitalization_info(transferDF, ipBaseDF):
-    transferDF = baseF.add_prior_hospitalization_info(
-                          transferDF.withColumnRenamed("ipDSYSRTKY", "DSYSRTKY")
-                                    .withColumnRenamed("ipADMSN_DT_DAY", "ADMSN_DT_DAY")
-                                    .withColumnRenamed("ipADMSN_DT_MONTH", "ADMSN_DT_MONTH")
-                                    .withColumnRenamed("ipCLAIMNO", "CLAIMNO")
-                                    .withColumnRenamed("ipffsFirstMonth", "ffsFirstMonth"), 
-                          ipBaseDF)
+    transferDF = (baseF.add_prior_hospitalization_info(
+                           transferDF.withColumnRenamed("ipDSYSRTKY", "DSYSRTKY")
+                                     .withColumnRenamed("ipADMSN_DT_DAY", "ADMSN_DT_DAY")
+                                     .withColumnRenamed("ipADMSN_DT_MONTH", "ADMSN_DT_MONTH")
+                                     .withColumnRenamed("ipCLAIMNO", "CLAIMNO")
+                                     .withColumnRenamed("ipffsFirstMonth", "ffsFirstMonth"), 
+                           ipBaseDF)
+                       .withColumnRenamed("DSYSRTKY", "ipDSYSRTKY")
+                       .withColumnRenamed("ADMSN_DT_DAY", "ipADMSN_DT_DAY")
+                       .withColumnRenamed("ADMSN_DT_MONTH", "ipADMSN_DT_MONTH")
+                       .withColumnRenamed("CLAIMNO", "ipCLAIMNO")
+                       .withColumnRenamed("ffsFirstMonth", "ipffsFirstMonth"))
     return transferDF
 
 def add_days_at_home_info(transferDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF):
