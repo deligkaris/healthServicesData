@@ -67,8 +67,8 @@ def add_echo(revenueDF, inClaim=False):
 
 def filter_claims(revenueDF, baseDF):
     #CLAIMNO resets every year, so I need CLAIMNO, DSYSRTKY and THRU_DT to uniquely link base and revenue files
-    revenueDF = revenueDF.join(baseDF.select(F.col("CLAIMNO"),F.col("DSYSRTKY"),F.col("THRU_DT_DAY")),
-                               on=["CLAIMNO","DSYSRTKY","THRU_DT_DAY"],
+    revenueDF = revenueDF.join(baseDF.select(F.col("CLAIMNO"),F.col("DSYSRTKY"),F.col("THRU_DT")),
+                               on=["CLAIMNO","DSYSRTKY","THRU_DT"],
                                how="left_semi")
     return revenueDF
 
