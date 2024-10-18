@@ -10,7 +10,7 @@ def get_closest_ip_claim(opIpDF):
 
 def get_closest_op_claim(opIpDF):
     eachIpClaim=Window.partitionBy("ipADMSN_DT_DAY", "ipCLAIMNO")
-    opIpDF = opIpDF.withColumn("isClosestOpClaim", (F.col("opTHRU_DT_DAY")==F.min(F.col("opTHRU_DT_DAY")).over(eachIpClaim)).cast('int'))
+    opIpDF = opIpDF.withColumn("isClosestOpClaim", (F.col("opTHRU_DT_DAY")==F.max(F.col("opTHRU_DT_DAY")).over(eachIpClaim)).cast('int'))
     return opIpDF.filter(F.col("isClosestOpClaim")==1).drop("isClosestOpClaim")
 
 def remove_uncertain_transfers(opIpDF):
