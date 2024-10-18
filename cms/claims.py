@@ -41,7 +41,9 @@ def get_unique_stays(claimsDF, claimType="op"):
     eachIpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "ADMSN_DT_DAY", "DSCHRGDT_DAY")
     eachOpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "THRU_DT_DAY")
     eachStay = eachIpStay if claimType=="ip" else eachOpStay
-    claimsDF = claimsDF.filter( F.min(F.col("CLAIMNO")).over(eachStay) == F.col("CLAIMNO") )
+    claimsDF = (claimsDF.withColumn("minClaimnoForStay", F.min(F.col("CLAIMNO")).over(eachStay) )
+                        .filter( F.col("minClaimnoForStay") == F.col("CLAIMNO") )
+                        .drop("minClaimnoForStay"))
     return claimsDF
 
 
