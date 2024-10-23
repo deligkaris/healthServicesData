@@ -461,7 +461,7 @@ def add_cah(npiProvidersDF, primary=True):
     if (primary):
         cahTaxonomyCondition = 'F.col("primaryTaxonomy").isin(cahTaxonomyCodes)'
     else:
-        gachTaxonomyCondition = \
+        cahTaxonomyCondition = \
                    '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(cahTaxonomyCodes))' \
                    for x in range(1,16)) +')'
     npiProvidersDF = npiProvidersDF.withColumn("cah", F.when(eval(cahTaxonomyCondition), 1).otherwise(0))
