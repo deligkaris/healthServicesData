@@ -643,7 +643,8 @@ def add_beneficiary_info(baseDF, mbsfDF, data, claimType="op"):
     return baseDF
 
 def add_mbsf_info(baseDF,mbsfDF):
-    baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("ffsFirstMonth")),
+    baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("ffsFirstMonth"),
+                                         F.col("anyEsrd"), F.col("medicaidEver"), F.col("SEX").alias("mbsfSex"), F.col("RACE").alias("mbsfRace")),
                           on = ["DSYSRTKY", "THRU_DT_YEAR"], #this join must be done on both dsysrtky and year
                           how = "left_outer")
                     .join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
