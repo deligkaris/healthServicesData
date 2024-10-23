@@ -309,6 +309,7 @@ def add_provider_npi_info(baseDF, npiProviderDF):
     #rehabilitationColName = "rehabilitationPrimary" if primary else "rehabilitationAll"
     baseDF = baseDF.join(npiProviderDF.select(
                           F.col("NPI").alias("ORGNPINM"),
+                          F.col("primaryTaxonomy").alias("providerPrimaryTaxonomy"),
                           F.col("gachPrimary"), F.col("gachAll"),
                           F.col("rehabilitationPrimary").alias("rehabilitationFromTaxonomyPrimary"), 
                           F.col("rehabilitationAll").alias("rehabilitationFromTaxonomyAll"), 
