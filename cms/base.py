@@ -311,6 +311,8 @@ def add_provider_npi_info(baseDF, npiProviderDF):
                           F.col("NPI").alias("ORGNPINM"),
                           F.col("primaryTaxonomy").alias("providerPrimaryTaxonomy"),
                           F.col("gachPrimary"), F.col("gachAll"),
+                          F.col("rachPrimary"), F.col("rachAll"),
+                          F.col("cahPrimary"), F.col("cahAll"),
                           F.col("rehabilitationPrimary").alias("rehabilitationFromTaxonomyPrimary"), 
                           F.col("rehabilitationAll").alias("rehabilitationFromTaxonomyAll"), 
                           F.col("Provider Organization Name (Legal Business Name)").alias("providerName"),

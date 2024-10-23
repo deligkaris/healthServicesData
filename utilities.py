@@ -454,6 +454,32 @@ def add_primaryTaxonomy(npiProvidersDF):
 
     return npiProvidersDF
 
+def add_cah(npiProvidersDF, primary=True):
+    '''Critical access hospitals. 
+    https://taxonomy.nucc.org/?searchTerm=282NC0060X'''
+    cahTaxonomyCodes = ["282NC0060X"]
+    if (primary):
+        cahTaxonomyCondition = 'F.col("primaryTaxonomy").isin(cahTaxonomyCodes)'
+    else:
+        gachTaxonomyCondition = \
+                   '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(cahTaxonomyCodes))' \
+                   for x in range(1,16)) +')'
+    npiProvidersDF = npiProvidersDF.withColumn("cah", F.when(eval(cahTaxonomyCondition), 1).otherwise(0))
+    return npiProvidersDF
+
+def add_rach(npiProvidersDF, primary=True):
+    '''Rural acute care hospitals. 
+    https://taxonomy.nucc.org/?searchTerm=282NR1301X&searchButton=search'''
+    rachTaxonomyCodes = ["282NR1301X"]
+    if (primary):
+        rachTaxonomyCondition = 'F.col("primaryTaxonomy").isin(rachTaxonomyCodes)'
+    else:
+        rachTaxonomyCondition = \
+                   '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(rachTaxonomyCodes))' \
+                   for x in range(1,16)) +')'
+    npiProvidersDF = npiProvidersDF.withColumn("rach", F.when(eval(rachTaxonomyCondition), 1).otherwise(0))
+    return npiProvidersDF   
+
 def add_gach(npiProvidersDF, primary=True):
 
     # taxonomy codes are not part of MBSF or LDS files, but they are present in the CMS Provider file, they can be linked using NPI
@@ -501,6 +527,10 @@ def prep_npiProvidersDF(npiProvidersDF):
     npiProvidersDF = add_gach(npiProvidersDF, primary=False).withColumnRenamed("gach","gachAll")
     npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=True).withColumnRenamed("rehabilitation","rehabilitationPrimary")
     npiProvidersDF = add_rehabilitation(npiProvidersDF, primary=False).withColumnRenamed("rehabilitation","rehabilitationAll")
+    npiProvidersDF = add_cah(npiProvidersDF, primary=True).withColumnRenamed("cah", "cahPrimary")
+    npiProvidersDF = add_cah(npiProvidersDF, primary=False).withColumnRenamed("cah", "cahAll")
+    npiProvidersDF = add_rach(npiProvidersDF, primary=True).withColumnRenamed("rach", "rachPrimary")
+    npiProvidersDF = add_rach(npiProvidersDF, primary=False).withColumnRenamed("rach", "rachAll")
     return npiProvidersDF
 
 def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
