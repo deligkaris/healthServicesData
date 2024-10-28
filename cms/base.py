@@ -1401,7 +1401,7 @@ def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
     #non-PPS hospitals (PPS_IND == null), eg CAH, do not need to bundle the outpatient ED visit with the inpatient stay
     #so for non-PPS hospitals I need to search in the outpatient file...most of the non-PPS claims are in MD (PRSTATE==21)
     #as a test, doing this for the PPS hospitals (PPS_IND==2) should yield exactly zero
-    opRevenueDFSummary = get_revenue_info(opRevenueDF, opBaseDF, inClaim=True)
+    opRevenueDFSummary = get_revenue_info(opRevenueDF, inClaim=True)
     opClaimsDF = get_claimsDF(opBaseDF,opRevenueDFSummary).filter(F.col("ed")==1)
     ipClaimsDF = (ipClaimsDF.join(opClaimsDF #now bring back to the ip claims the updated information about the non-PPS hospitals
                                    .select(F.col("ORGNPINM"),F.col("DSYSRTKY"),
