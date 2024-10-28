@@ -66,6 +66,8 @@ def add_echo(revenueDF, inClaim=False):
     return revenueDF
 
 def filter_claims(revenueDF, baseDF):
+    '''I thought that this function would save time when I process the revenue file but this join
+    actually creates significantly more work...so I am not using it for now.'''
     #CLAIMNO resets every year, so I need CLAIMNO, DSYSRTKY and THRU_DT to uniquely link base and revenue files
     revenueDF = revenueDF.join(baseDF.select(F.col("CLAIMNO"),F.col("DSYSRTKY"),F.col("THRU_DT")),
                                on=["CLAIMNO","DSYSRTKY","THRU_DT"],
@@ -87,9 +89,9 @@ def add_revenue_info(revenueDF, inClaim=True):
     revenueDF = add_ct(revenueDF, inClaim=inClaim)
     return revenueDF
 
-def get_revenue_info(revenueDF, baseDF, inClaim=True):
+def get_revenue_info(revenueDF, inClaim=True):
     '''inClaim = True will cause the summary to be returned.'''
-    #revenueDF = filter_claims(revenueDF, baseDF)
+    #revenueDF = filter_claims(revenueDF, baseDF) #costs time so avoid for now
     revenueDF = add_revenue_info(revenueDF, inClaim=inClaim)
     if inClaim:
         revenueDF = get_revenue_summary(revenueDF)
