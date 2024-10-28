@@ -89,7 +89,7 @@ def add_revenue_info(revenueDF, inClaim=True):
 
 def get_revenue_info(revenueDF, baseDF, inClaim=True):
     '''inClaim = True will cause the summary to be returned.'''
-    revenueDF = filter_claims(revenueDF, baseDF)
+    #revenueDF = filter_claims(revenueDF, baseDF)
     revenueDF = add_revenue_info(revenueDF, inClaim=inClaim)
     if inClaim:
         revenueDF = get_revenue_summary(revenueDF)
