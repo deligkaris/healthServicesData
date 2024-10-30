@@ -648,18 +648,13 @@ def add_beneficiary_info(baseDF, mbsfDF, data, claimType="op"):
 def add_mbsf_info(baseDF,mbsfDF):
     eachDsysrtky = Window.partitionBy(["DSYSRTKY"])
     eachDsysrtkyYear = Window.partitionBy(["DSYSRTKY","RFRNC_YR"]).orderBy("DSYSRTKY")
-    baseDF = (baseDF.join(mbsfDF
-                                #.withColumn("nRow", F.row_number().over(eachDsysrtkyYear))
-                                #.filter(F.col("nRow")==1) #some dsysrtky appear more than once in the same year
-                                .select( F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("ffsFirstMonth"),
+    baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("ffsFirstMonth"),
                                          F.col("anyEsrd"), F.col("medicaidEver"), F.col("SEX").alias("mbsfSex"), F.col("RACE").alias("mbsfRace")),
                           on = ["DSYSRTKY", "THRU_DT_YEAR"], #this join must be done on both dsysrtky and year
                           how = "left_outer")
                     .join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
                                  .withColumn("maxRfrncYr", F.max( F.col("RFRNC_YR") ).over(eachDsysrtky) )
                                  .filter( F.col("RFRNC_YR") == F.col("maxRfrncYr") ) #some dsysrky have more than 1 death dates...
-                                 #.withColumn("nRow", F.row_number().over(eachDsysrtkyYear))
-                                 #.filter(F.col("nRow")==1) #some dsysrtky appear more than once in the same year
                                  .select( F.col("DSYSRTKY"),F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") )
                                  .distinct(), #some beneficiaries death dates appear in two mbsf files, for two years...
                           on="DSYSRTKY",    #this join must be done on dsysrtky only        
