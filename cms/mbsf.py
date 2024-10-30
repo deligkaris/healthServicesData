@@ -394,5 +394,11 @@ def add_countyName(mbsfDF,cbsaDF):
                          how = "left_outer")
     return(mbsfDF)
 
-
+def prep_mbsf(mbsfDF):
+    '''I noticed that in 2015 the same beneficiary appeared more than once, I did not notice that in 2016 and 2017.
+    I am keeping only one row for each beneficiary because any join with base claims will multiply the claims that are associated with the
+    beneficiaries that appear in more than one mbsf row.'''
+    eachDsysrtkyYear = Window.partitionBy(["DSYSRTKY","RFRNC_YR"]).orderBy("DSYSRTKY")
+    mbsfDF = mbsfDF.withColumn("nRow", F.row_number().over(eachDsysrtkyYear)).filter(F.col("nRow")==1).drop("nRow") #just make a choice
+    return mbsfDF
 

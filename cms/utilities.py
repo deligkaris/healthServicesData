@@ -205,7 +205,7 @@ def add_preliminary_info(dataframes, data):
                                                 dataframes["hospBase"], dataframes["hhaBase"])
     return dataframes
 
-def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True):
+def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True):
     """The FFS flag is here to prevent unintended errors.
     If the project requires FFS data, then all dataframes must be filtered for FFS.
     data is a dictionary of spark dataframes with supporting information, eg provider of services, NPI, etc"""
@@ -216,6 +216,8 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True):
     else:
         filenames = get_filenames(pathCMS, yearI, yearF)
         dataframes = read_data(spark, filenames, yearI, yearF)
+        if cleanMbsf: #need to clean mbsf prior to using it to add information to base claims in add_preliminary_info
+            dataframes["mbsf"] = mbsfF.prep_mbsf(dataframes["mbsf"])
         dataframes = add_preliminary_info(dataframes, data)
         if FFS: 
             dataframes = filter_FFS(dataframes)
