@@ -21,6 +21,8 @@ from utilities import daysInYearsPrior, monthsInYearsPrior
 #      the https://www.kff.org/state-category/medicare/medicare-enrollment/ 
 #      I think in this website they calculated the sum of months, divided by 12, to get the person-years numbers for enrollments
 #      CMS also has data on enrollment: https://www.cms.gov/medicare/payment/medicare-advantage-rates-statistics/ffs-data-2015-2021
+#note: Regarding the CMS hierarchical condition category, email from RESDAC: 
+#      There are fields for the HCC in the SSP ACO RIF data, but I am not aware of any in the LDS data.
 
 def add_allPartAB(mbsfDF):
     partABCodes = ["3","C"]
