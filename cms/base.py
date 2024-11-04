@@ -36,7 +36,21 @@ from functools import reduce
 # 8) ip claims: present on admission codes, some hospitals are not required to report these (eg if they are in the PPS system)
 # 9) ip claims: there are medical and surgical DRG codes, need to be very broad if the goal is to identify a clinical population,
 #               perhaps use diagnostic codes to narrow down the DRG codes
-
+# REDAC emails for CCN in claims:
+#  I wanted to let you know that it is possible for a smaller hospital to use the CCN of its parent hospital rather than its own CCN when it submits 
+#  claims to Medicare. 
+#  Our analysts do not know of a single, clear way of identifying these claims. One option they have suggested is to pull the ZIP Code 
+#  for the claim's CCN from an outside source (for example, the Provider Of Services file) and compare it to the claim service facility ZIP 
+#  Code on the claim. A difference between the two ZIP Codes could indicate that a smaller hospital used its parent hospital’s CCN, though 
+#  this strategy would not help identify these cases if the hospitals were located in the same ZIP Code.
+#  We do not know how often this occurs – this question is probably its own analytic research question that would likely require RIF data to answer. 
+#  Unfortunately, we do not have this information, and our analysts have not performed research on quantifying the frequency with which this occurs.
+#  From our understanding, the NPI used will depend upon how the parent and subpart are set up to conduct business. We would recommend 
+#  reviewing the NPI Fact Sheet for more information.
+#  I would recommend reviewing the following resources:
+#  https://resdac.org/articles/how-identify-hospital-claims-emergency-room-visits-medicare-claims-data
+#  https://resdac.org/videos/using-carrier-and-outpatient-files
+#  https://resdac.org/videos/hospitalization-information-inpatient-file-and-medpar
 
 def add_admission_date_info(baseDF, claimType="op"):
     #unfortunately, SNF claims have a different column name for admission date
