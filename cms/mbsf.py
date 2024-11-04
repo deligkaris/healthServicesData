@@ -95,6 +95,8 @@ def add_medicaidEver(mbsfDF):
     # Following recommendation from CCW technical guidance document on 
     # Defining Medicare-Medicaid Dually Enrolled Beneficiaries in CMS Administrative Data
     # https://www.cms.gov/medicare-medicaid-coordination/medicare-and-medicaid-coordination/medicare-medicaid-coordination-office/downloads/mmco_dualeligibledefinition.pdf
+    #The monthly variable “Medicare-Medicaid Dual Eligibility” in the MBSF identifies dual status 
+    #(https://resdac.org/articles/identifying-dual-eligible-medicare-beneficiaries-medicare-beneficiary-enrollment-files ).
     dualCodes = (1,2,3,4,5,6,8)
     mbsfDF = (mbsfDF.withColumn("dualArray", F.array(["DUAL_" + str(x).zfill(2) for x in range(1,13)]))
                     .withColumn("dualArrayFiltered", F.expr(f"filter(dualArray, x->x in {dualCodes})"))
