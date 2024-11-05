@@ -1508,7 +1508,7 @@ def drop_unused_columns(baseDF):
                 "EHR_PGM_RDCTN_IND_SW", "CLM_SITE_NTRL_PYMT_CST_AMT", "CLM_SITE_NTRL_PYMT_IPPS_AMT", 
                 "CLM_FULL_STD_PYMT_AMT", "CLM_SS_OUTLIER_STD_PYMT_AMT", "ACO_ID_NUM", "FI_NUM",
                 "PTB_DED", "PTB_COIN", "PRVDRPMT", "BENEPMT", "RFR_PHYSN_NPI", "RFR_PHYSN_SPCLTY_CD", 
-                 "CLM_OP_TRANS_TYPE_CD", "CLM_OP_ESRD_MTHD_CD"])
+                 "CLM_OP_TRANS_TYPE_CD", "CLM_OP_ESRD_MTHD_CD", "prcdrCodeAll", "dgnsCodeAll"])
     return baseDF.drop(*dropColumns)
 
 
