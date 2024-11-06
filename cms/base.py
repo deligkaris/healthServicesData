@@ -1379,7 +1379,7 @@ def add_los_total_info(baseDF, X="all"):
                                                     .otherwise( F.size(F.col(f"losDaysAt{X}Total90"))))
                     .withColumn(f"losAt{X}Total365", F.when( F.col(f"losDaysAt{X}Total365").isNull(), 0)
                                                      .otherwise( F.size(F.col(f"losDaysAt{X}Total365"))))
-                    .drop(f"losDaysAt{X}Total90", f"losDaysAt{X}Total365"))
+                    .drop(f"losDaysAt{X}Total90", f"losDaysAt{X}Total365", f"losDaysAt{X}90", f"losDaysAt{X}365"))
     return baseDF 
 
 def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
