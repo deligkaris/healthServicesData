@@ -155,7 +155,7 @@ def add_node_stroke_treatment_info(transfersDF):
     eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
     transfersDF = (transfersDF.withColumn("nodeFromEvtVol", F.sum( F.col("toevt") ).over(eachFromProvider))
                               .withColumn("nodeFromTpaVol", F.sum( F.col("transfertpa") ).over(eachFromProvider))
-                              .withColumn("nodeFromEvtMean", F.mean( F.col("ipevt")).over(eachFromProvider))
+                              .withColumn("nodeFromEvtMean", F.mean( F.col("toevt")).over(eachFromProvider))
                               .withColumn("nodeFromTpaMean", F.mean( F.col("transfertpa")).over(eachFromProvider))
                               .withColumn("nodeToEvtVol", F.sum( F.col("toevt") ).over(eachToProvider))
                               .withColumn("nodeToTpaVol", F.sum( F.col("transfertpa") ).over(eachToProvider))
