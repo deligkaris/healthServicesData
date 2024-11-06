@@ -67,11 +67,11 @@ def add_firstTransfer(transfersDF):
     transfersDF = transfersDF.withColumn("firstTransfer", (F.col("fromTHRU_DT_DAY") == F.min(F.col("fromTHRU_DT_DAY")).over(eachDsysrtky)).cast('int') )
     return transfersDF
 
-def add_provider_transfer_volume_info(transfersDF):
+def add_node_volume_info(transfersDF):
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
-    transfersDF = (transfersDF.withColumn("providerTransferOutVol", F.count( F.col("fromCLAIMNO") ).over(eachFromProvider))
-                            .withColumn("providerTransferInVol", F.count( F.col("toCLAIMNO") ).over(eachToProvider)))
+    transfersDF = (transfersDF.withColumn("nodeOutVol", F.count( F.col("fromCLAIMNO") ).over(eachFromProvider))
+                              .withColumn("nodeInVol", F.count( F.col("toCLAIMNO") ).over(eachToProvider)))
     return transfersDF
 
 def add_prior_hospitalization_info(transfersDF, ipBaseDF):
@@ -150,26 +150,26 @@ def add_dyadAcrossCounties(transfersDF):
                                           .otherwise(0))
     return transfersDF
 
-def add_provider_transfer_stroke_treatment_info(transfersDF):
+def add_node_stroke_treatment_info(transfersDF):
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
-    transfersDF = (transfersDF.withColumn("providerTransferFromEvtVol", F.sum( F.col("toevt") ).over(eachFromProvider))
-                              .withColumn("providerTransferFromTpaVol", F.sum( F.col("transfertpa") ).over(eachFromProvider))
-                              .withColumn("providerTransferFromEvtMean", F.mean( F.col("ipevt")).over(eachFromProvider))
-                              .withColumn("providerTransferFromTpaMean", F.mean( F.col("transfertpa")).over(eachFromProvider))
-                              .withColumn("providerTransferToEvtVol", F.sum( F.col("toevt") ).over(eachToProvider))
-                              .withColumn("providerTransferToTpaVol", F.sum( F.col("transfertpa") ).over(eachToProvider))
-                              .withColumn("providerTransferToEvtMean", F.mean( F.col("toevt")).over(eachToProvider))
-                              .withColumn("providerTransferToTpaMean", F.mean( F.col("transfertpa")).over(eachToProvider)))
+    transfersDF = (transfersDF.withColumn("nodeFromEvtVol", F.sum( F.col("toevt") ).over(eachFromProvider))
+                              .withColumn("nodeFromTpaVol", F.sum( F.col("transfertpa") ).over(eachFromProvider))
+                              .withColumn("nodeFromEvtMean", F.mean( F.col("ipevt")).over(eachFromProvider))
+                              .withColumn("nodeFromTpaMean", F.mean( F.col("transfertpa")).over(eachFromProvider))
+                              .withColumn("nodeToEvtVol", F.sum( F.col("toevt") ).over(eachToProvider))
+                              .withColumn("nodeToTpaVol", F.sum( F.col("transfertpa") ).over(eachToProvider))
+                              .withColumn("nodeToEvtMean", F.mean( F.col("toevt")).over(eachToProvider))
+                              .withColumn("nodeToTpaMean", F.mean( F.col("transfertpa")).over(eachToProvider)))
     return transfersDF
  
-def add_provider_transfer_from_to_info(transfersDF):
+def add_node_from_to_info(transfersDF):
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
-    transfersDF = (transfersDF.withColumn("providerTransferFromToSet", F.collect_set( F.col("toORGNPINM")).over(eachFromProvider))
-                              .withColumn("providerTransferFromToSize", F.size( F.col("providerTransferFromToSet") ))
-                              .withColumn("providerTransferToFromSet", F.collect_set( F.col("fromORGNPINM")).over(eachToProvider))
-                              .withColumn("providerTransferToFromSize", F.size( F.col("providerTransferToFromSet") )))
+    transfersDF = (transfersDF.withColumn("nodeFromToSet", F.collect_set( F.col("toORGNPINM")).over(eachFromProvider))
+                              .withColumn("nodeFromToSize", F.size( F.col("nodeFromToSet") ))
+                              .withColumn("nodeToFromSet", F.collect_set( F.col("fromORGNPINM")).over(eachToProvider))
+                              .withColumn("nodeToFromSize", F.size( F.col("nodeToFromSet") )))
     return transfersDF
 
 
