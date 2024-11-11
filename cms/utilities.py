@@ -36,11 +36,11 @@ def get_filenames(pathCMS, yearI, yearF):
        outputs: full path filenames that will be read by spark, a dictionary'''
     paths = {"ip": pathCMS + '/INP',
              "op": pathCMS + '/OUT',
-             "mbsf": pathCMS + '/Denom',
-             "snf": pathCMS + '/SAF/SNF',
-             "hha": pathCMS + '/SAF/HHA',
-             "hosp": pathCMS + '/SAF/HOSP',
-             "car": pathCMS + '/SAF/CAR'}
+             "mbsf": pathCMS + '/MBSF',
+             "snf": pathCMS + '/SNF',
+             "hha": pathCMS + '/HHA',
+             "hosp": pathCMS + '/HOSP',
+             "car": pathCMS + '/CAR'}
 
     # j format lists will be empty if yearInitial > yearJKTransition
     # k format lists include max function in case yearInitial > yearJKTransition 
@@ -66,8 +66,8 @@ def get_filenames(pathCMS, yearI, yearF):
                              [paths["hosp"]+f"/hosp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
                  "hospRevenue": [paths["hosp"]+f"/hosp_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
                                [paths["hosp"]+f"/hosp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "carBase": [paths["car"]+f"/car_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                            [paths["car"]+f"/car_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "carBase": [paths["car"]+f"/car_clmsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                            [paths["car"]+f"/car_clmsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
                  "carLine": [paths["car"]+f"/car_linej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
                             [paths["car"]+f"/car_linek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)]}
     return filenames
