@@ -102,6 +102,7 @@ def read_and_prep_dataframe(filename, claimTypePart, spark):
     #enforce the schema now, dataframes need to have the same schema before doing the unions
     #in some dataframes the first row is a copy of the header, enforce_schema has made the "DSYSRTKY" string of that first row a null value
     #so I need to remove that row, assumes that the DSYSRTKY col is cast to an int in schema.py
+    #update 11/11/24: as far as I can tell this is now fixed so I am commenting out the filter
     df = enforce_schema(df, claimType=claimType, claimPart=claimPart)#.filter(~(F.col("DSYSRTKY").isNull()))
     return df
 
