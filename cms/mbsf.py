@@ -23,6 +23,9 @@ from utilities import daysInYearsPrior, monthsInYearsPrior
 #      CMS also has data on enrollment: https://www.cms.gov/medicare/payment/medicare-advantage-rates-statistics/ffs-data-2015-2021
 #note: Regarding the CMS hierarchical condition category, email from RESDAC: 
 #      There are fields for the HCC in the SSP ACO RIF data, but I am not aware of any in the LDS data.
+#note: The beneficiary ID is unique to an individual but also to a study, which means you cannot link CMS data from two different DUAs
+#      because each individual will have two different beneficiary IDs in the two DUA datasets.
+#      https://www.youtube.com/watch?v=fSYP5-1EAIs
 
 def add_allPartAB(mbsfDF):
     partABCodes = ["3","C"]
