@@ -3,7 +3,7 @@ from pyspark.sql.window import Window
 from utilities import daysInYearsPrior, monthsInYearsPrior
 
 #notes (most are from the Resdac tutorial: https://youtu.be/-nxGbTPVLo8?si=TsTNDXDpZlPTsvpX )
-#note: demographic information is largely reliable and valid
+#note: demographic information is largely reliable and valid (age, dob, sex, race, residence, date of death)
 #note: age is the oldest they could be, age at the end of the calendar year, or age as the date of death
 #note: some deaths are missed by medicare (or SSA)
 #      no standard way to remove the likely dead people but some options are:
@@ -26,6 +26,8 @@ from utilities import daysInYearsPrior, monthsInYearsPrior
 #note: The beneficiary ID is unique to an individual but also to a study, which means you cannot link CMS data from two different DUAs
 #      because each individual will have two different beneficiary IDs in the two DUA datasets.
 #      https://www.youtube.com/watch?v=fSYP5-1EAIs
+#note: no explicit ALS indicator, if <65yo categorized as disabled, if >65 then old age
+#note: beneficiaries in each of (elderly, disabled, ESRD only) are not the same, different male proportion, annual mortality, age, top DRG for IP care
 
 def add_allPartAB(mbsfDF):
     partABCodes = ["3","C"]
