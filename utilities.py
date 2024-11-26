@@ -521,6 +521,25 @@ def add_rehabilitation(npiProvidersDF, primary=True):
     npiProvidersDF = npiProvidersDF.withColumn("rehabilitation", F.when(eval(rehabTaxonomyCondition), 1).otherwise(0))
     return npiProvidersDF
 
+def add_pediatricHospital(npiProvidersDF):
+    childrenHospitalTaxonomyCodes = [ "281PC2000X", "282NC2000X", "283XC2000X" ]
+    childrenHospitalCondition = 'F.col("primaryTaxonomy").isin(childrenHospitalTaxonomyCodes)' 
+    npiProvidersDF = npiProvidersDF.withCholumn("pediatricHospital", F.when(eval(childrenHospitalCondition), 1).otherwise(0))
+    return npiProvidersDF
+
+def add_psychiatricHospital(npiProvidersDF):
+    psychHospitalTaxonomyCodes = [ "273R00000X", "283Q00000X" ] 
+    psychCondition = 'F.col("primaryTaxonomy").isin(psychHospitalTaxonomyCodes)'
+    npiProvidersDF = npiProvidersDF.withCholumn("psychiatricHospital", F.when(eval(psychCondition), 1).otherwise(0))
+    return npiProvidersDF
+
+def add_ltcHospital(npiProvidersDF):
+    '''Long Term Care Hospitals'''
+    ltcHospitalTaxonomyCodes = [ "282E00000X" ]
+    ltcCondition = 'F.col("primaryTaxonomy").isin(ltcHospitalTaxonomyCodes)'
+    npiProvidersDF = npiProvidersDF.withCholumn("ltcHospital", F.when(eval(ltcCondition), 1).otherwise(0))
+    return npiProvidersDF
+
 def prep_npiProvidersDF(npiProvidersDF):
     npiProvidersDF = add_primaryTaxonomy(npiProvidersDF)
     npiProvidersDF = add_gach(npiProvidersDF, primary=True).withColumnRenamed("gach","gachPrimary")
@@ -531,6 +550,9 @@ def prep_npiProvidersDF(npiProvidersDF):
     npiProvidersDF = add_cah(npiProvidersDF, primary=False).withColumnRenamed("cah", "cahAll")
     npiProvidersDF = add_rach(npiProvidersDF, primary=True).withColumnRenamed("rach", "rachPrimary")
     npiProvidersDF = add_rach(npiProvidersDF, primary=False).withColumnRenamed("rach", "rachAll")
+    npiProvidersDF = add_childrenHospital(npiProvidersDF)
+    npiProvidersDF = add_psychiatricHospital(npiProvidersDF)
+    npiProvidersDF = add_ltcHospital(npiProvidersDF)
     return npiProvidersDF
 
 def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
