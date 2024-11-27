@@ -419,7 +419,7 @@ def add_ccnCah(baseDF):
 def add_providerIn50StatesOrDc(baseDF):
     '''The SSA state code for provider or facility is one of the 50 US states or DC.
     SSA code 48 = Virgin Islands, SSA code 40 = Puerto Rico.'''
-    condition = ' (F.col("PRSTATE").cast('int') < 54) & (F.col("PRSTATE").cast('int') != 40) & (F.col("PRSTATE").cast('int') != 48) '
+    condition = ' (F.col("PRSTATE").cast("int") < 54) & (F.col("PRSTATE").cast("int") != 40) & (F.col("PRSTATE").cast("int") != 48) '
     baseDF = baseDF.withColumn("providerIn50StatesOrDc", F.when( eval(condition), 1).otherwise(0))
     return baseDF
 
