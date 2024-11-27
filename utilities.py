@@ -537,7 +537,7 @@ def add_ltcHospital(npiProvidersDF):
     '''Long Term Care Hospitals'''
     ltcHospitalTaxonomyCodes = [ "282E00000X" ]
     ltcCondition = 'F.col("primaryTaxonomy").isin(ltcHospitalTaxonomyCodes)'
-    npiProvidersDF = npiProvidersDF.withCholumn("ltcHospital", F.when(eval(ltcCondition), 1).otherwise(0))
+    npiProvidersDF = npiProvidersDF.withColumn("ltcHospital", F.when(eval(ltcCondition), 1).otherwise(0))
     return npiProvidersDF
 
 def prep_npiProvidersDF(npiProvidersDF):
