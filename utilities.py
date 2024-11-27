@@ -550,7 +550,7 @@ def prep_npiProvidersDF(npiProvidersDF):
     npiProvidersDF = add_cah(npiProvidersDF, primary=False).withColumnRenamed("cah", "cahAll")
     npiProvidersDF = add_rach(npiProvidersDF, primary=True).withColumnRenamed("rach", "rachPrimary")
     npiProvidersDF = add_rach(npiProvidersDF, primary=False).withColumnRenamed("rach", "rachAll")
-    npiProvidersDF = add_childrenHospital(npiProvidersDF)
+    npiProvidersDF = add_pediatricHospital(npiProvidersDF)
     npiProvidersDF = add_psychiatricHospital(npiProvidersDF)
     npiProvidersDF = add_ltcHospital(npiProvidersDF)
     return npiProvidersDF
