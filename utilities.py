@@ -524,13 +524,13 @@ def add_rehabilitation(npiProvidersDF, primary=True):
 def add_pediatricHospital(npiProvidersDF):
     childrenHospitalTaxonomyCodes = [ "281PC2000X", "282NC2000X", "283XC2000X" ]
     childrenHospitalCondition = 'F.col("primaryTaxonomy").isin(childrenHospitalTaxonomyCodes)' 
-    npiProvidersDF = npiProvidersDF.withCholumn("pediatricHospital", F.when(eval(childrenHospitalCondition), 1).otherwise(0))
+    npiProvidersDF = npiProvidersDF.withColumn("pediatricHospital", F.when(eval(childrenHospitalCondition), 1).otherwise(0))
     return npiProvidersDF
 
 def add_psychiatricHospital(npiProvidersDF):
     psychHospitalTaxonomyCodes = [ "273R00000X", "283Q00000X" ] 
     psychCondition = 'F.col("primaryTaxonomy").isin(psychHospitalTaxonomyCodes)'
-    npiProvidersDF = npiProvidersDF.withCholumn("psychiatricHospital", F.when(eval(psychCondition), 1).otherwise(0))
+    npiProvidersDF = npiProvidersDF.withColumn("psychiatricHospital", F.when(eval(psychCondition), 1).otherwise(0))
     return npiProvidersDF
 
 def add_ltcHospital(npiProvidersDF):
