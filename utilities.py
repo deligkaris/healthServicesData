@@ -205,7 +205,7 @@ def prep_chspHospDF(chspHospDF, filename):
     chspHospDF = (chspHospDF.withColumn("year", F.lit(chspYear)))
     #for reasons unknown, the same CCN, 104079, appears in 2 lines in this file with two different compendium_hospital_id, and all else the same
     #I filter out the line with the ID that is not used at later years
-    chspHospDF = chspHosp.filter(F.col("compendium_hospital_id")!="CHSP00008136")
+    chspHospDF = chspHospDF.filter(F.col("compendium_hospital_id")!="CHSP00008136")
     return chspHospDF
 
 def prep_cmiDF(cmiDF):
