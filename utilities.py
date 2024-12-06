@@ -195,7 +195,8 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_cmiDF(df)
     return df   
 
-def get_data(pathToData, pathToAHAData, yearInitial, yearFinal, spark):
+def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkaris/DATA', pathToAHAData='/fs/ess/PAS2164/AHA'):
+    '''pathToData: where I keep all non-CMS data, pathToAHAData: where all AHA data are stored'''
     filenames = get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal)
     data = read_data(spark, filenames)
     return data
