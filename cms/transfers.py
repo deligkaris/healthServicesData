@@ -59,6 +59,8 @@ def add_stroke_info(transfersDF):
     transfersDF = add_transfertpa(transfersDF)
     transfersDF = add_transfernihss(transfersDF)
     transfersDF = add_transfernihssGroup(transfersDF)
+    transfersDF = add_node_stroke_treatment_info(transfersDF)
+    transfersDF = add_dyad_stroke_treatment_info(transfersDF)
     return transfersDF
 
 def add_firstTransfer(transfersDF):
@@ -172,14 +174,22 @@ def add_node_from_to_info(transfersDF):
                               .withColumn("nodeToFromSize", F.size( F.col("nodeToFromSet") )))
     return transfersDF
 
-
-
-
-
-
-
-
+def add_dyad_info(transfersDF):
+    transfersDF = add_dyad(transfersDF)
+    transfersDF = add_dyadVi(transfersDF)
+    transfersDF = add_dyadTransferVol(transfersDF)
+    transfersDF = add_dyadAcrossCounties(transfersDF)
     return transfersDF
+
+def add_node_info(transfersDF):
+    transfersDF = add_node_volume_info(transfersDF)
+    transfersDF = add_node_from_to_info(transfersDF)
+    return transfersDF
+
+
+
+
+
 
 
 
