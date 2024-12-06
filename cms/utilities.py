@@ -206,7 +206,7 @@ def add_preliminary_info(dataframes, data):
                                                 dataframes["hospBase"], dataframes["hhaBase"])
     return dataframes
 
-def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True):
+def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, runTests=False):
     """The FFS flag is here to prevent unintended errors.
     If the project requires FFS data, then all dataframes must be filtered for FFS.
     data is a dictionary of spark dataframes with supporting information, eg provider of services, NPI, etc"""
@@ -224,6 +224,8 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True):
             dataframes = filter_FFS(dataframes)
         dataframes["mbsf"] = mbsfF.drop_unused_columns(dataframes["mbsf"])
         dataframes = repartition_dfs(dataframes)
+        if runTests:
+           run_cms_data_tests(dataframes)
     return dataframes
 
 def filter_FFS(dataframes):
@@ -270,3 +272,20 @@ def repartition_dfs(dataframes):
     for key in dataframes.keys():
         dataframes[key] = dataframes[key].repartition(80,"DSYSRTKY") 
     return dataframes
+
+def run_cms_data_tests(dataframes):
+    for claimTypePart in list(dataframes.keys()):
+        (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
+        if (claimPart=="Base"):
+            countsPerNoYear = dataframes[claimTypePart].groupBy("CLAIMNO","THRU_DT_YEAR").count().filter(F.col("count")>1).count()
+            assert 0 == countsPerNoYear, f"{claimTypePart} includes more than 1 claims with same CLAIMNO and THRU_DT_YEAR"
+        elif (claimPart is None):
+            if (claimType=="mbsf"):   
+                countsPerIdYear = dataframes[claimTypePart].groupBy("DSYSRTKY","RFRNC_YR").count().filter(F.col("count")>1).count()
+                assert 0 == countsPerIdYear, f"{claimTypePart} includes more than 1 beneficiaries with same DSYSRTKY and RFRNC_YR"
+
+
+
+
+
+
