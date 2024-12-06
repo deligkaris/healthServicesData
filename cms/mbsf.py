@@ -26,6 +26,10 @@ from utilities import daysInYearsPrior, monthsInYearsPrior
 #note: The beneficiary ID is unique to an individual but also to a study, which means you cannot link CMS data from two different DUAs
 #      because each individual will have two different beneficiary IDs in the two DUA datasets.
 #      https://www.youtube.com/watch?v=fSYP5-1EAIs
+#note: The denominator files from 2015 and earlier include at the beginning several, more than 1, rows with the same DSYSRTKY (all zeros).
+#      During the Resdac workshop I asked about this and got a response via email (these files = the LDS files):
+#      We do not support these files per se but from my access to the files, I can confirm that the files we have also have the same repetition 
+#      of DESY_SORT_KEY.  CCW is the data provider for LDS. It may be helpful to reach out to them. ccwhelp@ccwdata.org
 #note: no explicit ALS indicator, if <65yo categorized as disabled, if >65 then old age
 #note: beneficiaries in each of (elderly, disabled, ESRD only) are not the same, different male proportion, annual mortality, age, top DRG for IP care
 
