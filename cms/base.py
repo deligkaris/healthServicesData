@@ -51,6 +51,58 @@ from functools import reduce
 #  https://resdac.org/articles/how-identify-hospital-claims-emergency-room-visits-medicare-claims-data
 #  https://resdac.org/videos/using-carrier-and-outpatient-files
 #  https://resdac.org/videos/hospitalization-information-inpatient-file-and-medpar
+# Note from Resdac:
+#   I wanted to be sure we were talking about the same files, because the distinction between organizational NPI in non-institutional vs institutional 
+#   claims differs. 
+#   The ORG_NPI linked in the original email (https://resdac.org/cms-data/variables/national-provider-identifier-npi-organization) is for a 
+#   variable found in the ACO files, not in the FFS claims files.
+#   On an institutional claim, the ORG_NPI_NUM (https://resdac.org/cms-data/variables/organization-or-group-npi-number) is the NPI number assigned 
+#   to uniquely identify the institutional provider certified by Medicare to 
+#   provide services to the beneficiary. This number (ORG_NPI_NUM) can be linked to the NPI NPPES downloadable file 
+#   https://download.cms.gov/nppes/NPI_Files.html to obtain additional information on the organization. 
+#   In the FFS claims, there’s also the claim service location NPI (SRVC_LOC_NPI_NUM), which is the National Provider Identifier (NPI) of the 
+#   location where the services were provided. 
+#   The billing provider NPI (https://resdac.org/cms-data/variables/billing-provider-npi) that was linked in your original email is a 
+#   variable found in the Medicaid TAF data - not in the FFS claims data.
+#   When looking at variables, you’ll want to be sure you are looking at the correct data dictionaries. I find it’s easiest to download the FFS claims 
+#   dictionaries from the CCW website: https://www2.ccwdata.org/web/guest/data-dictionaries
+#   The FFS Medicare institutional claims files do not contain a billing NPI field.
+#   Lastly, this information differs when using the non-institutional claims files (Carrier).
+#   If using Carrier: The organizational NPI number in the Carrier file is almost always empty. Per the CMS claims processing manual
+#   https://www.cms.gov/Regulations-and-Guidance/Guidance/Manuals/Downloads/clm104c26pdf.pdf:
+#   "Item 32a - If required by Medicare claims processing policy, enter the NPI of the service facility."
+#   After a brief glance at the claims processing manual for physicians and nonphysician practioners
+#   https://www.cms.gov/Regulations-and-Guidance/Guidance/Manuals/Downloads/clm104c12.pdf, I was not able to determine a situation where 32a was 
+#   required to be filled. I've linked the manual in case you want to take a closer look.
+#   CARR_CLM_BLG_NPI_NUM	The CMS National Provider Identifier (NPI) number assigned to the billing provider.
+#   This field is filled in the data and contains some organizational NPIs (but the organizational NPI does not always match the Billing NPI). 
+#   In about 75% of claims, we’ve found the billing provider matches the performing provider.
+#   When they don’t match: On page 3 here, it seems to indicate that the billing provider would be the group to which an individual provider belongs.  
+#   This seems like it would be akin to organization NPI. 
+# Note, my follow up:
+#   In the UB-04 form (https://www.cdc.gov/wtc/pdfs/policies/ub-40-P.pdf) I see only a single (institution-related) NPI number.....and on 
+#   the FFS claims research data as you said, you can find the ORGNPINM and the SRVC_LOC_NPI_NUM (and in other files as you said the billing NPI) ....
+#   does that mean that CCW or some other agency uses the UB-04 claims forms and adds information to them as they are creating the data sets we end up 
+#   using for research?
+#   I am asking because I need to understand when ORGNPINM is not the NPI of the location where the services were provided....does CCW have a 
+#   rule of leaving the SRVC_LOC_NPI_NUM null when ORGNPINM corresponds to the location where services were provided? I am happy to read the 
+#   manuals if you could point me to the PDFs that include what steps they take when they are creating the FFS claim files...
+#   Also for reason(s) I do not understand CCW included SRVC_LOC_NPI_NUM in the outpatient LDS files but did not include SRVC_LOC_NPI_NUM in the inpatient 
+#   LDS files....perhaps in the inpatient claims SRVC_LOC_NPI_NUM and ORGNPINM are always the same but in outpatient claims they are not but this is 
+#   just a hypothesis...
+# Note, their response:
+#   The claim research files contain more variables than those found on the UB04 and CMS-1500 themselves.
+#   You may find this resource helpful in understanding how the research files are created: https://resdac.org/videos/claims-data-source-and-processing
+#   When looking at institutional facilities, who bill using the UB-04, the two variables of interest will be the
+#   ORG_NPI_NUM is the NPI number assigned to uniquely identify the institutional provider certified by Medicare to provide services to the beneficiary.
+#   the organizational NPI can be linked to the NPPES file for additional information about the provider
+#   SRVC_LOC_NPI_NUM, which is the National Provider Identifier (NPI) of the location where the services were provided. 
+#   PRVDR_NUM, which is the provider identification number. The first two digits indicate the state where the provider is located using SSA state code, 
+#   the remaining digit indicate type of facility.
+#   the provider number can be linked to the Provider of Services file for additional information about the provider.
+#   You may find this article helpful in understanding identifiers: https://resdac.org/cms-data/variables/provider-number
+#   As you likely know, 1:1 matching is not possible for CCN to NPI crosswalks. IE: An NPI may not have a CCN, or a CCN may have multiple NPIs. 
+#   And, it’s possible for health systems to bill under a single parent organization.
 
 def add_admission_date_info(baseDF, claimType="op"):
     #unfortunately, SNF claims have a different column name for admission date
