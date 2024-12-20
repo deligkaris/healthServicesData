@@ -125,7 +125,8 @@ def add_admission_date_info(baseDF, claimType="op"):
                     # find number of days from yearStart-1 to year of admission -1
                     .withColumn( "ADMSN_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("ADMSN_DT_YEAR")])
                     # days in years prior to admission + days in year of admission = day nunber
-                    .withColumn("ADMSN_DT_DAY", (F.col("ADMSN_DT_DAYSINYEARSPRIOR") + F.col("ADMSN_DT_DAYOFYEAR")).cast('int')))
+                    .withColumn("ADMSN_DT_DAY", (F.col("ADMSN_DT_DAYSINYEARSPRIOR") + F.col("ADMSN_DT_DAYOFYEAR")).cast('int'))
+                    .drop("ADMSN_DT_MONTHSINYEARSPRIOR", "ADMSN_DT_MONTHOFYEAR", "ADMSN_DT_DAYSINYEARSPRIOR", "ADMSN_DT_DAYOFYEAR"))
     return baseDF
 
 def add_discharge_date_info(baseDF, claimType="op"):
@@ -143,7 +144,8 @@ def add_discharge_date_info(baseDF, claimType="op"):
                     # find number of days from yearStart-1 to year of admission -1
                     .withColumn( "DSCHRGDT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("DSCHRGDT_YEAR")])
                     # days in years prior to admission + days in year of admission = day nunber
-                    .withColumn( "DSCHRGDT_DAY", (F.col("DSCHRGDT_DAYSINYEARSPRIOR") + F.col("DSCHRGDT_DAYOFYEAR")).cast('int')))
+                    .withColumn( "DSCHRGDT_DAY", (F.col("DSCHRGDT_DAYSINYEARSPRIOR") + F.col("DSCHRGDT_DAYOFYEAR")).cast('int'))
+                    .drop("DSCHRGDT_DAYSINYEARSPRIOR", "DSCHRGDT_DAYOFYEAR"))
     return baseDF
 
 def add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90):

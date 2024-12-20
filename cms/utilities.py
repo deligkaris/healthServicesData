@@ -264,8 +264,8 @@ def add_through_date_info(df):
                          .withColumn("THRU_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("THRU_DT_YEAR")]) 
                          #assign a day number starting at day 1 of yearStart-1, 
                          # days in years prior to admission + days in year of admission = day number
-                         .withColumn("THRU_DT_DAY", (F.col("THRU_DT_DAYSINYEARSPRIOR") + F.col("THRU_DT_DAYOFYEAR")).cast('int')))
-
+                         .withColumn("THRU_DT_DAY", (F.col("THRU_DT_DAYSINYEARSPRIOR") + F.col("THRU_DT_DAYOFYEAR")).cast('int'))
+                         .drop("THRU_DT_DAYSINYEARSPRIOR" , "THRU_DT_DAYOFYEAR", "THRU_DT_MONTHOFYEAR", "THRU_DT_MONTHSINYEARSPRIOR"))
     return df
 
 def repartition_dfs(dataframes):
