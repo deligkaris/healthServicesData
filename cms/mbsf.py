@@ -326,7 +326,8 @@ def add_death_date_info(mbsfDF):
                                 F.when( F.col("V_DOD_SW")=="V", #for the ones that have a valid death date 
                                     # days in years prior to admission + days in year of admission = day nunber
                                     (F.col("DEATH_DT_DAYSINYEARSPRIOR") + F.col("DEATH_DT_DAYOFYEAR")).cast('int'))
-                                 .otherwise(F.lit(None))))
+                                 .otherwise(F.lit(None)))
+                    .drop("DEATH_DT_DAYSINYEARSPRIOR", "DEATH_DT_DAYOFYEAR", "DEATH_DT_MONTH")) 
     return mbsfDF
 
 def get_dead(mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
