@@ -733,7 +733,7 @@ def add_mbsf_info(baseDF,mbsfDF):
                     .join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
                                  .withColumn("maxRfrncYr", F.max( F.col("RFRNC_YR") ).over(eachDsysrtky) )
                                  .filter( F.col("RFRNC_YR") == F.col("maxRfrncYr") ) #some dsysrky have more than 1 death dates...
-                                 .select( F.col("DSYSRTKY"),F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") )
+                                 .select( F.col("DSYSRTKY"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") )
                                  .distinct(), #some beneficiaries death dates appear in two mbsf files, for two years...
                           on="DSYSRTKY",    #this join must be done on dsysrtky only        
                           how="left_outer")) 
