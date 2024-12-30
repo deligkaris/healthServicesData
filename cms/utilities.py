@@ -206,7 +206,7 @@ def add_preliminary_info(dataframes, data):
                                                 dataframes["hospBase"], dataframes["hhaBase"])
     return dataframes
 
-def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, runTests=False):
+def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, runTests=False, cleanThroughDates=True):
     """The FFS flag is here to prevent unintended errors.
     If the project requires FFS data, then all dataframes must be filtered for FFS.
     data is a dictionary of spark dataframes with supporting information, eg provider of services, NPI, etc"""
@@ -226,6 +226,8 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, r
         dataframes = repartition_dfs(dataframes)
         if runTests:
            run_cms_data_tests(dataframes)
+        if cleanThroughDates:
+           dataframes = clean_through_dates(dataframes)
     return dataframes
 
 def filter_FFS(dataframes):
@@ -247,6 +249,13 @@ def filter_FFS(dataframes):
     dataframes["snfRevenue"]=revenueF.filter_claims(dataframes["snfRevenue"], dataframes["snfBase"])
     dataframes["carLine"]=lineF.filter_claims(dataframes["carLine"], dataframes["carBase"])
     return dataframes
+
+def clean_through_dates(dataframes):
+    for claimTypePart in list(dataframes.keys()):
+        (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
+        if (claimPart=="Base"):
+            dataframes[claimTypePart] = baseF.get_clean_through_dates(dataframes[claimTypePart])
+    return dataframes    
 
 def add_through_date_info(df):
     df = (df.withColumn("THRU_DT_DAYOFYEAR",

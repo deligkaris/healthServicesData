@@ -1576,5 +1576,11 @@ def drop_unused_columns(baseDF):
                  "CLM_OP_TRANS_TYPE_CD", "CLM_OP_ESRD_MTHD_CD", "prcdrCodeAll", "dgnsCodeAll"])
     return baseDF.drop(*dropColumns)
 
+def get_clean_through_dates(baseDF):
+    '''Some claims had a mistake on either the through date or the death date from mbsf, 
+       cannot know for sure without additional work, so keep only positive and null daysDeadAfterVisit 
+       also cannot use NULL for this because null means no death date available'''
+    return baseDF.filter( (F.col("daysDeadAfterThroughDate")>=0) | (F.col("daysDeadAfterThroughDate").isNull()) )
+
 
 
