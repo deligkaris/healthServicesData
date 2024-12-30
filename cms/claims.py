@@ -1,25 +1,24 @@
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
 
-def get_claimsDF(baseDF,summaryDF): #assumes I have already summarized the revenue dataframe
+def get_claims(baseDF,summaryDF): #assumes I have already summarized the revenue dataframe
     #CLAIMNO resets every year so need to include the THRU_DT as well
     claimsDF = baseDF.join(summaryDF,
                           on=["DSYSRTKY","CLAIMNO","THRU_DT"],
                           # because we collapsed all revenue records to a single summary revenue record, there should be 1-to-1 match
                           how = "left_outer")
-    claimsDF = add_provider_revenue_info(claimsDF)
     return claimsDF
 
-def add_provider_revenue_info(claimsDF):
+def add_provider_revenue_info(staysDF):
     '''Must be called using the revenue summary.'''
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    claimsDF = (claimsDF.withColumn("providerEdMean", F.mean( F.col("ed") ).over(eachProvider))
-                        .withColumn("providerEdVol", F.sum( F.col("ed") ).over(eachProvider))
-                        .withColumn("providerCtMean", F.mean( F.col("ct") ).over(eachProvider))
-                        .withColumn("providerCtVol", F.sum( F.col("ct") ).over(eachProvider))
-                        .withColumn("providerMriMean", F.mean( F.col("mri") ).over(eachProvider))
-                        .withColumn("providerMriVol", F.sum( F.col("mri") ).over(eachProvider)))
-    return claimsDF
+    staysDF = (staysDF.withColumn("providerEdMean", F.mean( F.col("ed") ).over(eachProvider))
+                      .withColumn("providerEdVol", F.sum( F.col("ed") ).over(eachProvider))
+                      .withColumn("providerCtMean", F.mean( F.col("ct") ).over(eachProvider))
+                      .withColumn("providerCtVol", F.sum( F.col("ct") ).over(eachProvider))
+                      .withColumn("providerMriMean", F.mean( F.col("mri") ).over(eachProvider))
+                      .withColumn("providerMriVol", F.sum( F.col("mri") ).over(eachProvider)))
+    return staysDF
 
 def propagate_stay_info(claimsDF, claimType="op"):
     '''Assumes claimType either op or ip.
@@ -37,6 +36,9 @@ def propagate_stay_info(claimsDF, claimType="op"):
     return claimsDF
 
 def get_unique_stays(claimsDF, claimType="op"):
+    '''A facility stay might be broken in more than one claim.
+    This function propagates information from all claims that are probably part of the same facility stay
+    and returns a single row that represents more accurately the facility stay.'''
     claimsDF = propagate_stay_info(claimsDF, claimType=claimType)
     eachIpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "ADMSN_DT_DAY", "DSCHRGDT_DAY")
     eachOpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "THRU_DT_DAY")
@@ -46,4 +48,8 @@ def get_unique_stays(claimsDF, claimType="op"):
                         .drop("minClaimnoForStay"))
     return claimsDF
 
-
+def get_stays(baseDF, summaryDF, claimType="op"): 
+    claimsDF = get_claims(baseDF, summaryDF)
+    staysDF = get_unique_stays(claimsDF, claimType=claimType)
+    staysDF = add_provider_revenue_info(staysDF)
+    return staysDF
