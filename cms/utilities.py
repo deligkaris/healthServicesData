@@ -254,7 +254,8 @@ def clean_through_dates(dataframes):
     for claimTypePart in list(dataframes.keys()):
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
         if (claimPart=="Base"):
-            dataframes[claimTypePart] = baseF.get_clean_through_dates(dataframes[claimTypePart])
+            if claimType=="ip":   #for now I am cleaning just the ip claims
+                dataframes[claimTypePart] = baseF.get_clean_through_dates(dataframes[claimTypePart])
     return dataframes    
 
 def add_through_date_info(df):
