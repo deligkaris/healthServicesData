@@ -2,7 +2,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 from .mbsf import add_ohResident
 from .revenue import filter_claims, add_ed, add_mri, add_ct, get_revenue_info
-from .claims import get_claimsDF
+from .claims import get_claims
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, daysInYearsPrior, usRegionFipsCodes, monthsInYearsPrior
 import re
 from functools import reduce
