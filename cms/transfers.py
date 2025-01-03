@@ -143,6 +143,7 @@ def add_dyad_stroke_treatment_info(transfersDF):
     return transfersDF
 
 def add_dyadAcrossCounties(transfersDF):
+    '''Adds a flag to indicate whether the from and to nodes are located in different counties or not.'''
     transfersDF = transfersDF.withColumn("dyadAcrossCounties", 
                                          F.when( (F.col("toproviderFIPS")!=F.col("fromproviderFIPS")) &
                                                  (~F.col("toproviderFIPS").isNull()) &
@@ -153,6 +154,7 @@ def add_dyadAcrossCounties(transfersDF):
     return transfersDF
 
 def add_node_stroke_treatment_info(transfersDF):
+    '''Stroke treatment refers to evt, tpa columns, adds stroke treatment infor volume and mean for both from and to nodes.'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
     transfersDF = (transfersDF.withColumn("nodeFromEvtVol", F.sum( F.col("toevt") ).over(eachFromProvider))
@@ -165,13 +167,34 @@ def add_node_stroke_treatment_info(transfersDF):
                               .withColumn("nodeToTpaMean", F.mean( F.col("transfertpa")).over(eachToProvider)))
     return transfersDF
  
-def add_node_from_to_info(transfersDF):
+def add_node_revenue_info(transfersDF):
+    '''Revenue info refers to the ed, ct, mri columns, adds revenue info volume and mean for both from and to nodes.'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
-    transfersDF = (transfersDF.withColumn("nodeFromToSet", F.collect_set( F.col("toORGNPINM")).over(eachFromProvider))
-                              .withColumn("nodeFromToSize", F.size( F.col("nodeFromToSet") ))
-                              .withColumn("nodeToFromSet", F.collect_set( F.col("fromORGNPINM")).over(eachToProvider))
-                              .withColumn("nodeToFromSize", F.size( F.col("nodeToFromSet") )))
+    transfersDF = (transfersDF.withColumn("nodeFromEdVol", F.sum( F.col("fromed") ).over(eachFromProvider))
+                              .withColumn("nodeFromEdMean", F.mean( F.col("fromed") ).over(eachFromProvider))
+                              .withColumn("nodeFromCtVol", F.sum( F.col("fromct") ).over(eachFromProvider))
+                              .withColumn("nodeFromCtMean", F.mean( F.col("fromct") ).over(eachFromProvider))
+                              .withColumn("nodeFromMriVol", F.sum( F.col("frommri") ).over(eachFromProvider))
+                              .withColumn("nodeFromMriMean", F.mean( F.col("frommri") ).over(eachFromProvider))
+                              .withColumn("nodeToEdVol", F.sum( F.col("toed") ).over(eachToProvider))
+                              .withColumn("nodeToEdMean", F.mean( F.col("toed") ).over(eachToProvider))
+                              .withColumn("nodeToCtVol", F.sum( F.col("toct") ).over(eachToProvider))
+                              .withColumn("nodeToCtMean", F.mean( F.col("toct") ).over(eachToProvider))
+                              .withColumn("nodeToMriVol", F.sum( F.col("tomri") ).over(eachToProvider))
+                              .withColumn("nodeToMriMean", F.mean( F.col("tomri") ).over(eachToProvider)))
+    return transfersDF
+
+def add_node_from_to_info(transfersDF):
+    '''Adds columns about the connections each node has.
+    For example, each FROM node has transfers to potentially more than one TO node, so this function adds the set of all TO nodes where each FROM node transfers to (set of NPI numbers).
+    The columns related to size are the sizes of the corresponding set, eg, based on the example above, the size of the set with all TO NPI numbers.'''
+    eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
+    eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
+    transfersDF = (transfersDF.withColumn("nodeFromSetOfToNodes", F.collect_set( F.col("toORGNPINM")).over(eachFromProvider))
+                              .withColumn("nodeFromSizeOfToNodes", F.size( F.col("nodeFromSetOfToNodes") ))
+                              .withColumn("nodeToSetOfFromNodes", F.collect_set( F.col("fromORGNPINM")).over(eachToProvider))
+                              .withColumn("nodeToSizeOfFromNodes", F.size( F.col("nodeToSetOfFromNodes") )))
     return transfersDF
 
 def add_dyad_info(transfersDF):

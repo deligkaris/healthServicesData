@@ -49,7 +49,8 @@ def get_unique_stays(claimsDF, claimType="op"):
     return claimsDF
 
 def get_stays(baseDF, summaryDF, claimType="op"): 
+    '''Inputs are the claims, base and revenue summary, whereas outputs are the stays/visits.
+    Each stay/visit might include more then a single claim, so this function attempts to create the dataframe of stay/visits from the claim information.'''
     claimsDF = get_claims(baseDF, summaryDF)
     staysDF = get_unique_stays(claimsDF, claimType=claimType)
-    staysDF = add_provider_revenue_info(staysDF)
     return staysDF
