@@ -207,6 +207,7 @@ def add_dyad_info(transfersDF):
 def add_node_info(transfersDF):
     transfersDF = add_node_volume_info(transfersDF)
     transfersDF = add_node_from_to_info(transfersDF)
+    transfersDF = add_node_revenue_info(transfersDF)
     return transfersDF
 
 
