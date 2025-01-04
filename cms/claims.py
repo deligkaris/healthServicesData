@@ -1,5 +1,6 @@
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
+import .revenue as revenueF
 
 def get_claims(baseDF,summaryDF): #assumes I have already summarized the revenue dataframe
     #CLAIMNO resets every year so need to include the THRU_DT as well
@@ -62,8 +63,8 @@ def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
     #so for non-PPS hospitals I need to search in the outpatient file...most of the non-PPS claims are in MD (PRSTATE==21)
     #as a test, doing this for the PPS hospitals (PPS_IND==2) should yield exactly zero
     eachStay = Window.partitionBy(["ORGNPINM","THRU_DT_DAY","DSYSRTKY"])
-    opRevenueDFSummary = get_revenue_info(opRevenueDF, inClaim=True)
-    opClaimsDF = get_claimsDF(opBaseDF,opRevenueDFSummary).filter(F.col("ed")==1)
+    opRevenueDFSummary = revenueF.get_revenue_info(opRevenueDF, inClaim=True)
+    opClaimsDF = get_claims(opBaseDF,opRevenueDFSummary).filter(F.col("ed")==1)
     ipClaimsDF = (ipClaimsDF.join(opClaimsDF #now bring back to the ip claims the updated information about the non-PPS hospitals (but PPS hospitals also)
                                    .select(F.col("ORGNPINM"),F.col("DSYSRTKY"),
                                            F.col("THRU_DT_DAY").alias("ADMSN_DT_DAY"),
