@@ -1480,32 +1480,6 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
                                                            .otherwise( 365-F.col("losAtall365") )))
     return baseDF
 
-def update_nonPPS_revenue_info(ipClaimsDF, opBaseDF, opRevenueDF):
-    #non-PPS hospitals (PPS_IND == null), eg CAH, do not need to bundle the outpatient ED visit with the inpatient stay
-    #so for non-PPS hospitals I need to search in the outpatient file...most of the non-PPS claims are in MD (PRSTATE==21)
-    #as a test, doing this for the PPS hospitals (PPS_IND==2) should yield exactly zero
-    eachStay = Window.partitionBy(["ORGNPINM","THRU_DT_DAY","DSYSRTKY"])
-    opRevenueDFSummary = get_revenue_info(opRevenueDF, inClaim=True)
-    opClaimsDF = get_claimsDF(opBaseDF,opRevenueDFSummary).filter(F.col("ed")==1)
-    ipClaimsDF = (ipClaimsDF.join(opClaimsDF #now bring back to the ip claims the updated information about the non-PPS hospitals (but PPS hospitals also)
-                                   .select(F.col("ORGNPINM"),F.col("DSYSRTKY"),
-                                           F.col("THRU_DT_DAY").alias("ADMSN_DT_DAY"),
-                                           F.max( F.col("ed") ).over(eachStay).alias("oped"),
-                                           F.max( F.col("mri") ).over(eachStay).alias("opmri"),
-                                           F.max( F.col("ct") ).over(eachStay).alias("opct"))
-                                   .distinct(),
-                                  on=["ORGNPINM","DSYSRTKY","ADMSN_DT_DAY"],
-                                  how="left_outer")
-                   .fillna(0, subset=["oped","opmri","opct"])
-                   .withColumn("ed", F.when( F.col("PPS_IND").isNull(), ((F.col("ed").cast("boolean"))|(F.col("oped").cast("boolean"))).cast('int'))
-                                      .otherwise( F.col("ed") )) #leave PPS hospitals as they were
-                   .withColumn("mri", F.when( F.col("PPS_IND").isNull(), ((F.col("mri").cast("boolean"))|(F.col("opmri").cast("boolean"))).cast('int'))
-                                       .otherwise( F.col("mri") ))
-                   .withColumn("ct", F.when( F.col("PPS_IND").isNull(), ((F.col("ct").cast("boolean")) | ((F.col("opct").cast("boolean")))).cast('int'))
-                                      .otherwise( F.col("ct") ))
-                   .drop("oped","opmri","opct"))
-    return ipClaimsDF
-
 def add_prior_hospitalization_info(baseDF, ipBaseDF):
     '''Calculates the number of inpatient claims in the 12 and 6 months prior to the admission date of the baseDF.
     It uses the inpatient claim through date and compares it to the baseDF admission date.
