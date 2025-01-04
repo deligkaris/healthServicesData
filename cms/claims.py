@@ -1,6 +1,6 @@
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
-import .revenue as revenueF
+import cms.revenue as revenueF
 
 def get_claims(baseDF,summaryDF): #assumes I have already summarized the revenue dataframe
     #CLAIMNO resets every year so need to include the THRU_DT as well
