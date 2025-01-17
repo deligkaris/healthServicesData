@@ -12,7 +12,7 @@ from utilities import yearMin, yearMax, daysInYearsPrior, monthsInYearsPrior
 
 yearJKTransition = 2016 #year CMS switched from J to K format
 yearMinWithCMSData = 2012
-yearMaxWithCMSData = 2021
+yearMaxWithCMSData = 2022
 
 def years_within_code_limits(yearI, yearF):
     '''inputs: year initial and final requested
