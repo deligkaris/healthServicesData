@@ -198,7 +198,7 @@ def read_and_prep_dataframe(filename, file, spark):
     elif file=="cmi":
         df = prep_cmiDF(df)
     elif file=="ersRucc":
-        df = prep_ersRucc(df)
+        df = prep_ersRuccDF(df)
     elif file=="sdoh":
         df = prep_sdohDF(df, filename)
     return df   
