@@ -498,8 +498,8 @@ def add_providerSysId(baseDF, chspHospDF):
     '''The providerSysId variable indicates whether a hospital is part of a health system or not.
     If this variable is Null then the hospital is not part of a health system.
     eg see page 21 of https://www.ahrq.gov/sites/default/files/wysiwyg/chsp/compendium/2021-hospital-linkage-techdoc-rev.pdf
-    There are 4073 non null health sys id values in the chspHospDF and 2652 null values consistent with the Table IV.1 in the PDF.'''
-    I am referring just to hospitals because the chspHospDF is the hospital linkage file from AHRQ.
+    There are 4073 non null health sys id values in the chspHospDF and 2652 null values consistent with the Table IV.1 in the PDF.
+    I am referring just to hospitals because the chspHospDF is the hospital linkage file from AHRQ.'''
     baseDF = baseDF.join(chspHospDF.select(F.col("ccn").alias("PROVIDER"),
                                            F.col("health_sys_id").alias("providerSysId"),
                                            F.col("year").alias("THRU_DT_YEAR")),
