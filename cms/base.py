@@ -495,6 +495,11 @@ def add_provider_pos_info(baseDF, posDF):
     return baseDF
 
 def add_providerSysId(baseDF, chspHospDF):
+    '''The providerSysId variable indicates whether a hospital is part of a health system or not.
+    If this variable is Null then the hospital is not part of a health system.
+    eg see page 21 of https://www.ahrq.gov/sites/default/files/wysiwyg/chsp/compendium/2021-hospital-linkage-techdoc-rev.pdf
+    There are 4073 non null health sys id values in the chspHospDF and 2652 null values consistent with the Table IV.1 in the PDF.'''
+    I am referring just to hospitals because the chspHospDF is the hospital linkage file from AHRQ.
     baseDF = baseDF.join(chspHospDF.select(F.col("ccn").alias("PROVIDER"),
                                            F.col("health_sys_id").alias("providerSysId"),
                                            F.col("year").alias("THRU_DT_YEAR")),
@@ -726,7 +731,7 @@ def add_beneficiary_info(baseDF, mbsfDF, data, claimType="op"):
 def add_mbsf_info(baseDF,mbsfDF):
     eachDsysrtky = Window.partitionBy(["DSYSRTKY"])
     eachDsysrtkyYear = Window.partitionBy(["DSYSRTKY","RFRNC_YR"]).orderBy("DSYSRTKY")
-    baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"),F.col("AGE"),F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("ffsFirstMonth"),
+    baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"),F.col("AGE").alias("mbsfAge"),F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("ffsFirstMonth"),
                                          F.col("anyEsrd"), F.col("medicaidEver"), F.col("SEX").alias("mbsfSex"), F.col("RACE").alias("mbsfRace")),
                           on = ["DSYSRTKY", "THRU_DT_YEAR"], #this join must be done on both dsysrtky and year
                           how = "left_outer")

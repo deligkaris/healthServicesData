@@ -179,6 +179,7 @@ def add_preliminary_info(dataframes, data):
                 dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
                 dataframes[claimTypePart] = baseF.add_dgnsCodeAll(dataframes[claimTypePart])
                 dataframes[claimTypePart] = baseF.add_provider_info(dataframes[claimTypePart], data)
+                dataframes[claimTypePart] = baseF.add_los(dataframes[claimTypePart])
                 #assumes that mbsf has already been processed here
                 dataframes[claimTypePart] = baseF.add_beneficiary_info(dataframes[claimTypePart], dataframes["mbsf"], data, claimType="ip")
             if (claimType=="car"):

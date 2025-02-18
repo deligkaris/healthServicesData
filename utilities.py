@@ -36,9 +36,13 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     filenames = dict()
 
+    #data exist only until 2020 (including), I copied the 2020 file to be used for 2021 and 2022
+    #source: AHRQ social determinants of health database https://www.ahrq.gov/sdoh/data-analytics/sdoh-data.html
+    filenames["sdoh"] = [pathToData + f'/SDOH/sdoh_year{year}.csv' for year in range(2016,2023)]
+
     #AHRQ compendium of US health systems: https://www.ahrq.gov/chsp/data-resources/compendium.html
-    #data exist only for years 2016, 2018, 2020, 2021, I copied the 2016 data to 2017 and the 2018 data to 2019
-    filenames["chspHosp"] = [pathToData + f'/CHSP/chsp-hospital-linkage-year{year}.csv' for year in range(2016,2022)]
+    #data exist only for years 2016, 2018, 2020, 2021, 2022 I copied the 2016 data to 2017 and the 2018 data to 2019
+    filenames["chspHosp"] = [pathToData + f'/CHSP/chsp-hospital-linkage-year{year}.csv' for year in range(2016,2023)]
 
     #case mix index from https://www.nber.org/research/data/centers-medicare-medicaid-services-cms-casemix-file-hospital-ipps
     filenames["cmi"] = [pathToData + f'/CASE-MIX-INDEX/casemix{year}.csv' for year in range(2016,2025)]
@@ -193,6 +197,10 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_chspHospDF(df, filename)
     elif file=="cmi":
         df = prep_cmiDF(df)
+    elif file=="ersRucc":
+        df = prep_ersRucc(df)
+    elif file=="sdoh":
+        df = prep_sdohDF(df, filename)
     return df   
 
 def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkaris/DATA', pathToAHAData='/fs/ess/PAS2164/AHA'):
@@ -200,6 +208,15 @@ def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkari
     filenames = get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal)
     data = read_data(spark, filenames)
     return data
+
+def prep_ersRuccDF(ersRuccDF):
+    ersRuccDF = ersRuccDF.withColumn('RUCC_2013', F.col("RUCC_2013").cast('int'))
+    return ersRuccDF
+
+def prep_sdohDF(sdohDF, filename):
+    sdohYear = int(re.compile(r'year\d{4}').search(filename).group()[4:])
+    sdohDF = (sdohDF.withColumn("year", F.lit(sdohYear)))
+    return sdohDF
 
 def prep_chspHospDF(chspHospDF, filename):
     chspYear = int(re.compile(r'year\d{4}').search(filename).group()[4:])
@@ -315,18 +332,12 @@ def prep_zipToCountyDF(zipToCountyDF):
     return zipToCountyDF
 
 def prep_maPenetrationDF(maPenetrationDF):
-
-    maPenetrationDF = (maPenetrationDF.withColumn("Penetration", 
-                                                 F.split( F.trim(F.col("Penetration")), '\.' ).getItem(0).cast('int') )
-                                      .withColumn("Year",
-                                                  F.col("Year").cast('int')))
-
+    maPenetrationDF = (maPenetrationDF.withColumn("Penetration", F.split( F.trim(F.col("Penetration")), '\.' ).getItem(0).cast('int') )
+                                      .withColumn("Year", F.col("Year").cast('int')))
     return maPenetrationDF
 
 def prep_hospCostDF(hospCostDF):
-
     eachCCN = Window.partitionBy("Provider CCN")
-
     hospCostDF = (hospCostDF.withColumn("maxTotalBedDaysAvailable",
                                        F.max(F.col("Total Bed Days Available").cast('int')).over(eachCCN))
                             .filter(F.col("maxTotalBedDaysAvailable")==(F.col("Total Bed Days Available").cast('int')))
@@ -384,44 +395,32 @@ def add_processed_name(DF,colToProcess="providerName"):
 
 def prep_acgmeSitesDF(acgmeSitesDF):
 
-    acgmeSitesDF = acgmeSitesDF.withColumn("siteZip", 
-                                           F.substring(F.trim(F.col("Institution Postal Code")),1,5))
-
+    acgmeSitesDF = acgmeSitesDF.withColumn("siteZip", F.substring(F.trim(F.col("Institution Postal Code")),1,5))
     acgmeSitesDF = acgmeSitesDF.withColumn("siteName", F.col("Institution Name"))
-
     #acgmeSites do not include any id I can use for linking, so make site name ready for probabilistic matching
     acgmeSitesDF = add_processed_name(acgmeSitesDF, colToProcess="siteName") 
-
     return acgmeSitesDF
 
 def prep_acgmeProgramsDF(acgmeProgramsDF):
 
-    acgmeProgramsDF = acgmeProgramsDF.withColumn("programZip",
-                                           F.substring(F.trim(F.col("Program Postal Code")),1,5))
-
+    acgmeProgramsDF = acgmeProgramsDF.withColumn("programZip", F.substring(F.trim(F.col("Program Postal Code")),1,5))
     acgmeProgramsDF = acgmeProgramsDF.withColumn("programName", 
                                                  F.regexp_replace( 
                                                      F.trim( F.lower(F.col("Program Name")) ), " Program", "") )
-
     #acgmePrograms do not include any id I can use for linking, so make program name ready for probabilistic matching
     acgmeProgramsDF = add_processed_name(acgmeProgramsDF, colToProcess="programName") 
-
     return acgmeProgramsDF
 
 def add_acgmeSitesInZip(acgmeSitesDF):
 
     eachZip = Window.partitionBy("institutionZip")
-    acgmeSitesDF = acgmeSitesDF.withColumn("acgmeSitesInZip",
-                                           F.collect_set( F.col("institutionNameProcessed")).over(eachZip)) 
-
+    acgmeSitesDF = acgmeSitesDF.withColumn("acgmeSitesInZip", F.collect_set( F.col("institutionNameProcessed")).over(eachZip)) 
     return acgmeSitesDF
 
 def add_acgmeProgramsInZip(acgmeProgramsDF):
 
     eachZip = Window.partitionBy("programZip")
-    acgmeProgramsDF = acgmeProgramsDF.withColumn("acgmeProgramsInZip",
-                                           F.collect_set( F.col("programNameProcessed")).over(eachZip)) 
-
+    acgmeProgramsDF = acgmeProgramsDF.withColumn("acgmeProgramsInZip", F.collect_set( F.col("programNameProcessed")).over(eachZip)) 
     return acgmeProgramsDF
 
 def add_accredited(acgmeProgramsDF):
@@ -445,17 +444,10 @@ def add_primaryTaxonomy(npiProvidersDF):
                             f'F.array(F.col("Healthcare Provider Taxonomy Code_{x}"),F.col("Healthcare Provider Primary Taxonomy Switch_{x}"))' \
                             for x in range(1,16)) +')'
 
-    npiProvidersDF = npiProvidersDF.withColumn("codeAndSwitch",
-                                               eval(codeAndSwitchCols))
-
-    npiProvidersDF = npiProvidersDF.withColumn("codeAndSwitchPrimary",
-                                               F.expr('filter(codeAndSwitch, x -> x[1]=="Y")'))
-
-    npiProvidersDF = npiProvidersDF.withColumn("primaryTaxonomy",
-                                               F.flatten(F.col("codeAndSwitchPrimary"))[0])
-
+    npiProvidersDF = npiProvidersDF.withColumn("codeAndSwitch", eval(codeAndSwitchCols))
+    npiProvidersDF = npiProvidersDF.withColumn("codeAndSwitchPrimary", F.expr('filter(codeAndSwitch, x -> x[1]=="Y")'))
+    npiProvidersDF = npiProvidersDF.withColumn("primaryTaxonomy", F.flatten(F.col("codeAndSwitchPrimary"))[0])
     npiProvidersDF = npiProvidersDF.drop("codeAndSwitch","codeAndSwitchPrimary")
-
     return npiProvidersDF
 
 def add_cah(npiProvidersDF, primary=True):
@@ -505,10 +497,7 @@ def add_gach(npiProvidersDF, primary=True):
                    '(' + '|'.join('(F.col(' + f'"Healthcare Provider Taxonomy Code_{x}"' + ').isin(gachTaxonomyCodes))' \
                    for x in range(1,16)) +')'
 
-    npiProvidersDF = npiProvidersDF.withColumn("gach",
-                                               F.when(eval(gachTaxonomyCondition), 1)
-                                                .otherwise(0))
-
+    npiProvidersDF = npiProvidersDF.withColumn("gach", F.when(eval(gachTaxonomyCondition), 1).otherwise(0))
     return npiProvidersDF
 
 def add_rehabilitation(npiProvidersDF, primary=True):
@@ -577,9 +566,7 @@ def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
     return strokeCentersCamargoDF
 
 def prep_strokeCentersJCDF(strokeCentersJCDF):
- 
     strokeCentersJCDF = add_processed_name(strokeCentersJCDF,colToProcess="OrganizationName")
-
     return strokeCentersJCDF
 
 def add_ccn_from_pos(DF,posDF, providerZip="providerZip",providerName="providerNameProcessed"): #assumes a zipCode column, providerNameProcessed

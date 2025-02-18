@@ -49,6 +49,12 @@ def get_transfers(fromClaimsDF, toClaimsDF):
 def add_transfertpa(transfersDF):
     return transfersDF.withColumn("transfertpa", F.when( (F.col("totpa")==1) | (F.col("fromtpa")==1), 1).otherwise(0))
 
+def add_transferct(transfersDF):
+    return transfersDF.withColumn("transferct", F.when( (F.col("toct")==1) | (F.col("fromct")==1), 1).otherwise(0))
+
+def add_transfermri(transfersDF):
+    return transfersDF.withColumn("transfermri", F.when( (F.col("tomri")==1) | (F.col("frommri")==1), 1).otherwise(0))
+
 def add_transfernihss(transfersDF):
     return transfersDF.withColumn("transfernihss", F.when( F.col("fromnihss").isNull(), F.col("tonihss")).otherwise(F.col("fromnihss")))
 
@@ -56,6 +62,8 @@ def add_transfernihssGroup(transfersDF):
     return transfersDF.withColumn("transfernihssGroup", F.when( F.col("fromnihssGroup").isNull(), F.col("tonihssGroup")).otherwise(F.col("fromnihssGroup")))   
 
 def add_stroke_info(transfersDF):
+    transfersDF = add_transferct(transfersDF)
+    transfersDF = add_transfermri(transfersDF)
     transfersDF = add_transfertpa(transfersDF)
     transfersDF = add_transfernihss(transfersDF)
     transfersDF = add_transfernihssGroup(transfersDF)
@@ -153,6 +161,17 @@ def add_dyadAcrossCounties(transfersDF):
                                           .otherwise(0))
     return transfersDF
 
+def add_dyadAcrossStates(transfersDF):
+    '''Adds a flag to indicate whether the from and to nodes are located in different states or not.'''
+    transfersDF = transfersDF.withColumn("dyadAcrossStates",
+                                         F.when( (F.col("toproviderStateFIPS")!=F.col("fromproviderStateFIPS")) &
+                                                 (~F.col("toproviderStateFIPS").isNull()) &
+                                                 (~F.col("fromproviderStateFIPS").isNull()), 1)
+                                          .when( (F.col("toproviderStateFIPS").isNull()) |
+                                                 (F.col("fromproviderStateFIPS").isNull()), F.lit(None))
+                                          .otherwise(0))
+    return transfersDF
+
 def add_node_stroke_treatment_info(transfersDF):
     '''Stroke treatment refers to evt, tpa columns, adds stroke treatment infor volume and mean for both from and to nodes.'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
@@ -202,6 +221,7 @@ def add_dyad_info(transfersDF):
     transfersDF = add_dyadVi(transfersDF)
     transfersDF = add_dyadTransferVol(transfersDF)
     transfersDF = add_dyadAcrossCounties(transfersDF)
+    transfersDF = add_dyadAcrossStates(transfersDF)
     return transfersDF
 
 def add_node_info(transfersDF):
