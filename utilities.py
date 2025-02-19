@@ -221,7 +221,7 @@ def prep_sdohDF(sdohDF, filename):
                     .withColumn("CDCA_HEART_DTH_RATE_ABOVE35", F.col("CDCA_HEART_DTH_RATE_ABOVE35").cast('float'))
                     .withColumn("CDCA_PREV_DTH_RATE_BELOW74", F.col("CDCA_PREV_DTH_RATE_BELOW74").cast('float'))
                     .withColumn("CDCA_STROKE_DTH_RATE_ABOVE35", F.col("CDCA_STROKE_DTH_RATE_ABOVE35").cast('float'))
-                    .withColumn("HIFLD_MEDIAN_DIST_UC", F.col("HIFLD_MEDIAN_DIST_UC").cast('float'))
+                    #.withColumn("HIFLD_MEDIAN_DIST_UC", F.col("HIFLD_MEDIAN_DIST_UC").cast('float'))
                     .withColumn("POS_MEDIAN_DIST_ED", F.col("POS_MEDIAN_DIST_ED").cast('float'))
                     .withColumn("POS_MEDIAN_DIST_MEDSURG_ICU", F.col("POS_MEDIAN_DIST_MEDSURG_ICU").cast('float'))
                     .withColumn("POS_MEDIAN_DIST_TRAUMA", F.col("POS_MEDIAN_DIST_TRAUMA").cast('float'))
