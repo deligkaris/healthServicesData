@@ -200,7 +200,7 @@ def read_and_prep_dataframe(filename, file, spark):
     elif file=="ersRucc":
         df = prep_ersRuccDF(df)
     elif file=="sdoh":
-        df = prep_sdohDF(df, filename)
+        df = prep_sdohDF(df)
     return df   
 
 def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkaris/DATA', pathToAHAData='/fs/ess/PAS2164/AHA'):
@@ -213,10 +213,9 @@ def prep_ersRuccDF(ersRuccDF):
     ersRuccDF = ersRuccDF.withColumn('RUCC_2013', F.col("RUCC_2013").cast('int'))
     return ersRuccDF
 
-def prep_sdohDF(sdohDF, filename):
-    #sdohYear = int(re.compile(r'year\d{4}').search(filename).group()[4:])
-    #sdohDF = (sdohDF.withColumn("year", F.lit(sdohYear)))
+def prep_sdohDF(sdohDF):
     sdohDF = (sdohDF.withColumn("ACS_MEDIAN_HH_INC", F.col("ACS_MEDIAN_HH_INC").cast('int'))
+                    #these columns do not exist in the data file of the last year (2020) so for now I am excluding them
                     #.withColumn("AHRF_TOT_NEUROLOGICAL_SURG", F.col("AHRF_TOT_NEUROLOGICAL_SURG").cast('int'))
                     #.withColumn("CDCA_HEART_DTH_RATE_ABOVE35", F.col("CDCA_HEART_DTH_RATE_ABOVE35").cast('float'))
                     #.withColumn("CDCA_PREV_DTH_RATE_BELOW74", F.col("CDCA_PREV_DTH_RATE_BELOW74").cast('float'))

@@ -413,13 +413,14 @@ def add_countyName(mbsfDF,cbsaDF):
     return(mbsfDF)
 
 def add_sdoh_info(mbsfDF, sdohDF):
+    #I do not have all this information for all years so I am excluding them for now
     mbsfDF = mbsfDF.join(sdohDF.select(F.col("ACS_MEDIAN_HH_INC").alias("medianHhIncome"), #median household income
-                                       F.col("AHRF_TOT_NEUROLOGICAL_SURG").alias("totalNeuroSurgeons"), #total number of neurological surgeons
-                                       F.col("CDCA_HEART_DTH_RATE_ABOVE35").alias("cvDeathsRate"), #total cv disease deaths per 100k population
-                                       F.col("CDCA_PREV_DTH_RATE_BELOW74").alias("preventableCvDeathRate"), #total avoidable heart disease and stroke deaths per 100k population ages 74 and below
-                                       F.col("CDCA_STROKE_DTH_RATE_ABOVE35").alias("strokeDeathRate"), #total stroke deaths per 100k population ages 35 and over
+                                       #F.col("AHRF_TOT_NEUROLOGICAL_SURG").alias("totalNeuroSurgeons"), #total number of neurological surgeons
+                                       #F.col("CDCA_HEART_DTH_RATE_ABOVE35").alias("cvDeathsRate"), #total cv disease deaths per 100k population
+                                       #F.col("CDCA_PREV_DTH_RATE_BELOW74").alias("preventableCvDeathRate"), #total avoidable heart disease and stroke deaths per 100k population ages 74 and below
+                                       #F.col("CDCA_STROKE_DTH_RATE_ABOVE35").alias("strokeDeathRate"), #total stroke deaths per 100k population ages 35 and over
                                        F.col("COUNTYFIPS").alias("fipsCounty"),
-                                       F.col("HIFLD_MEDIAN_DIST_UC").alias("medianDistanceUc"), #median distance in miles to the nearest UC, using population weighted tract centroids in the county
+                                       #F.col("HIFLD_MEDIAN_DIST_UC").alias("medianDistanceUc"), #median distance in miles to the nearest UC, using population weighted tract centroids in the county
                                        F.col("POS_MEDIAN_DIST_ED").alias("medianDistanceEd"), #median distance in miles to the nearest ED, using population weighted tract centroids in the county
                                        F.col("POS_MEDIAN_DIST_MEDSURG_ICU").alias("medianDistanceIcu"), #median distance in miles to the nearest medical-surgical ICU, using population weighted tract centroids in the county
                                        F.col("POS_MEDIAN_DIST_TRAUMA").alias("medianDistanceTrauma"), #median distance in miles to the nearest trauma center calculated using population weighted tract centroids in the county
