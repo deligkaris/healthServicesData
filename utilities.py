@@ -217,7 +217,7 @@ def prep_sdohDF(sdohDF, filename):
     #sdohYear = int(re.compile(r'year\d{4}').search(filename).group()[4:])
     #sdohDF = (sdohDF.withColumn("year", F.lit(sdohYear)))
     sdohDF = (sdohDF.withColumn("ACS_MEDIAN_HH_INC", F.col("ACS_MEDIAN_HH_INC").cast('int'))
-                    .withColumn("AHRF_TOT_NEUROLOGICAL_SURG", F.col("AHRF_TOT_NEUROLOGICAL_SURG").cast('int'))
+                    #.withColumn("AHRF_TOT_NEUROLOGICAL_SURG", F.col("AHRF_TOT_NEUROLOGICAL_SURG").cast('int'))
                     .withColumn("CDCA_HEART_DTH_RATE_ABOVE35", F.col("CDCA_HEART_DTH_RATE_ABOVE35").cast('float'))
                     .withColumn("CDCA_PREV_DTH_RATE_BELOW74", F.col("CDCA_PREV_DTH_RATE_BELOW74").cast('float'))
                     .withColumn("CDCA_STROKE_DTH_RATE_ABOVE35", F.col("CDCA_STROKE_DTH_RATE_ABOVE35").cast('float'))
