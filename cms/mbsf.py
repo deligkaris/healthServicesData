@@ -1,6 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
-from utilities import daysInYearsPrior, monthsInYearsPrior
+from utilities import daysInYearsPrior, monthsInYearsPrior, usRegionFipsCodes
 
 #notes (most are from the Resdac tutorial: https://youtu.be/-nxGbTPVLo8?si=TsTNDXDpZlPTsvpX )
 #note: demographic information is largely reliable and valid (age, dob, sex, race, residence, date of death)
@@ -402,11 +402,52 @@ def add_fipsCounty(mbsfDF, cbsaDF):
                          how="left_outer")
     return mbsfDF
 
+def add_fipsState(mbsfDF):
+    mbsfDF = mbsfDF.withColumn("fipsState", F.col("fipsCounty").substr(1,2))
+    return mbsfDF
+
 def add_countyName(mbsfDF,cbsaDF):
     mbsfDF = mbsfDF.join(cbsaDF.select(F.col("countyName"),F.col("ssaCounty")),
                          on = ["ssaCounty"],
                          how = "left_outer")
     return(mbsfDF)
+
+def add_sdoh_info(mbsfDF, sdohDF):
+    mbsfDF = mbsfDF.join(sdohDF.select(F.col("ACS_MEDIAN_HH_INC").alias("medianHhIncome"), #median household income
+                                       F.col("AHRF_TOT_NEUROLOGICAL_SURG").alias("totalNeuroSurgeons"), #total number of neurological surgeons
+                                       F.col("CDCA_HEART_DTH_RATE_ABOVE35").alias("cvDeathsRate"), #total cv disease deaths per 100k population
+                                       F.col("CDCA_PREV_DTH_RATE_BELOW74").alias("preventableCvDeathRate"), #total avoidable heart disease and stroke deaths per 100k population ages 74 and below
+                                       F.col("CDCA_STROKE_DTH_RATE_ABOVE35").alias("strokeDeathRate"), #total stroke deaths per 100k population ages 35 and over
+                                       F.col("COUNTYFIPS").alias("fipsCounty"),
+                                       F.col("HIFLD_MEDIAN_DIST_UC").alias("medianDistanceUc"), #median distance in miles to the nearest UC, using population weighted tract centroids in the county
+                                       F.col("POS_MEDIAN_DIST_ED").alias("medianDistanceEd"), #median distance in miles to the nearest ED, using population weighted tract centroids in the county
+                                       F.col("POS_MEDIAN_DIST_MEDSURG_ICU").alias("medianDistanceIcu"), #median distance in miles to the nearest medical-surgical ICU, using population weighted tract centroids in the county
+                                       F.col("POS_MEDIAN_DIST_TRAUMA").alias("medianDistanceTrauma"), #median distance in miles to the nearest trauma center calculated using population weighted tract centroids in the county
+                                       F.col("YEAR").alias("RFRNC_YR")),
+                         on = ["fipsCounty", "RFRNC_YR"],
+                         how = "left_outer")
+    return mbsfDF 
+
+def add_rucc(mbsfDF, ersRuccDF):
+    mbsfDF = mbsfDF.join(ersRuccDF.select(F.col("FIPS").alias("fipsCounty"),F.col("RUCC_2013").alias("rucc")),
+                          on="fipsCounty",
+                          how="left_outer")
+    return mbsfDF
+
+def add_region(mbsfDF): 
+    
+    westCondition = '(F.col("fipsState").isin(usRegionFipsCodes["west"]))'
+    southCondition = '(F.col("fipsState").isin(usRegionFipsCodes["south"]))'
+    midwestCondition = '(F.col("fipsState").isin(usRegionFipsCodes["midwest"]))'
+    northeastCondition = '(F.col("fipsState").isin(usRegionFipsCodes["northeast"]))'
+
+    mbsfDF = mbsfDF.withColumn("region",
+                               F.when( eval(westCondition), 4)
+                                .when( eval(southCondition), 3)
+                                .when( eval(midwestCondition), 2)
+                                .when( eval(northeastCondition), 1)
+                                .otherwise(F.lit(None)))
+    return mbsfDF
 
 def prep_mbsf(mbsfDF):
     '''I noticed that in 2015 the same beneficiary appeared more than once, I did not notice that in 2016 and 2017.

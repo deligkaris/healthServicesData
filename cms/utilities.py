@@ -198,8 +198,13 @@ def add_preliminary_info(dataframes, data):
             if (claimType=="mbsf"):
                 dataframes[claimType] = mbsfF.add_death_date_info(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_ssaCounty(dataframes[claimType])
+                dataframes[claimType] = mbsfF.add_fipsCounty(dataframes[claimType], data["cbsa"])
+                dataframes[claimType] = mbsfF.add_fipsState(dataframes[claimType])
+                dataframes[claimType] = mbsfF.add_region(dataframes[claimType])
+                dataframes[claimType] = mbsfF.add_rucc(dataframes[claimType], data["ersRucc"])
                 dataframes[claimType] = mbsfF.add_enrollment_info(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_willDie(dataframes[claimType])
+                dataframes[claimType] = mbsfF.add_sdoh_info(dataframes[claimType], data["sdoh"])
         else:
             pass
     #this needs to be done when all dfs have been processed
