@@ -738,7 +738,7 @@ def add_mbsf_info(baseDF,mbsfDF):
                                          F.col("RACE").alias("mbsfRace"), F.col("rucc").alias("mbsfRucc"), F.col("region").alias("mbsfRegion"),
                                          F.col("medianHhIncome"), F.col("totalNeuroSurgeons"),
                                          F.col("cvDeathsRate"), F.col("preventableCvDeathRate"), F.col("strokeDeathRate"), 
-                                         F.col("medianDistanceUc"), F.col("medianDistanceEd"), F.col("medianDistanceIcu"), F.col("medianDistanceTrauma"))
+                                         F.col("medianDistanceUc"), F.col("medianDistanceEd"), F.col("medianDistanceIcu"), F.col("medianDistanceTrauma")),
                           on = ["DSYSRTKY", "THRU_DT_YEAR"], #this join must be done on both dsysrtky and year
                           how = "left_outer")
                     #second join will bring in all death related information, specific only to beneficiary
