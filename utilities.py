@@ -200,7 +200,7 @@ def read_and_prep_dataframe(filename, file, spark):
     elif file=="ersRucc":
         df = prep_ersRuccDF(df)
     elif file=="sdoh":
-        df = prep_sdohDF(df)
+        df = prep_sdohDF(df, filename)
     return df   
 
 def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkaris/DATA', pathToAHAData='/fs/ess/PAS2164/AHA'):
@@ -213,7 +213,9 @@ def prep_ersRuccDF(ersRuccDF):
     ersRuccDF = ersRuccDF.withColumn('RUCC_2013', F.col("RUCC_2013").cast('int'))
     return ersRuccDF
 
-def prep_sdohDF(sdohDF):
+def prep_sdohDF(sdohDF, filename):
+    #because I copied the 2020 sdoh file for 21 and 22, the year column is not accurate (for 21 and 22), so I need to overwrite it here
+    year = int(re.compile(r'year\d{4}').search(filename).group()[4:])
     sdohDF = (sdohDF.withColumn("ACS_MEDIAN_HH_INC", F.col("ACS_MEDIAN_HH_INC").cast('int'))
                     #these columns do not exist in the data file of the last year (2020) so for now I am excluding them
                     #.withColumn("AHRF_TOT_NEUROLOGICAL_SURG", F.col("AHRF_TOT_NEUROLOGICAL_SURG").cast('int'))
@@ -224,7 +226,7 @@ def prep_sdohDF(sdohDF):
                     .withColumn("POS_MEDIAN_DIST_ED", F.col("POS_MEDIAN_DIST_ED").cast('float'))
                     .withColumn("POS_MEDIAN_DIST_MEDSURG_ICU", F.col("POS_MEDIAN_DIST_MEDSURG_ICU").cast('float'))
                     .withColumn("POS_MEDIAN_DIST_TRAUMA", F.col("POS_MEDIAN_DIST_TRAUMA").cast('float'))
-                    .withColumn("YEAR", F.col("YEAR").cast('int')))
+                    .withColumn("year", F.lit(year).cast('int')))
     return sdohDF
 
 def prep_chspHospDF(chspHospDF, filename):

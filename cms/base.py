@@ -736,6 +736,7 @@ def add_mbsf_info(baseDF,mbsfDF):
                                          F.col("AGE").alias("mbsfAge"), #aliasing with mbsf to distinguish from similar claim variables that may be different
                                          F.col("ffsFirstMonth"), F.col("anyEsrd"), F.col("medicaidEver"), F.col("SEX").alias("mbsfSex"), 
                                          F.col("RACE").alias("mbsfRace"), F.col("rucc").alias("mbsfRucc"), F.col("region").alias("mbsfRegion"),
+                                         F.col("maPenetration").alias("mbsfMaPenetration"),
                                          F.col("medianHhIncome"), F.col("medianDistanceEd"), F.col("medianDistanceIcu"), F.col("medianDistanceTrauma")),
                                          #I do not have this information for all years so I am excluding them
                                          #F.col("totalNeuroSurgeons"), F.col("cvDeathsRate"), F.col("preventableCvDeathRate"), F.col("strokeDeathRate"), 

@@ -205,6 +205,7 @@ def add_preliminary_info(dataframes, data):
                 dataframes[claimType] = mbsfF.add_enrollment_info(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_willDie(dataframes[claimType])
                 dataframes[claimType] = mbsfF.add_sdoh_info(dataframes[claimType], data["sdoh"])
+                dataframes[claimType] = mbsfF.add_maPenetration(dataframes[claimType], data["maPenetration"])
         else:
             pass
     #this needs to be done when all dfs have been processed

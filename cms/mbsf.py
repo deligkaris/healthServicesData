@@ -429,6 +429,15 @@ def add_sdoh_info(mbsfDF, sdohDF):
                          how = "left_outer")
     return mbsfDF 
 
+def add_maPenetration(mbsfDF, maPenetrationDF):
+    mbsfDF = mbsfDF.join(maPenetrationDF
+                          .select(F.col("FIPS").alias("fipsCounty"),
+                                  F.col("Penetration").alias("maPenetration"),
+                                  F.col("Year").alias("RFRNC_YR")),
+                         on=["fipsCounty","RFRNC_YR"],
+                         how="left_outer")
+    return mbsfDF
+
 def add_rucc(mbsfDF, ersRuccDF):
     mbsfDF = mbsfDF.join(ersRuccDF.select(F.col("FIPS").alias("fipsCounty"),F.col("RUCC_2013").alias("rucc")),
                           on="fipsCounty",
