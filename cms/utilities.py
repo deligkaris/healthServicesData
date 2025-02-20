@@ -212,10 +212,7 @@ def add_preliminary_info(dataframes, data, runTests=False):
             pass
         if runTests:
             finalRowCounts = dataframes[claimTypePart].count()
-            if finalRowCounts == initialRowCounts:
-                print(f"File {claimTypePart} has same row counts before and after adding preliminary info")
-            else:
-                print(f"ERROR: File {claimTypePart} initially has {initialRowCounts} rows but {finalRowCounts} after adding preliminary info")
+            assert finalRowCounts == initialRowCounts, f"File {claimTypePart} initially has {initialRowCounts} rows but {finalRowCounts} after adding preliminary info"
     #this needs to be done when all dfs have been processed
     dataframes["mbsf"] = mbsfF.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"], dataframes["snfBase"],
                                                 dataframes["hospBase"], dataframes["hhaBase"])
