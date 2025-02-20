@@ -164,10 +164,12 @@ def enforce_schema(df, claimType, claimPart):
     df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])
     return df
 
-def add_preliminary_info(dataframes, data):
+def add_preliminary_info(dataframes, data, runTests=False):
     '''inputs: original CMS dataframes
        outputs: input dataframes with additional columns appended that are needed almost always'''
     for claimTypePart in list(dataframes.keys()):
+        if runTests:
+            initialRowCounts = dataframes[claimTypePart].count()
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
         if (claimPart=="Base"):
             dataframes[claimTypePart] = add_through_date_info(dataframes[claimTypePart])
@@ -208,6 +210,12 @@ def add_preliminary_info(dataframes, data):
                 dataframes[claimType] = mbsfF.add_maPenetration(dataframes[claimType], data["maPenetration"])
         else:
             pass
+        if runTests:
+            finalRowCounts = dataframes[claimTypePart].count()
+            if finalRowCounts == initialRowCounts:
+                print(f"File {claimTypePart} has same row counts before and after adding preliminary info")
+            else:
+                print(f"ERROR: File {claimTypePart} initially has {initialRowCounts} rows but {finalRowCounts} after adding preliminary info")
     #this needs to be done when all dfs have been processed
     dataframes["mbsf"] = mbsfF.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"], dataframes["snfBase"],
                                                 dataframes["hospBase"], dataframes["hhaBase"])
@@ -226,7 +234,7 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, r
         dataframes = read_data(spark, filenames, yearI, yearF)
         if cleanMbsf: #need to clean mbsf prior to using it to add information to base claims in add_preliminary_info
             dataframes["mbsf"] = mbsfF.prep_mbsf(dataframes["mbsf"])
-        dataframes = add_preliminary_info(dataframes, data)
+        dataframes = add_preliminary_info(dataframes, data, runTests=runTests)
         if FFS: 
             dataframes = filter_FFS(dataframes)
         dataframes["mbsf"] = mbsfF.drop_unused_columns(dataframes["mbsf"])
