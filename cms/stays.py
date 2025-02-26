@@ -36,7 +36,9 @@ def get_unique_stays(claimsDF, claimType="op"):
     This function propagates information from all claims that are probably part of the same facility stay
     and returns a single row that represents more accurately the facility stay.'''
     claimsDF = propagate_stay_info(claimsDF, claimType=claimType)
-    eachIpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "ADMSN_DT_DAY", "DSCHRGDT_DAY")
+    #some claims may have same dsysrtky, provider, npi, admission date, and one of the 2 or more claims will have a null discharge date,
+    #perhaps because when the claim was created they did not know the discharge date
+    eachIpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "ADMSN_DT_DAY") #, "DSCHRGDT_DAY")
     eachOpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "THRU_DT_DAY")
     eachStay = eachIpStay if claimType=="ip" else eachOpStay
     staysDF = (claimsDF.withColumn("minClaimnoForStay", F.min(F.col("CLAIMNO")).over(eachStay) )
