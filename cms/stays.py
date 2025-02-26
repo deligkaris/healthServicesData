@@ -49,7 +49,7 @@ def get_stays(baseDF, summaryDF, claimType="op", opBase=None, opRevenue=None):
     Each stay/visit might include more then a single claim, so this function attempts to create the dataframe of stay/visits from the claim information.'''
     claimsDF = claimsF.get_claims(baseDF, summaryDF)
     if (opBase is not None) & (opRevenue is not None):
-        claimsDF = update_nonPPS_revenue_info(claimsDF, opBase, opRevenue)
+        claimsDF = claimsF.update_nonPPS_revenue_info(claimsDF, opBase, opRevenue)
     staysDF = get_unique_stays(claimsDF, claimType=claimType)
     return staysDF
 
