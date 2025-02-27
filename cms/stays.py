@@ -41,6 +41,7 @@ def get_unique_stays(claimsDF, claimType="op"):
     eachIpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "ADMSN_DT_DAY") #, "DSCHRGDT_DAY")
     eachOpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "THRU_DT_DAY")
     eachStay = eachIpStay if claimType=="ip" else eachOpStay
+    #since claim numbers reset every year, there is a small probability that two claims will have the same number, I am ok with this
     staysDF = (claimsDF.withColumn("minClaimnoForStay", F.min(F.col("CLAIMNO")).over(eachStay) )
                         .filter( F.col("minClaimnoForStay") == F.col("CLAIMNO") )
                         .drop("minClaimnoForStay"))

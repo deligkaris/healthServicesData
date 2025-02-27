@@ -83,7 +83,9 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     # for examples: https://api.census.gov/data/2021/acs/acs1/profile/examples.html
     # for the codes: https://api.census.gov/data/2021/acs/acs1/profile/variables.html
     # https://api.census.gov/data/2021/acs/acs1/profile.html
-    filenames["census2021"] = [pathToData + "/CENSUS/census-2021-oh.csv"]
+    # the information above is about the first draft of the data for ohio, for the entire country I used:
+    # https://api.census.gov/data/2015/acs/acs5?get=NAME,B19013_001E,B01001_001E&for=county:*&in=state:*
+    filenames["census"] = [pathToData + "/CENSUS/acs5-year{year}.csv" for year in range(2016,2024)]
 
     # to calculate population density I need to use the Gazetteer file:
     #  https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.2020.html
@@ -228,6 +230,16 @@ def prep_sdohDF(sdohDF, filename):
                     .withColumn("POS_MEDIAN_DIST_TRAUMA", F.col("POS_MEDIAN_DIST_TRAUMA").cast('float'))
                     .withColumn("year", F.lit(year).cast('int')))
     return sdohDF
+
+def prep_censusDF(censusDF, filename):
+    year = int(re.compile(r'year\d{4}').search(filename).group()[4:])
+    censusDF = (censusDF.withColumn("year", F.lit(year).cast('int')) 
+                        .withColumn("medianHouseholdIncome", F.col("B19013_001E").cast('int'))
+                        .withColumn("totalPopulation", F.col("B01001_001E").cast('int'))
+                        .withColumnRenamed("state", "fipsState")
+                        .withColumn("fipsCounty", F.concat(F.col("fipsState"), F.col("county")))
+                        .drop("county"))
+    return censusDF
 
 def prep_chspHospDF(chspHospDF, filename):
     chspYear = int(re.compile(r'year\d{4}').search(filename).group()[4:])

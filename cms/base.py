@@ -291,6 +291,12 @@ def add_firstClaimSum(baseDF):
     baseDF = (baseDF.withColumn("firstClaimSum", F.sum(F.col("firstClaim")).over(eachDsysrtky)))
     return baseDF
 
+def add_first_claim_info(baseDF):
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+    baseDF = add_firstClaim(baseDF)
+    baseDF = add_firstClaimSum(baseDF)
+    baseDF = baseDF.withColumn("firstClaim", F.when( F.col("add
+
 def add_lastClaim(baseDF):
 
     eachDsysrtky=Window.partitionBy("DSYSRTKY")
