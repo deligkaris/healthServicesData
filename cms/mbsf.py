@@ -459,6 +459,12 @@ def add_region(mbsfDF):
                                 .otherwise(F.lit(None)))
     return mbsfDF
 
+def add_census_info(mbsfDF, censusDF):
+    mbsfDF = mbsfDF.join(censusDF.select(F.col("fipsCounty"), F.col("year").alias("RFRNC_YR"), F.col("totalPopulation"), F.col("medianHouseholdIncome")),
+                         on = ["fipsCounty", "RFRNC_YR"], 
+                         how = "left_outer")
+    return mbsfDF
+
 def prep_mbsf(mbsfDF):
     '''I noticed that in 2015 the same beneficiary appeared more than once, I did not notice that in 2016 and 2017.
     I am keeping only one row for each beneficiary because any join with base claims will multiply the claims that are associated with the
@@ -466,4 +472,25 @@ def prep_mbsf(mbsfDF):
     eachDsysrtkyYear = Window.partitionBy(["DSYSRTKY","RFRNC_YR"]).orderBy("DSYSRTKY")
     mbsfDF = mbsfDF.withColumn("nRow", F.row_number().over(eachDsysrtkyYear)).filter(F.col("nRow")==1).drop("nRow") #just make a choice
     return mbsfDF
+
+def add_beneficiary_info(mbsfDF, dataDICT):
+    mbsfDF = add_death_date_info(mbsfDF)
+    mbsfDF = add_ssaCounty(mbsfDF)
+    mbsfDF = add_fipsCounty(mbsfDF, dataDICT["cbsa"])
+    mbsfDF = add_fipsState(mbsfDF)
+    mbsfDF = add_region(mbsfDF)
+    mbsfDF = add_rucc(mbsfDF, dataDICT["ersRucc"])
+    mbsfDF = add_enrollment_info(mbsfDF)
+    mbsfDF = add_willDie(mbsfDF)
+    mbsfDF = add_sdoh_info(mbsfDF, dataDICT["sdoh"])
+    mbsfDF = add_maPenetration(mbsfDF, dataDICT["maPenetration"])
+    mbsfDF = add_census_info(mbsfDF, dataDICT["census"])
+    return mbsfDF
+
+
+
+
+
+
+
 

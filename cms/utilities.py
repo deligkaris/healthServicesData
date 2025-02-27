@@ -198,16 +198,17 @@ def add_preliminary_info(dataframes, data, runTests=False):
             pass
         elif (claimPart is None):
             if (claimType=="mbsf"):
-                dataframes[claimType] = mbsfF.add_death_date_info(dataframes[claimType])
-                dataframes[claimType] = mbsfF.add_ssaCounty(dataframes[claimType])
-                dataframes[claimType] = mbsfF.add_fipsCounty(dataframes[claimType], data["cbsa"])
-                dataframes[claimType] = mbsfF.add_fipsState(dataframes[claimType])
-                dataframes[claimType] = mbsfF.add_region(dataframes[claimType])
-                dataframes[claimType] = mbsfF.add_rucc(dataframes[claimType], data["ersRucc"])
-                dataframes[claimType] = mbsfF.add_enrollment_info(dataframes[claimType])
-                dataframes[claimType] = mbsfF.add_willDie(dataframes[claimType])
-                dataframes[claimType] = mbsfF.add_sdoh_info(dataframes[claimType], data["sdoh"])
-                dataframes[claimType] = mbsfF.add_maPenetration(dataframes[claimType], data["maPenetration"])
+                dataframes[claimType] = mbsfF.add_beneficiary_info(dataframes[claimType], data)
+                #dataframes[claimType] = mbsfF.add_death_date_info(dataframes[claimType])
+                #dataframes[claimType] = mbsfF.add_ssaCounty(dataframes[claimType])
+                #dataframes[claimType] = mbsfF.add_fipsCounty(dataframes[claimType], data["cbsa"])
+                #dataframes[claimType] = mbsfF.add_fipsState(dataframes[claimType])
+                #dataframes[claimType] = mbsfF.add_region(dataframes[claimType])
+                #dataframes[claimType] = mbsfF.add_rucc(dataframes[claimType], data["ersRucc"])
+                #dataframes[claimType] = mbsfF.add_enrollment_info(dataframes[claimType])
+                #dataframes[claimType] = mbsfF.add_willDie(dataframes[claimType])
+                #dataframes[claimType] = mbsfF.add_sdoh_info(dataframes[claimType], data["sdoh"])
+                #dataframes[claimType] = mbsfF.add_maPenetration(dataframes[claimType], data["maPenetration"])
         else:
             pass
         if runTests:
