@@ -203,6 +203,8 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_ersRuccDF(df)
     elif file=="sdoh":
         df = prep_sdohDF(df, filename)
+    elif file=="census":
+        df = prep_censusDF(df, filename)
     return df   
 
 def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkaris/DATA', pathToAHAData='/fs/ess/PAS2164/AHA'):
