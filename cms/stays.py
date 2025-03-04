@@ -28,6 +28,7 @@ def propagate_stay_info(claimsDF, claimType="op"):
                         "evtPrcdr", "evt", "ed", "mri", "ct", "nihss", "nihssGroup"]
     for col in columnsToPropagate:
         if col in claimsDF.columns: #use in order to apply all claim types
+            print(f"Note: Column {col} will be aggregated over all claims that comprise of a single stay/visit.")
             claimsDF = claimsDF.withColumn(col, F.max(F.col(col)).over(eachStay))
     return claimsDF
 
