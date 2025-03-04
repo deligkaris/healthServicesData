@@ -724,7 +724,7 @@ def add_mbsf_info(baseDF,mbsfDF):
     eachDsysrtky = Window.partitionBy(["DSYSRTKY"])
     eachDsysrtkyYear = Window.partitionBy(["DSYSRTKY","RFRNC_YR"]).orderBy("DSYSRTKY")
     #first join will bring in all non-death related information, specific to beneficiary and year
-    baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"), F.col("RFRNC_YR").alias("THRU_DT_YEAR"),
+    baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"), F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("fipsCounty").alias("mbsfFipsCounty"),
                                          F.col("AGE").alias("mbsfAge"), #aliasing with mbsf to distinguish from similar claim variables that may be different
                                          F.col("ffsFirstMonth"), F.col("anyEsrd"), F.col("medicaidEver"), F.col("SEX").alias("mbsfSex"), 
                                          F.col("RACE").alias("mbsfRace"), F.col("rucc").alias("mbsfRucc"), F.col("region").alias("mbsfRegion"),
