@@ -75,7 +75,7 @@ def add_first_stay_info(staysDF):
                       .withColumn( "firstStay", F.when( (F.col("onDayOfFirstStay")==1) & (F.col("onDayOfFirstStaySum")==1), 1 ) #definitely first stay
                                                  .when( (F.col("onDayOfFirstStay")==1) & (F.col("onDayOfFirstStaySum")>1) &  #definitely first stay
                                                         (F.col("singleDayStay")==1) & (F.col("singleDayStaySum")==1) ) #since was discharged from los=1 first
-                                                 .otherwise(0) ) #the value of 0 includes both true 'not first admissions' but also 'impossible to know if first admission'
+                                                 .otherwise(0) )) #the value of 0 includes both true 'not first admissions' but also 'impossible to know if first admission'
     return staysDF
                                     
 
