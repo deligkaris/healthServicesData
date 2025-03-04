@@ -56,3 +56,26 @@ def get_stays(baseDF, summaryDF, claimType="op", opBase=None, opRevenue=None):
     staysDF = get_unique_stays(claimsDF, claimType=claimType)
     return staysDF
 
+def add_onDayOfFirstStay(staysDF):
+    eachDsysrtky = Window.partitionBy("DSYSRTKY")
+    staysDF = staysDF.withColumn("onDayOfFirstStay", ( F.col("ADMSN_DT_DAY")==F.min(F.col("ADMSN_DT_DAY")).over(eachDsysrtky) ).cast('int'))
+    return staysDF
+
+def add_onDayOfFirstStaySum(staysDF):
+    eachDsysrtky=Window.partitionBy("DSYSRTKY")
+    staysDF = (staysDF.withColumn("onDayOfFirstStaySum", F.sum(F.col("onDayOfFirstStay")).over(eachDsysrtky)))
+    return staysDF
+
+def add_first_stay_info(staysDF):
+    eachDay = Window.partitionBy(["DSYSRTKY","ADMSN_DT"])
+    staysDF = add_onDayOfFirstStay(staysDF)
+    staysDF = add_onDayOfFirstStaySum(staysDF)
+    staysDF = (staysDF.withColumn( "singleDayStay", (F.col("los")==1).cast('int') )
+                      .withColumn( "singleDayStaySum", F.sum( F.col("singleDayStay") ).over(eachDay) ) #how many admissions with los=1 on that day
+                      .withColumn( "firstStay", F.when( (F.col("onDayOfFirstStay")==1) & (F.col("onDayOfFirstStaySum")==1), 1 ) #definitely first stay
+                                                 .when( (F.col("onDayOfFirstStay")==1) & (F.col("onDayOfFirstStaySum")>1) &  #definitely first stay
+                                                        (F.col("singleDayStay")==1) & (F.col("singleDayStaySum")==1) ) #since was discharged from los=1 first
+                                                 .otherwise(0) ) #the value of 0 includes both true 'not first admissions' but also 'impossible to know if first admission'
+    return staysDF
+                                    
+

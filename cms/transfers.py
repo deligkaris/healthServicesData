@@ -44,6 +44,7 @@ def get_transfers(fromClaimsDF, toClaimsDF):
                                    (F.col("fromORGNPINM") != F.col("toORGNPINM"))],
                              how = "inner") #drop any claims that do not match
     transfersDF = get_clean_transfers(transfersDF)
+    transfersDF = add_firstTransfer(transfersDF)
     return transfersDF
 
 def add_transfertpa(transfersDF):
