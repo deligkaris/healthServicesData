@@ -85,7 +85,7 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     # https://api.census.gov/data/2021/acs/acs1/profile.html
     # the information above is about the first draft of the data for ohio, for the entire country I used:
     # https://api.census.gov/data/2015/acs/acs5?get=NAME,B19013_001E,B01001_001E&for=county:*&in=state:*
-    filenames["census"] = [pathToData + "/CENSUS/acs5-year{year}.csv" for year in range(2016,2024)]
+    filenames["census"] = [pathToData + "/CENSUS/ACS5/acs5-year{year}.csv" for year in range(2016,2024)]
 
     # to calculate population density I need to use the Gazetteer file:
     #  https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.2020.html
