@@ -68,6 +68,8 @@ def add_onDayOfFirstStaySum(staysDF):
     return staysDF
 
 def add_first_stay_info(staysDF):
+    '''Column firstStay marks as 1 the stays that were definitely the first stay for that beneficiary and as 0 all other stays,
+    including the ones for which we cannot know with this data.'''
     eachDay = Window.partitionBy(["DSYSRTKY","ADMSN_DT"])
     staysDF = add_onDayOfFirstStay(staysDF)
     staysDF = add_onDayOfFirstStaySum(staysDF)
@@ -75,7 +77,7 @@ def add_first_stay_info(staysDF):
                       .withColumn( "singleDayStaySum", F.sum( F.col("singleDayStay") ).over(eachDay) ) #how many admissions with los=1 on that day
                       .withColumn( "firstStay", F.when( (F.col("onDayOfFirstStay")==1) & (F.col("onDayOfFirstStaySum")==1), 1 ) #definitely first stay
                                                  .when( (F.col("onDayOfFirstStay")==1) & (F.col("onDayOfFirstStaySum")>1) &  #definitely first stay
-                                                        (F.col("singleDayStay")==1) & (F.col("singleDayStaySum")==1) ) #since was discharged from los=1 first
+                                                        (F.col("singleDayStay")==1) & (F.col("singleDayStaySum")==1), 1 ) #since discharged from los=1 first
                                                  .otherwise(0) )) #the value of 0 includes both true 'not first admissions' but also 'impossible to know if first admission'
     return staysDF
                                     
