@@ -408,7 +408,7 @@ def add_processed_name(DF,colToProcess="providerName"):
 
     DF = (DF.withColumn(processedCol, 
                              F.regexp_replace(
-                                 F.trim( F.lower(F.col(colToProcess)) ), "\'s|\&|\.|\,| llc| inc| ltd| lp| lc|\(|\)| program", "") ) #replace with nothing
+                                 F.trim( F.lower(F.col(colToProcess)) ), r"\'s|\&|\.|\,| llc| inc| ltd| lp| lc|\(|\)| program", "") ) #replace with nothing
             .withColumn(processedCol,
                              F.regexp_replace( 
                                  F.col(processedCol) , "-| at | of | for | and ", " ") )  #replace with space
