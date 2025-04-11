@@ -357,7 +357,7 @@ def prep_zipToCountyDF(zipToCountyDF):
     return zipToCountyDF
 
 def prep_maPenetrationDF(maPenetrationDF):
-    maPenetrationDF = (maPenetrationDF.withColumn("Penetration", F.split( F.trim(F.col("Penetration")), '\.' ).getItem(0).cast('int') )
+    maPenetrationDF = (maPenetrationDF.withColumn("Penetration", F.split( F.trim(F.col("Penetration")), r'\.' ).getItem(0).cast('int') )
                                       .withColumn("Year", F.col("Year").cast('int')))
     return maPenetrationDF
 
