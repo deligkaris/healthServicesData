@@ -726,7 +726,7 @@ def add_mbsf_info(baseDF,mbsfDF):
     #first join will bring in all non-death related information, specific to beneficiary and year
     baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"), F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("fipsCounty").alias("mbsfFipsCounty"),
                                          F.col("AGE").alias("mbsfAge"), #aliasing with mbsf to distinguish from similar claim variables that may be different
-                                         F.col("ffsFirstMonth"), F.col("anyEsrd"), F.col("medicaidEver"), F.col("SEX").alias("mbsfSex"), 
+                                         F.col("ffsFirstMonth"), F.col("anyEsrd").alias("mbsfAnyEsrd"), F.col("medicaidEver"), F.col("SEX").alias("mbsfSex"), 
                                          F.col("RACE").alias("mbsfRace"), F.col("rucc").alias("mbsfRucc"), F.col("region").alias("mbsfRegion"),
                                          F.col("maPenetration").alias("mbsfMaPenetration"),
                                          F.col("medianHhIncome"), F.col("medianDistanceEd"), F.col("medianDistanceIcu"), F.col("medianDistanceTrauma")),
