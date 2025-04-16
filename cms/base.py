@@ -746,17 +746,20 @@ def add_mbsf_info(baseDF,mbsfDF):
     return baseDF
 
 def add_ssaCounty(baseDF):
+    '''Beneficiary's SSA county.'''
     baseDF = baseDF.withColumn("ssaCounty", F.concat( F.col("STATE_CD"), F.col("CNTY_CD")))
                                     #F.col("STATE_CD").substr(1,2), F.format_string("%03d",F.col("CNTY_CD"))))
     return baseDF
 
 def add_fipsCounty(baseDF, cbsaDF):
+    '''Beneficiary's FIPS county.'''
     baseDF = baseDF.join(cbsaDF.select(F.col("ssaCounty"),F.col("fipsCounty")),
                          on=["ssaCounty"],
                          how="left_outer")
     return baseDF
 
 def add_fipsState(baseDF):
+    '''Beneficiary's FIPS state.'''
     baseDF = baseDF.withColumn("fipsState", F.col("fipsCounty").substr(1,2))
     return baseDF
 
@@ -778,7 +781,7 @@ def add_rucc(baseDF, ersRuccDF):
     return baseDF
 
 def add_region(baseDF): 
-    
+    '''Beneficiary's region based on the claim's beneficiary's FIPS state code.'''
     westCondition = '(F.col("fipsState").isin(usRegionFipsCodes["west"]))'
     southCondition = '(F.col("fipsState").isin(usRegionFipsCodes["south"]))'
     midwestCondition = '(F.col("fipsState").isin(usRegionFipsCodes["midwest"]))'
