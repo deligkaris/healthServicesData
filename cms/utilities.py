@@ -45,31 +45,31 @@ def get_filenames(pathCMS, yearI, yearF):
     # j format lists will be empty if yearInitial > yearJKTransition
     # k format lists include max function in case yearInitial > yearJKTransition 
     #also without specifying an order of the dict keys, I want mbsf to be the first key for the add_preliminary_info function later on...
-    filenames = {"mbsf": [paths["mbsf"]+f"/mbsf_{year}.parquet" for year in range(yearI, yearF+1)],
-                 "opBase": [paths["op"]+f"/out_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] + 
-                           [paths["op"]+f"/out_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "opRevenue": [paths["op"]+f"/out_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                              [paths["op"]+f"/out_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],      
-                 "ipBase": [paths["ip"]+f"/inp_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                           [paths["ip"]+f"/inp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],           
-                 "ipRevenue": [paths["ip"]+f"/inp_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                              [paths["ip"]+f"/inp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "snfBase": [paths["snf"]+f"/snf_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                            [paths["snf"]+f"/snf_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "snfRevenue": [paths["snf"]+f"/snf_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                               [paths["snf"]+f"/snf_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "hhaBase": [paths["hha"]+f"/hha_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                            [paths["hha"]+f"/hha_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "hhaRevenue": [paths["hha"]+f"/hha_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                               [paths["hha"]+f"/hha_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "hospBase": [paths["hosp"]+f"/hosp_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                             [paths["hosp"]+f"/hosp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "hospRevenue": [paths["hosp"]+f"/hosp_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                               [paths["hosp"]+f"/hosp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "carBase": [paths["car"]+f"/car_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                            [paths["car"]+f"/car_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "carLine": [paths["car"]+f"/car_linej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
-                            [paths["car"]+f"/car_linek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)]}
+    filenames = {"mbsf": [paths["mbsf"]+f"/MBSF_{year}/mbsf_{year}.parquet" for year in range(yearI, yearF+1)],
+                 "opBase": [paths["op"]+f"/OUT_{year}/out_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] + 
+                           [paths["op"]+f"/OUT_{year}/out_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "opRevenue": [paths["op"]+f"/OUT_{year}/out_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                              [paths["op"]+f"/OUT_{year}/out_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],      
+                 "ipBase": [paths["ip"]+f"/INP_{year}/inp_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                           [paths["ip"]+f"/INP_{year}/inp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],           
+                 "ipRevenue": [paths["ip"]+f"/INP_{year}/inp_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                              [paths["ip"]+f"/INP_{year}/inp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "snfBase": [paths["snf"]+f"/SNF_{year}/snf_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                            [paths["snf"]+f"/SNF_{year}/snf_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "snfRevenue": [paths["snf"]+f"/SNF_{year}/snf_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                               [paths["snf"]+f"/SNF_{year}/snf_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "hhaBase": [paths["hha"]+f"/HHA_{year}/hha_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                            [paths["hha"]+f"/HHA_{year}/hha_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "hhaRevenue": [paths["hha"]+f"/HHA_{year}/hha_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                               [paths["hha"]+f"/HHA_{year}/hha_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "hospBase": [paths["hosp"]+f"/HOSP_{year}/hosp_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                             [paths["hosp"]+f"/HOSP_{year}/hosp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "hospRevenue": [paths["hosp"]+f"/HOSP_{year}/hosp_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                               [paths["hosp"]+f"/HOSP_{year}/hosp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "carBase": [paths["car"]+f"/CAR_{year}/car_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                            [paths["car"]+f"/CAR_{year}/car_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
+                 "carLine": [paths["car"]+f"/CAR_{year}/car_linej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                            [paths["car"]+f"/CAR_{year}/car_linek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)]}
     return filenames
 
 def read_data(spark, filenames, yearI, yearF):
