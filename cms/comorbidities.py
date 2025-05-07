@@ -220,13 +220,12 @@ def get_conditions(outpatientBaseDF,inpatientBaseDF,method="Glasheen2019"):
 
     # AIDS = HIV + infection, see Glasheen2019, so a beneficiary has AIDS if both
     # HIV and infectionOrCancerDueToAids columns are true
-    conditions = (conditions.withColumn("aids",
-                                    F.col("hiv")*F.col("infectionOrCancerDueToAids")))
-    conditions = conditions.drop(F.col("infectionOrCancerDueToAids")) #no longer needed
+    conditions = (conditions.withColumn("aids", F.col("hiv")*F.col("infectionOrCancerDueToAids"))
+                            .drop(F.col("infectionOrCancerDueToAids")) #no longer needed
+                            #because windows broadcast the values to both rows for each beneficiary (the one from outpatient and the one from
+                            #inpatient condition dataframes), keep only one for each beneficiary
+                            .distinct())
 
-    #because windows broadcast the values to both rows for each beneficiary (the one from outpatient and the one from
-    #inpatient condition dataframes), keep only one for each beneficiary
-    conditions = conditions.distinct() 
     conditions.persist() #now that I am done, store it in memory
     conditions.count() #and now actually do it
 
