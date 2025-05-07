@@ -42,6 +42,8 @@ def get_filenames(pathCMS, yearI, yearF):
              "hosp": pathCMS + '/HOSP',
              "car": pathCMS + '/CAR'}
 
+    yearIForCarrier = yearI if yearI>2015 else 2016 #I do not have access to the 2015 carrier files 
+
     # j format lists will be empty if yearInitial > yearJKTransition
     # k format lists include max function in case yearInitial > yearJKTransition 
     #also without specifying an order of the dict keys, I want mbsf to be the first key for the add_preliminary_info function later on...
@@ -66,9 +68,9 @@ def get_filenames(pathCMS, yearI, yearF):
                              [paths["hosp"]+f"/HOSP_{year}/hosp_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
                  "hospRevenue": [paths["hosp"]+f"/HOSP_{year}/hosp_revenuej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
                                [paths["hosp"]+f"/HOSP_{year}/hosp_revenuek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "carBase": [paths["car"]+f"/CAR_{year}/car_claimsj_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                 "carBase": [paths["car"]+f"/CAR_{year}/car_claimsj_{year}.parquet" for year in range(yearIForCarrier, yearJKTransition)] +
                             [paths["car"]+f"/CAR_{year}/car_claimsk_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)],
-                 "carLine": [paths["car"]+f"/CAR_{year}/car_linej_{year}.parquet" for year in range(yearI, yearJKTransition)] +
+                 "carLine": [paths["car"]+f"/CAR_{year}/car_linej_{year}.parquet" for year in range(yearIForCarrier, yearJKTransition)] +
                             [paths["car"]+f"/CAR_{year}/car_linek_{year}.parquet" for year in range(max(yearJKTransition,yearI), yearF+1)]}
     return filenames
 
