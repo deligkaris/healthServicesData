@@ -124,6 +124,7 @@ def add_enrollment_info(mbsfDF):
     mbsfDF = add_continuousFfs(mbsfDF)
     mbsfDF = add_continuousRfrncYr(mbsfDF)
     mbsfDF = add_continuousFfsAndRfrncYr(mbsfDF)
+    mbsfDF = add_meanContinuousFfsAndRfrncYrForCountyYear(mbsfDF)
     mbsfDF = add_medicaidEver(mbsfDF)
     mbsfDF = add_anyEsrd(mbsfDF)
     return mbsfDF
