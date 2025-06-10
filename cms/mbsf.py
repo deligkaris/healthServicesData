@@ -123,6 +123,7 @@ def add_enrollment_info(mbsfDF):
     mbsfDF = add_ffsFirstMonth(mbsfDF)
     mbsfDF = add_continuousFfs(mbsfDF)
     mbsfDF = add_continuousRfrncYr(mbsfDF)
+    mbsfDF = add_continuousFfsAndRfrncYr(mbsfDF)
     mbsfDF = add_medicaidEver(mbsfDF)
     mbsfDF = add_anyEsrd(mbsfDF)
     return mbsfDF
@@ -205,6 +206,10 @@ def add_continuousRfrncYr(mbsfDF):
     mbsfDF = mbsfDF.withColumn("continuousRfrncYr",
                                F.when( F.max(F.col("rfrncYrDifference")).over(eachDsysrtky)>1, 0)
                                 .otherwise(1))
+    return mbsfDF
+
+def add_continuousFfsAndRfrncYr(mbsfDF):
+    mbsfDF = mbsfDF.withColumn("continuousFfsAndRfrncYr", F.col("ffs")*F.col("continuousRfrncYr")*F.col("continuousFfs"))
     return mbsfDF
 
 def filter_continuousRfrncYr(mbsfDF):
@@ -436,6 +441,11 @@ def add_maPenetration(mbsfDF, maPenetrationDF):
                                   F.col("Year").alias("RFRNC_YR")),
                          on=["fipsCounty","RFRNC_YR"],
                          how="left_outer")
+    return mbsfDF
+
+def add_meanContinuousFfsAndRfrncYrForCountyYear(mbsfDF):
+    eachCountyYear = Window.partitionBy(["fipsCounty","RFRNC_YR"])
+    mbsfDF = mbsfDF.withColumn("meanContinuousFfsAndRfrncYrForCountyYear", F.mean(F.col("continuousFfsAndRfrncYr")).over(eachCountyYear))
     return mbsfDF
 
 def add_rucc(mbsfDF, ersRuccDF):
