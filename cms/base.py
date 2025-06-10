@@ -162,7 +162,7 @@ def add_ishStrokeDgns(baseDF):
     baseDF = baseDF.withColumn("ishStrokeDgns",
                               # ^I63[\d]: beginning of string I63 matches 0 or more digit characters 0-9
                               # I63 cerebral infraction 
-                              F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I63[\d]*',0) !='', 1)
+                              F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), r'^I63[\d]*',0) !='', 1)
                                .otherwise(0)) 
     return baseDF
 
@@ -187,21 +187,21 @@ def add_otherStroke(baseDF):
     #https://icd.who.int/browse10/2016/en#/I60-I69
     baseDF = baseDF.withColumn("otherStroke",
                               # ^I64[\d]: beginning of string I64 matches 0 or more digit characters 0-9
-                              F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I64[\d]*',0) !='', 1)
+                              F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), r'^I64[\d]*',0) !='', 1)
                                .otherwise(0))
     return baseDF
 
 def add_ichStroke(baseDF):
     baseDF = baseDF.withColumn("ichStroke",
                               # ^I61[\d]: beginning of string I61 matches 0 or more digit characters 0-9
-                              F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^I61[\d]*',0) !='', 1)
+                              F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), r'^I61[\d]*',0) !='', 1)
                                .otherwise(0)) 
     return baseDF
 
 def add_tiaStroke(baseDF):
     baseDF = baseDF.withColumn("tiaStroke",
                               # ^G45[\d]: beginning of string I61 matches 0 or more digit characters 0-9
-                              F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), '^G45[\d]*',0) !='', 1)
+                              F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), r'^G45[\d]*',0) !='', 1)
                                .otherwise(0)) 
     return baseDF
 
@@ -215,7 +215,7 @@ def add_anyStroke(baseDF):
 def add_parkinsonsPrncpalDgns(baseDF):
 
     baseDF = baseDF.withColumn("parkinsons",
-                              F.when((F.regexp_extract( F.trim(F.col("PRNCPAL_DGNS_CD")), '^G20[\d]*',0) !=''), 1)
+                              F.when((F.regexp_extract( F.trim(F.col("PRNCPAL_DGNS_CD")), r'^G20[\d]*',0) !=''), 1)
                                .otherwise(0))
 
     return baseDF
@@ -1130,7 +1130,7 @@ def add_processed_name(baseDF,colToProcess="providerName"):
 
     baseDF = (baseDF.withColumn(processedCol, 
                                 F.regexp_replace( 
-                                    F.trim( F.lower(F.col(colToProcess)) ), "\'s|\&|\.|\,| llc| inc| ltd| lp| lc|\(|\)| program", "") ) #replace with nothing
+                                    F.trim( F.lower(F.col(colToProcess)) ), r"\'s|\&|\.|\,| llc| inc| ltd| lp| lc|\(|\)| program", "") ) #replace with nothing
                     .withColumn(processedCol, 
                                 F.regexp_replace( 
                                     F.col(processedCol) , "-| at | of | for | and ", " ") )  #replace with space
