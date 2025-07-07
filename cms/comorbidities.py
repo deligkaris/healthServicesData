@@ -230,7 +230,7 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
 
     # combine comorbidities from all inpatient and outpatient claims
     conditions = conditionsOutpatient.union(conditionsInpatient)
-
+    print(conditions.printSchema())
     eachDsysrtkyDay = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY"])
 
     for iCondition in conditionsList:
