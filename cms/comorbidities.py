@@ -148,6 +148,8 @@ def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True)
     
     #conditionsFromBase.count() #now actually make it stay in memory
 
+    conditionsFromDgns = dgnsDF
+
     #for every condition, search the array of dgns codes and keep only the codes found in comorbidities,
     #then count their frequencies and keep the max frequency for that condition, if the max is 2 or more,
     #assign that comorbidity condition to the beneficiary
@@ -159,7 +161,7 @@ def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True)
         codeFrequencyColumn = iCondition+"CodesFrequencies"
         codeMaxColumn = iCondition+"Max"
     
-        conditionsFromDgns = (dgnsDF
+        conditionsFromDgns = (conditionsFromDgns
                                .withColumn(
                                    codeColumn, #keeps codes that match the regexp pattern
                                        F.expr(f'filter(dgnsList, x -> x rlike "{codesRegexp[iCondition]}")'))
@@ -190,7 +192,7 @@ def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True)
         #conditionsFromBase.persist()
         #conditionsFromBase.checkpoint()
         #conditionsFromBase.count()
-
+   
     conditionsFromDgns = conditionsFromDgns.drop("dgnsList") #at the end this is no longer needed
     conditionsFromDgns.persist()
     conditionsFromDgns.count()
@@ -230,7 +232,7 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
 
     # combine comorbidities from all inpatient and outpatient claims
     conditions = conditionsOutpatient.union(conditionsInpatient)
-    print(conditions.printSchema())
+
     eachDsysrtkyDay = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY"])
 
     for iCondition in conditionsList:
