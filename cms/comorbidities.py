@@ -159,7 +159,7 @@ def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True)
         codeFrequencyColumn = iCondition+"CodesFrequencies"
         codeMaxColumn = iCondition+"Max"
     
-        conditionsFromBase = (conditionsFromBase
+        conditionsFromDgns = (dgnsDF
                                .withColumn(
                                    codeColumn, #keeps codes that match the regexp pattern
                                        F.expr(f'filter(dgnsList, x -> x rlike "{codesRegexp[iCondition]}")'))
@@ -191,11 +191,11 @@ def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True)
         #conditionsFromBase.checkpoint()
         #conditionsFromBase.count()
 
-    conditionsFromBase = conditionsFromBase.drop("dgnsList") #at the end this is no longer needed
-    conditionsFromBase.persist()
-    conditionsFromBase.count()
+    conditionsFromDgns = conditionsFromDgns.drop("dgnsList") #at the end this is no longer needed
+    conditionsFromDgns.persist()
+    conditionsFromDgns.count()
     
-    return conditionsFromBase
+    return conditionsFromDgns
 
 #note: method Quan2005 IS NOT fully implemented
 def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
