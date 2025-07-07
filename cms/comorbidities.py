@@ -217,7 +217,8 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
                            .withColumn("dayDgnsStruct", 
                                        F.filter( F.col("dayDgnsStruct"), 
                                        lambda x: (F.col("THRU_DT_DAY") - x.getItem("thruDay") >= 0) & (F.col("THRU_DT_DAY") - x.getItem("thruDay") <= 360)))
-                           .withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode")))                                          
+                           .withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode"))
+                           .drop("dayDgnsStruct"))                                          
 
     opDgnsDF = (opDayDgnsDF.join(baseDF, 
                                  on = ["DSYSRTKY"],
@@ -225,7 +226,8 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
                            .withColumn("dayDgnsStruct",
                                        F.filter( F.col("dayDgnsStruct"),
                                        lambda x: (F.col("THRU_DT_DAY") - x.getItem("thruDay") >= 0) & (F.col("THRU_DT_DAY") - x.getItem("thruDay") <= 360)))
-                           .withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode")))
+                           .withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode"))
+                           .drop("dayDgnsStruct"))
 
     conditionsInpatient = get_conditions_from_dgnsDF(ipDgnsDF,conditionsList,codesRegexp,inpatient=True)
     conditionsOutpatient = get_conditions_from_dgnsDF(opDgnsDF,conditionsList,codesRegexp, inpatient=False)
