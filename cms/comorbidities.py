@@ -2,10 +2,10 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 
 def get_codes(method="Glasheen2019"):
+    '''Returns a dictionary with conditions and their codes based on Glasheen2019 or Quan2005
+    Glasheen2019: https://pmc.ncbi.nlm.nih.gov/articles/PMC6684052/'''
 
-    #dictionary with conditions and their codes based on Glasheen2019 or Quan2005
     #codes with an X at the end: X can be any number (only initial part of code must match the claim code)
-
     if (method=="Glasheen2019"):
         codesDict = {       
             "myocardialInfraction": ["I21X","I22X","I252"],
@@ -102,6 +102,8 @@ def get_codes(method="Glasheen2019"):
     return codesDict
 
 def get_codes_regexp(codesDict):
+    '''Uses the ICD10 codes and creates regular expressions for each code.
+    Returns a dictionary where the keys are conditions and values are lists with regular expressions as list elements.'''  
 
     conditionsList = list(codesDict.keys()) # get the conditions
 
@@ -129,6 +131,11 @@ def get_codes_regexp(codesDict):
     return codesRegexp
 
 def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True):
+    '''dgnsDF: a dataframe with DSYSRTKY and an array of DGNS codes
+       inpatient: defines if the DGNS codes were obtained from inpatient or outpatient base dataframes
+       When using inpatient claims a single diagnostic code is enough to detect the condition whereas with outpatient claims the code must be
+       present at least 2 times in order to detect the condition
+       Returns a dataframe that is based on dgnsDF with added columns that correspond to the comorbidity conditions.'''
 
     if inpatient:
         print("Now processing the inpatient claims...")
@@ -137,18 +144,7 @@ def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True)
 
     maxCutoff = 0 if inpatient else 1
 
-    #dgnsColumnList = [f"ICD_DGNS_CD{x}" for x in range(1,26)] #all 25 DGNS columns
-
-    #make a dataframe of two columns: dsysrtky and an array of all dgns codes found in their claims
-    #conditionsFromBase = (baseDF
-    #                          .groupBy("DSYSRTKY")
-    #                          .agg(F.flatten(F.collect_list(F.array(dgnsColumnList))).alias("dgnsList"))
-    #                          .select(F.col("DSYSRTKY"),F.col("dgnsList"))
-    #                          .persist())#comorbidity calculation will call on this several times so make it stay in memory
-    
-    #conditionsFromBase.count() #now actually make it stay in memory
-
-    conditionsFromDgns = dgnsDF
+    conditionsFromDgns = dgnsDF #start the conditions dataframe using dgnsDF
 
     #for every condition, search the array of dgns codes and keep only the codes found in comorbidities,
     #then count their frequencies and keep the max frequency for that condition, if the max is 2 or more,
@@ -180,30 +176,21 @@ def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True)
                                                         array_distinct({codeColumn}), 
                                                         x-> aggregate({codeColumn}, 
                                                         0,(acc,t)->acc+IF(t=x,1,0))))"""))
-                               .withColumn(
-                                   codeMaxColumn, #keep max of frequencies
-                                       F.array_max(codeFrequencyColumn))
-                               .withColumn(
-                                   iCondition, #boolean, has condition or not
-                                       F.when(F.col(codeMaxColumn)>maxCutoff,1)
-                                        .otherwise(0))
+                               .withColumn(codeMaxColumn, F.array_max(codeFrequencyColumn)) #keep max of frequencies
+                               .withColumn(iCondition, F.when(F.col(codeMaxColumn)>maxCutoff,1).otherwise(0)) #boolean, has condition or not
                                .drop(codeColumn,codeFrequencyColumn,codeMaxColumn)) #no longer need these
                       
-        #conditionsFromBase.persist()
-        #conditionsFromBase.checkpoint()
-        #conditionsFromBase.count()
-   
     conditionsFromDgns = conditionsFromDgns.drop("dgnsList") #at the end this is no longer needed
     conditionsFromDgns.persist()
     conditionsFromDgns.count()
     
     return conditionsFromDgns
 
-#note: method Quan2005 IS NOT fully implemented
 def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
     '''opDayDgnsDF: dataframe created from outpatient base, includes DSYSRTKY and a STRUCT with (thruDay, dgnsCode) from all non null ICD10 codes
        ipDayDgnsDF: similar to above from inpatient base
-       baseDF: dataframe with DSYSRTKY and THRU_DT_DAY, will use this df to built the comorbidities'''
+       baseDF: dataframe with DSYSRTKY and THRU_DT_DAY, will use this df to built the comorbidities
+       note: method Quan2005 IS NOT fully implemented'''
 
     codesDict = get_codes(method)
 
@@ -211,16 +198,16 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
 
     codesRegexp = get_codes_regexp(codesDict)
 
-    ipDgnsDF = (ipDayDgnsDF.join(baseDF, 
+    ipDgnsDF = (ipDayDgnsDF.join(baseDF, #for inpatient claims
                                  on = ["DSYSRTKY"],
-                                 how = "inner")
-                           .withColumn("dayDgnsStruct", 
+                                 how = "inner") #will duplicate rows from ipDayDgnsDF for all rows of the same DSYSRTKY (with probably different through dates)
+                           .withColumn("dayDgnsStruct", #keep dgns codes within the last year
                                        F.filter( F.col("dayDgnsStruct"), 
                                        lambda x: (F.col("THRU_DT_DAY") - x.getItem("thruDay") >= 0) & (F.col("THRU_DT_DAY") - x.getItem("thruDay") <= 360)))
-                           .withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode"))
+                           .withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode")) #keep the dgns codes only (no through dates)
                            .drop("dayDgnsStruct"))                                          
 
-    opDgnsDF = (opDayDgnsDF.join(baseDF, 
+    opDgnsDF = (opDayDgnsDF.join(baseDF, #similarly for outpatient claims
                                  on = ["DSYSRTKY"],
                                  how = "inner")
                            .withColumn("dayDgnsStruct",
@@ -232,14 +219,12 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
     conditionsInpatient = get_conditions_from_dgnsDF(ipDgnsDF,conditionsList,codesRegexp,inpatient=True)
     conditionsOutpatient = get_conditions_from_dgnsDF(opDgnsDF,conditionsList,codesRegexp, inpatient=False)
 
-    # combine comorbidities from all inpatient and outpatient claims
-    conditions = conditionsOutpatient.union(conditionsInpatient)
+    conditions = conditionsOutpatient.union(conditionsInpatient) # combine comorbidities from all inpatient and outpatient claims
 
-    eachDsysrtkyDay = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY"])
-
+    eachDsysrtkyDay = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY"]) #every DSYSRTKY and THROUGH_DT_DAY will have potentially different conditions
     for iCondition in conditionsList:
         conditions = conditions.withColumn(iCondition, #overwrite each condition column
-                                F.max(F.col(iCondition)).over(eachDsysrtkyDay)) #keep the max for each beneficiary
+                                F.max(F.col(iCondition)).over(eachDsysrtkyDay)) #keep the max for each beneficiary and through date
 
     # AIDS = HIV + infection, see Glasheen2019, so a beneficiary has AIDS if both
     # HIV and infectionOrCancerDueToAids columns are true
