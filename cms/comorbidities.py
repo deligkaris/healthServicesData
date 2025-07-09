@@ -194,7 +194,8 @@ def get_dayDgnsDF(baseDF):
        The dataframe that will be returned from this function can be stored on the disk and then loaded using a new notebook to save memory usage.'''
     
     dgnsCodeColumns = [f"ICD_DGNS_CD{x}" for x in range(1,26)]
-    dgnsStruct = [F.struct(F.col("THRU_DT_DAY").alias("thruDay"), F.col(c).alias("dgnsCode")) for c in dgnsCodeColumns]
+    principalDgns = [1] + [0] * 24
+    dgnsStruct = [F.struct(F.col("THRU_DT_DAY").alias("thruDay"), F.col(c).alias("dgnsCode"), F.lit(i).alias("principal")) for i,c in enumerate(dgnsCodeColumns)]
 
     baseDF = (baseDF
                .select("DSYSRTKY", "THRU_DT_DAY", *dgnsCodeColumns)
@@ -222,6 +223,9 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
                            .withColumn("dayDgnsStruct", #keep dgns codes within the last year
                                        F.filter( F.col("dayDgnsStruct"), 
                                        lambda x: (F.col("THRU_DT_DAY") - x.getItem("thruDay") >= 0) & (F.col("THRU_DT_DAY") - x.getItem("thruDay") <= 360)))
+                           .withColumn("dayDgnsStruct", #do not utilize the first DGNS code from the day of the inpatient hospitalization, that is not a comorbidity
+                                       F.filter( F.col("dayDgnsStruct"), 
+                                       lambda x: (F.col("THRU_DT_DAY") != x.getItem("thruDay")) | (x.getItem("principal") != 1)))
                            .withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode")) #keep the dgns codes only (no through dates)
                            .drop("dayDgnsStruct"))                                          
 
