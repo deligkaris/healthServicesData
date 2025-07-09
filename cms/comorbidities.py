@@ -186,6 +186,24 @@ def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True)
     
     return conditionsFromDgns
 
+def get_dayDgnsDF(baseDF):
+    '''Takes an inpatient or outpatient base dataframe and returns a dataframe with columns DSYSRTKY and a STRUCT list (column name is dayDgnsStruct)
+       where each element is a tuple of the THRU_DT_DAY and one of the 25 DGNS codes (we keep only the non null DGNS codes)
+       Each row of this dataframe corresponds to a single DSYSRTKY and each DSYSRTKY will be found in a single row
+       The tuple has two elements, the thruDay and the dgnsCode.
+       The dataframe that will be returned from this function can be stored on the disk and then loaded using a new notebook to save memory usage.'''
+    
+     dgnsCodeColumns = [f"ICD_DGNS_CD{x}" for x in range(1,26)]
+     dgnsStruct = [F.struct(F.col("THRU_DT_DAY").alias("thruDay"), F.col(c).alias("dgnsCode")) for c in dgnsCodeColumns]
+
+     baseDF = (baseDF
+                .select("DSYSRTKY", "THRU_DT_DAY", *dgnsCodeColumns)
+                .withColumn("dayDgnsStruct", F.filter( F.array(dgnsStruct), lambda x: x.getItem("dgnsCode").isNotNull()))
+                .groupBy("DSYSRTKY")
+                .agg(F.flatten(F.collect_list("dayDgnsStruct")).alias("dayDgnsStruct")))
+
+     return baseDF
+
 def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
     '''opDayDgnsDF: dataframe created from outpatient base, includes DSYSRTKY and a STRUCT with (thruDay, dgnsCode) from all non null ICD10 codes
        ipDayDgnsDF: similar to above from inpatient base
