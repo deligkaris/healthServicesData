@@ -195,7 +195,7 @@ def get_dayDgnsDF(baseDF):
     
     dgnsCodeColumns = [f"ICD_DGNS_CD{x}" for x in range(1,26)]
     principalDgns = [1] + [0] * 24
-    dgnsStruct = [F.struct(F.col("THRU_DT_DAY").alias("thruDay"), F.col(c).alias("dgnsCode"), F.lit(i).alias("principal")) for i,c in enumerate(dgnsCodeColumns)]
+    dgnsStruct = [F.struct(F.col("THRU_DT_DAY").alias("thruDay"), F.col(c).alias("dgnsCode"), F.lit(principalDgns[i]).alias("principal")) for i,c in enumerate(dgnsCodeColumns)]
 
     baseDF = (baseDF
                .select("DSYSRTKY", "THRU_DT_DAY", *dgnsCodeColumns)
