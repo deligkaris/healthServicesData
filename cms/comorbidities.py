@@ -118,14 +118,20 @@ def get_codes_regexp(codesDict):
                 if iCode[-2] == "X": #if the code ends with XX
                     #replace both X with \d (any digit), * is the 0 or more quantifier, must match beginning and end of string, add OR operator
                     #note: using \d instead of [0-9] creates issues due to python inserting a second backsplash
-                    codesRegexp[iCondition] = codesRegexp[iCondition] + f'^{iCode[:-2]}[0-9][0-9]*?$|'
+                    #codesRegexp[iCondition] = codesRegexp[iCondition] + f'^{iCode[:-2]}[0-9][0-9]*?$|'
+                    #based on feedback from JB and MG, I am interpreting the ICD10 patterns as "needs to start with"
+                    codesRegexp[iCondition] = codesRegexp[iCondition] + f'^{iCode[:-2]}|'
                 else: #if the code ends with X
                     #replace X with \d (any digit), * is the 0 or more quantifier, must match beginning and end of string, add OR operator
                     #note: using \d instead of [0-9] creates issues due to python inserting a second backsplash
-                    codesRegexp[iCondition] = codesRegexp[iCondition] + f'^{iCode[:-1]}[0-9]*$|'
+                    #codesRegexp[iCondition] = codesRegexp[iCondition] + f'^{iCode[:-1]}[0-9]*$|'
+                    #see note above
+                    codesRegexp[iCondition] = codesRegexp[iCondition] + f'^{iCode[:-1]}|'
             else:
                 #must match beginning and end of string, add OR operator
-                codesRegexp[iCondition] = codesRegexp[iCondition] + f'^{iCode}$|'
+                #codesRegexp[iCondition] = codesRegexp[iCondition] + f'^{iCode}$|'
+                #see note above
+                codesRegexp[iCondition] = codesRegexp[iCondition] + f'^{iCode}|'
         codesRegexp[iCondition] = codesRegexp[iCondition][:-1] #remove last OR operator
     
     return codesRegexp
