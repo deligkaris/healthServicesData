@@ -262,6 +262,15 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
                             #inpatient condition dataframes), keep only one for each beneficiary
                             .distinct())
 
+    #this applies the hierarchy categories as described in the SI of the Glasheen2019 paper, the milder condition should not contribute to the 
+    #comorbidity score if the more severe condition applies
+    conditions = (conditions.withColumn("cerbrovascular", F.when( F.col("hemiplegia")==1, F.lit(0) ).otherwise( F.col("cerbrovascular") ))
+                            .withColumn("liverMild", F.when( F.col("liverSevere")==1, F.lit(0) ).otherwise( F.col("liverMild") ))
+                            .withColumn("diabetesWithoutCC", F.when( F.col("diabetesWithCC")==1, F.lit(0) ).otherwise( F.col("diabetesWithoutCC") ))
+                            .withColumn("renalMild", F.when( F.col("renalSevere")==1, F.lit(0) ).otherwise( F.col("renalMild") ))
+                            .withColumn("malignancy", F.when( F.col("metastaticSolidTumor")==1, F.lit(0) ).otherwise( F.col("malignancy") ))
+                            .withColumn("hiv", F.when( F.col("aids")==1, F.lit(0) ).otherwise( F.col("hiv") )))
+
     conditions.persist() #now that I am done, store it in memory
     conditions.count() #and now actually do it
 
