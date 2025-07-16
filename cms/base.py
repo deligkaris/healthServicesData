@@ -730,7 +730,10 @@ def add_mbsf_info(baseDF,mbsfDF):
                                          F.col("RACE").alias("mbsfRace"), F.col("rucc").alias("mbsfRucc"), F.col("region").alias("mbsfRegion"),
                                          F.col("maPenetration").alias("mbsfMaPenetration"),
                                          F.col("meanContinuousFfsAndRfrncYrForCountyYear").alias("mbsfMeanContinuousFfsAndRfrncYrForCountyYear"),
-                                         F.col("medianHhIncome"), F.col("medianDistanceEd"), F.col("medianDistanceIcu"), F.col("medianDistanceTrauma")),
+                                         F.col("medianHhIncome").alias("mbsfMedianHhIncome"), 
+                                         F.col("medianDistanceEd").alias("mbsfMedianDistanceEd"), 
+                                         F.col("medianDistanceIcu").alias("mbsfMedianDistanceIcu"), 
+                                         F.col("medianDistanceTrauma").alias("mbsfMedianDistanceTrauma") ),
                                          #I do not have this information for all years so I am excluding them
                                          #F.col("totalNeuroSurgeons"), F.col("cvDeathsRate"), F.col("preventableCvDeathRate"), F.col("strokeDeathRate"), 
                                          #F.col("medianDistanceUc")
