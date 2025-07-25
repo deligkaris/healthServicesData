@@ -732,6 +732,7 @@ def add_mbsf_info(baseDF,mbsfDF):
                                          F.col("maPenetration").alias("mbsfMaPenetration"),
                                          F.col("meanContinuousFfsAndRfrncYrForCountyYear").alias("mbsfMeanContinuousFfsAndRfrncYrForCountyYear"),
                                          F.col("medianHhIncome").alias("mbsfMedianHhIncome"), 
+                                         F.col("medianHhIncomeAdjusted").alias("mbsfMedianHhIncomeAdjusted"),
                                          F.col("medianDistanceEd").alias("mbsfMedianDistanceEd"), 
                                          F.col("medianDistanceIcu").alias("mbsfMedianDistanceIcu"), 
                                          F.col("medianDistanceTrauma").alias("mbsfMedianDistanceTrauma") ),

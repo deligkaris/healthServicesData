@@ -421,6 +421,7 @@ def add_countyName(mbsfDF,cbsaDF):
 def add_sdoh_info(mbsfDF, sdohDF):
     #I do not have all this information for all years so I am excluding them for now
     mbsfDF = mbsfDF.join(sdohDF.select(F.col("ACS_MEDIAN_HH_INC").alias("medianHhIncome"), #median household income
+                                       F.col("medianHhIncomeAdjusted"),
                                        #F.col("AHRF_TOT_NEUROLOGICAL_SURG").alias("totalNeuroSurgeons"), #total number of neurological surgeons
                                        #F.col("CDCA_HEART_DTH_RATE_ABOVE35").alias("cvDeathsRate"), #total cv disease deaths per 100k population
                                        #F.col("CDCA_PREV_DTH_RATE_BELOW74").alias("preventableCvDeathRate"), #total avoidable heart disease and stroke deaths per 100k population ages 74 and below

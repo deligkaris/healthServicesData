@@ -220,7 +220,25 @@ def prep_ersRuccDF(ersRuccDF):
 def prep_sdohDF(sdohDF, filename):
     #because I copied the 2020 sdoh file for 21 and 22, the year column is not accurate (for 21 and 22), so I need to overwrite it here
     year = int(re.compile(r'year\d{4}').search(filename).group()[4:])
+
+    #U.S. Bureau of Economic Analysis, "Table 1.1.9. Implicit Price Deflators for Gross Domestic Product" (accessed Friday, July 25, 2025).
+    #table can be found in DATA/BEA
+    gdpDeflator = {2014: 96.421,
+                   2015: 97.316,
+                   2016: 98.241,
+                   2017: 100.000,
+                   2018: 102.291,
+                   2019: 103.979,
+                   2020: 105.361,
+                   2021: 110.172,
+                   2022: 118.026,
+                   2023: 122.273,
+                   2024: 125.230}
+   
+    deflator = gdpDeflator[2024]/gdpDeflator[year] #standardize to 2024 incomes
+
     sdohDF = (sdohDF.withColumn("ACS_MEDIAN_HH_INC", F.col("ACS_MEDIAN_HH_INC").cast('int'))
+                    .withColumn("medianHhIncomeAdjusted", F.col("ACS_MEDIAN_HH_INC")*deflator)
                     #these columns do not exist in the data file of the last year (2020) so for now I am excluding them
                     #.withColumn("AHRF_TOT_NEUROLOGICAL_SURG", F.col("AHRF_TOT_NEUROLOGICAL_SURG").cast('int'))
                     #.withColumn("CDCA_HEART_DTH_RATE_ABOVE35", F.col("CDCA_HEART_DTH_RATE_ABOVE35").cast('float'))

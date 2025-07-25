@@ -13,8 +13,8 @@ def get_codes(method="Glasheen2019"):
                                         "I425","I426","I427","I428","I429","P290"],
             "peripheralVascular": ["I70X","I71X","I731","I738","I739","I771","I790","I791",
                                    "I798","K551","K558","K559", "Z958","Z959"],
-            "cerbrovascular": ["G45X","G46X","I60X","I61X","I62X","I63X","I64X","I65X","I66X","I67X","I68X",
-                               "H340X","H341X","H342X"],
+            "cerebrovascular": ["G45X","G46X","I60X","I61X","I62X","I63X","I64X","I65X","I66X","I67X","I68X",
+                                "H340X","H341X","H342X"],
             "dementia": ["F01X","F02X","F03X", "F04","F05","G30X","G94","R54",
                          "F061","F068","G132","G138","G310X","G311","G312","G914",
                          "R4181"],
@@ -63,7 +63,7 @@ def get_codes(method="Glasheen2019"):
             "congestiveHeartFailure": [ "I099","I43X","I50X","I110","I130","I132","I255","I420",
                                         "I425","I426","I427","I428","I429","P290"],
             "peripheralVascular": ["I70X","I71X","I731","I738","I739","I771","I790","I792","K551","K558","K559","Z958","Z959"],
-            "cerbrovascular": ["G45X","G46X","I60X", "I61X","I62X","I63X","I64X","I65X","I66X","I67X","I68X","I69X","H340X"],
+            "cerebrovascular": ["G45X","G46X","I60X", "I61X","I62X","I63X","I64X","I65X","I66X","I67X","I68X","I69X","H340X"],
             "dementia": ["F00X","F01X","F02X","F03X", "F051","G30X","G311"],
             "chronicPulmonary": [ "I278","I279",
                                   "J40X","J41X","J42X","J43X","J44X","J45X","J46X","J47X",
@@ -264,7 +264,7 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
 
     #this applies the hierarchy categories as described in the SI of the Glasheen2019 paper, the milder condition should not contribute to the 
     #comorbidity score if the more severe condition applies
-    conditions = (conditions.withColumn("cerbrovascular", F.when( F.col("hemiplegia")==1, F.lit(0) ).otherwise( F.col("cerbrovascular") ))
+    conditions = (conditions.withColumn("cerebrovascular", F.when( F.col("hemiplegia")==1, F.lit(0) ).otherwise( F.col("cerebrovascular") ))
                             .withColumn("liverMild", F.when( F.col("liverSevere")==1, F.lit(0) ).otherwise( F.col("liverMild") ))
                             .withColumn("diabetesWithoutCC", F.when( F.col("diabetesWithCC")==1, F.lit(0) ).otherwise( F.col("diabetesWithoutCC") ))
                             .withColumn("renalMild", F.when( F.col("renalSevere")==1, F.lit(0) ).otherwise( F.col("renalMild") ))
