@@ -271,7 +271,7 @@ def prep_ahaDF(ahaDF, filename):
                   .withColumn("ahaCOTH", F.when( F.col("ahaCOTH")==2, 0).otherwise(F.col("ahaCOTH")))
                   .withColumn("ahaCah", F.col("MAPP18").cast('int'))         #critical access hospital
                   .withColumn("ahaCah", F.when( F.col("ahaCah")==2, 0).otherwise(F.col("ahaCah")))
-                  .withColumn("ahaBeds", F.col("BDH").cast('int'))           #total facility beds - nursing home beds
+                  .withColumn("ahaBeds", F.col("BDH").cast('int'))           #total facility beds - nursing home beds, ton of missingness, useless
                   .withColumn("ahaSize", F.when( F.col("ahaBeds").isNull(), F.lit(None))
                                           .when( F.col("ahaBeds")<100, 0)
                                           .when( (F.col("ahaBeds")>=100)&(F.col("ahaBeds")<400), 1)

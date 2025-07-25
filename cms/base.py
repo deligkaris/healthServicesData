@@ -593,12 +593,13 @@ def add_evtPrcdr(baseDF):
     #                            .otherwise(0)) #otherwise false
     return baseDF
 
-# main reference: https://svn.bmj.com/content/6/2/194
-# the current implementation includes a difference with the main reference:
-# When DRG codes 23 or 24 are present in a claim we classify that as an EVT claim but they excluded any claim with these 
-# two DRG codes that had procedure codes consistent with craniectomy/craniotomy/ventriculostomy.
 def add_evt(baseDF):
-    # EVT takes place only in inpatient settings
+    '''EVT takes place only in inpatient settings. This is stated in the main reference, in the paragraph where they define the process
+    for detecting EVT in the claims.
+    Main reference: https://svn.bmj.com/content/6/2/194
+    The current implementation includes a difference with the main reference:
+    When DRG codes 23 or 24 are present in a claim we classify that as an EVT claim but they excluded any claim with these 
+    Two DRG codes that had procedure codes consistent with craniectomy/craniotomy/ventriculostomy.'''
     baseDF = add_evtDrg(baseDF)
     baseDF = add_evtPrcdr(baseDF)
     evtCondition = '( (F.col("evtDrg")==1) | (F.col("evtPrcdr")==1) )' # do NOT forget the parenthesis!!!
@@ -968,7 +969,7 @@ def add_provider_cost_report_info(baseDF,costReportDF):
                            .select(
                                F.col("Provider CCN").alias("Provider"),
                                F.col("Rural Versus Urban").alias("providerRuralVersusUrban"),
-                               F.col("Number of Beds").alias("providerNumberOfBeds"),
+                               F.col("Number of Beds").cast('int').alias("providerNumberOfBeds"),
                                F.col("Number of Interns and Residents (FTE)").alias("providerNumberOfResidents")),
                          #see note on add_cbi_info on why I am not using ORGNPINM for the join
                          #hospital cost report files include only the CMS Certification Number (Provider ID, CCN), they do not include NPI
