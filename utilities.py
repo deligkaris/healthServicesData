@@ -136,6 +136,7 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     filenames["pos"] = [pathToData + "/PROVIDER-OF-SERVICES/POS_OTHER_DEC22.csv"]
    
     #https://www.neighborhoodatlas.medicine.wisc.edu/
+    #the 2023 ADI data is also available now (see my DATA folder), but I will need to implement the code for deciding which one to use
     filenames["adi"] = [pathToData + "/ATLAS-DISCRIMINATION-INDEX/US_2020_ADI_CensusBlockGroup_v3.2.csv"]
 
     #have permission from AAMC to use this dataset for a single project only
