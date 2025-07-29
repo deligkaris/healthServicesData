@@ -243,8 +243,10 @@ def prep_sdohDF(sdohDF, filename):
                              2021: gdpDeflator[2021]/gdpDeflator[2020],
                              2022: gdpDeflator[2022]/gdpDeflator[2020]}
 
+    adjustment = adjustment2021And2022[year]
+
     sdohDF = (sdohDF.withColumn("ACS_MEDIAN_HH_INC", F.col("ACS_MEDIAN_HH_INC").cast('int'))
-                    .withColumn("medianHhIncomeAdjusted", F.col("ACS_MEDIAN_HH_INC")*deflator*adjustment2021And2022)
+                    .withColumn("medianHhIncomeAdjusted", F.col("ACS_MEDIAN_HH_INC")*deflator*adjustment)
                     #these columns do not exist in the data file of the last year (2020) so for now I am excluding them
                     #.withColumn("AHRF_TOT_NEUROLOGICAL_SURG", F.col("AHRF_TOT_NEUROLOGICAL_SURG").cast('int'))
                     #.withColumn("CDCA_HEART_DTH_RATE_ABOVE35", F.col("CDCA_HEART_DTH_RATE_ABOVE35").cast('float'))
