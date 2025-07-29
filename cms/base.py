@@ -1224,6 +1224,11 @@ def add_acgmeX(baseDF,acgmeXDF, X="Site"):
     return baseDF
 
 def add_aamc_teaching_info(baseDF,aamcHospitalsDF):
+    '''Adds information from AAMC on teaching hospitals. Need to get permission prior to using for each project.
+    Q: On line 109 of the file, St Joseph's Hospital and Medical Center is marked as non-teaching even though the FY20 IRB ratio is 
+       more than 0.25 (0.3538). Is this due to the fact that this organization was not a COTH member then? In your previous email you had 
+       mentioned that major/minor teaching hospitals are commonly defined based on the IRB...
+    A:  The source for this data is CMS and sometimes the CMS reported information does not match.  I would go with the IRB ratio.'''
     baseDF = (baseDF.join(aamcHospitalsDF.select(F.col("Medicare ID"),F.col("aamcTeachingStatus"), F.col("aamcMajorTeachingStatus")),
                          on=[F.col("Medicare ID")==F.col("PROVIDER")],
                          how="left_outer")
