@@ -103,6 +103,20 @@ from functools import reduce
 #   You may find this article helpful in understanding identifiers: https://resdac.org/cms-data/variables/provider-number
 #   As you likely know, 1:1 matching is not possible for CCN to NPI crosswalks. IE: An NPI may not have a CCN, or a CCN may have multiple NPIs. 
 #   And, it’s possible for health systems to bill under a single parent organization.
+# Note: Question to CMS:
+#    I understand that in UB-04, it is the billing provider's NPI number that needs to be used and not the health care services provider's NPI, 
+#    eg a small hospital might treat a beneficiary at their ED and use its parent's hospital's NPI if that is their billing NPI. If a small 
+#    hospital does treat a beneficiary at its ED and then transfers the beneficiary to its parent hospital which then admits the beneficiary 
+#    for an inpatient stay, for the same illness as the one that caused the ED visit, will the ED claim and the inpatient claim be bundled in a 
+#    single inpatient claim because both hospitals use the same billing NPI and it is the same illness? Or will there be one outpatient claim 
+#    for the ED visit and one inpatient claim for the inpatient stay, they will just happen to have the same billing NPI? 
+# Answer:
+#    Thank you for contacting the Centers for Medicare & Medicaid Services (CMS). Your Medicare Administrative Contractor (MAC) is 
+#    in the best position to assist you with this inquiry, therefore we suggest you contact your local MAC for further assistance. Contact information 
+#    for your MAC can be obtained by visiting the CMS website at: https://www.cms.gov/Medicare/Medicare-Contracting/FFSProvCustSvcGen/MAC-Website-List.html. 
+#    By navigating to the above URL you will be directed to the MAC Website List where you can then select the state you reside in or MAC name to 
+#    obtain contact information for your local MAC.
+
 
 def add_admission_date_info(baseDF, claimType="op"):
     #unfortunately, SNF claims have a different column name for admission date
