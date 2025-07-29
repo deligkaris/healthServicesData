@@ -37,6 +37,7 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     filenames = dict()
 
     #data exist only until 2020 (including), I copied the 2020 file to be used for 2021 and 2022
+    #if data for 2021 and 2022 become available then I will need to also modify prep_sdohDF below
     #source: AHRQ social determinants of health database https://www.ahrq.gov/sdoh/data-analytics/sdoh-data.html
     filenames["sdoh"] = [pathToData + f'/SDOH/sdoh_year{year}.csv' for year in range(2016,2023)]
 
@@ -234,11 +235,16 @@ def prep_sdohDF(sdohDF, filename):
                    2022: 118.026,
                    2023: 122.273,
                    2024: 125.230}
-   
+ 
     deflator = gdpDeflator[2024]/gdpDeflator[year] #standardize to 2024 incomes
 
+    #because I copied the 2020 data to 2021 and 2022 I will adjust the income values...
+    adjustment2021And2022 = {2014: 1, 2015: 1, 2016: 1, 2017: 1, 2018: 1, 2019: 1, 2020: 1, 
+                             2021: gdpDeflator[2021]/gdpDeflator[2020],
+                             2022: gdpDeflator[2022]/gdpDeflator[2020]}
+
     sdohDF = (sdohDF.withColumn("ACS_MEDIAN_HH_INC", F.col("ACS_MEDIAN_HH_INC").cast('int'))
-                    .withColumn("medianHhIncomeAdjusted", F.col("ACS_MEDIAN_HH_INC")*deflator)
+                    .withColumn("medianHhIncomeAdjusted", F.col("ACS_MEDIAN_HH_INC")*deflator*adjustment2021And2022)
                     #these columns do not exist in the data file of the last year (2020) so for now I am excluding them
                     #.withColumn("AHRF_TOT_NEUROLOGICAL_SURG", F.col("AHRF_TOT_NEUROLOGICAL_SURG").cast('int'))
                     #.withColumn("CDCA_HEART_DTH_RATE_ABOVE35", F.col("CDCA_HEART_DTH_RATE_ABOVE35").cast('float'))
