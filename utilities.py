@@ -137,6 +137,21 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
    
     #https://www.neighborhoodatlas.medicine.wisc.edu/
     #the 2023 ADI data is also available now (see my DATA folder), but I will need to implement the code for deciding which one to use
+    #
+    #In order to know with certainty how the national ranking is done and what the numbers mean, I used an address in an area that is 
+    #fairly affluent and an address in an area that is fairly deprived.
+    #I used the find geographies tab in 
+    #https://urldefense.com/v3/__https://geocoding.geo.census.gov/geocoder/__;!!AU3bcTlGKuA!HiZeehzBHPgvoodNZF_XXWf9LNHwCueN_pVzexQ3xkzMcpLNMUsPp8V-PdnaNo2d8R5DmDvqLb4UjQfAiPme9qiE5VRF$ 
+    #The link was:
+    #https://urldefense.com/v3/__https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?address=1690*20W*20Lane*20Ave*2C*20Columbus*20OH*2043221&benchmark=4&vintage=4__;JSUlJSUlJQ!!AU3bcTlGKuA!HiZeehzBHPgvoodNZF_XXWf9LNHwCueN_pVzexQ3xkzMcpLNMUsPp8V-PdnaNo2d8R5DmDvqLb4UjQfAiPme9v3QJHC4$ 
+    #The block group was: 390490064301
+    #The affluent area (1690 W Lane Ave, Columbus, OH 43221) had a national ranking of 26 and a state ranking of 1.
+    #The link was:
+    #https://urldefense.com/v3/__https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress?address=1975*20Cleveland*20Ave*2C*20Columbus*2C*20OH*2043211&benchmark=4&vintage=4__;JSUlJSUlJQ!!AU3bcTlGKuA!HiZeehzBHPgvoodNZF_XXWf9LNHwCueN_pVzexQ3xkzMcpLNMUsPp8V-PdnaNo2d8R5DmDvqLb4UjQfAiPme9lzqNl5Z$ 
+    #The block group was: 390490007304
+    #The deprived area had a national rank of 63 and a state rank of 4.
+    #
+    #Conclusion: Thus the higher the ranking (closest to 0, small numbers) the most affluent the area is or the least deprived.
     filenames["adi"] = [pathToData + "/ATLAS-DISCRIMINATION-INDEX/US_2020_ADI_CensusBlockGroup_v3.2.csv"]
 
     #have permission from AAMC to use this dataset for a single project only
