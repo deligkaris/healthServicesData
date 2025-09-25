@@ -279,7 +279,8 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
     for iCondition in conditionsList:
         conditions = conditions.withColumn(iCondition, #overwrite each condition column
                                            F.when( F.col("hospitalizationsIn12Months").isNull(), F.lit(None)).otherwise(F.col(iCondition)))
-
+    
+    conditions = conditions.drop("hospitalizationsIn12Months") #no longer needed and I want to return comorbidity-only-needed columns
     conditions = get_comorbidityIndex(conditions, method=method) #now calculate the comorbidity index
 
     conditions.persist() #now that I am done, store it in memory
