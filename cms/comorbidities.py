@@ -280,8 +280,35 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
         conditions = conditions.withColumn(iCondition, #overwrite each condition column
                                            F.when( F.col("hospitalizationsIn12Months").isNull(), F.lit(None)).otherwise(F.col(iCondition)))
 
+    conditions = get_comorbidityIndex(conditions, method=method) #now calculate the comorbidity index
+
     conditions.persist() #now that I am done, store it in memory
     conditions.count() #and now actually do it
 
     return conditions
+
+def get_comorbidityIndex(conditionsDF, method="Glasheen2019"):
+    '''This function takes a dataframe with the comorbidities and returns the same dataframe
+    with the comorbidity index added as a column.
+    Currently, only the Glasheen2019 approach has been implemented.'''
+
+    if method=="Glasheen2019":
+        conditionsDf = (conditionsDf
+                        .withColumn("comorbityIndex",
+                                F.when(F.col("hemiplegia") == 1, 2).otherwise(F.col("cerebrovascular")) +
+                                F.when(F.col("liverSevere") == 1, 3).otherwise(F.col("liverMild")) +
+                                F.when(F.col("diabetesWithCC") == 1, 2).otherwise(F.col("diabetesWithoutCC")) +
+                                F.when(F.col("renalSevere") == 1, 3).otherwise(F.col("renalMild")) +
+                                F.when(F.col("metastaticSolidTumor") == 1, 6).otherwise(F.col("malignancy") * 2) +
+                                F.when(F.col("aids") == 1, 6).otherwise(F.col("hiv") * 3) +
+                                F.col("myocardialInfraction") +
+                                F.col("congestiveHeartFailure") +
+                                F.col("peripheralVascular") +
+                                F.col("dementia") +
+                                F.col("chronicPulmonary") +
+                                F.col("rheumatic") +
+                                F.col("pepticUlcer")))
+    else:
+        conditionsDf = conditionsDf.withColumn("comorbidityIndex", F.lit(None))
+    return conditionsDf 
 
