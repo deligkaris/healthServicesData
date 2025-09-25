@@ -274,7 +274,8 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
                             .withColumn("hiv", F.when( F.col("aids")==1, F.lit(0) ).otherwise( F.col("hiv") )))
 
     #when the beneficiary enrolled in less than 360 days ago to FFS, we cannot accurately determine comorbidities so need to mark those as Null
-    conditionsList = conditionsList.remove("infectionOrCancerDueToAids")+["aids"] #update the comorbidities list
+    conditionsList.remove("infectionOrCancerDueToAids")
+    conditionsList += ["aids"] #update the comorbidities list
     for iCondition in conditionsList:
         conditions = conditions.withColumn(iCondition, #overwrite each condition column
                                            F.when( F.col("hospitalizationsIn12Months").isNull(), F.lit(None)).otherwise(F.col(iCondition)))
