@@ -214,7 +214,9 @@ def get_dayDgnsDF(baseDF):
 def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
     '''opDayDgnsDF: dataframe created from outpatient base, includes DSYSRTKY and a STRUCT with (thruDay, dgnsCode) from all non null ICD10 codes
        ipDayDgnsDF: similar to above from inpatient base
-       baseDF: dataframe with DSYSRTKY and THRU_DT_DAY, will use this df to built the comorbidities
+       baseDF: dataframe with DSYSRTKY and THRU_DT_DAY and hospitalizationsIn12Months, will use this df to built the comorbidities
+               The hospitalizationsIn12Months variable will be used to determine when, by looking at Null values, when we do not have enough
+               information to determine comorbidities (due to enrollment to Medicare too closely to the event date)
        note: method Quan2005 IS NOT fully implemented'''
 
     codesDict = get_codes(method)
@@ -270,6 +272,12 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
                             .withColumn("renalMild", F.when( F.col("renalSevere")==1, F.lit(0) ).otherwise( F.col("renalMild") ))
                             .withColumn("malignancy", F.when( F.col("metastaticSolidTumor")==1, F.lit(0) ).otherwise( F.col("malignancy") ))
                             .withColumn("hiv", F.when( F.col("aids")==1, F.lit(0) ).otherwise( F.col("hiv") )))
+
+    #when the beneficiary enrolled in less than 360 days ago to FFS, we cannot accurately determine comorbidities so need to mark those as Null
+    conditionsList = conditionsList.remove("infectionOrCancerDueToAids")+["aids"] #update the comorbidities list
+    for iCondition in conditionsList:
+        conditions = conditions.withColumn(iCondition, #overwrite each condition column
+                                           F.when( F.col("hospitalizationsIn12Months").isNull(), F.lit(None)).otherwise(F.col(iCondition)))
 
     conditions.persist() #now that I am done, store it in memory
     conditions.count() #and now actually do it
