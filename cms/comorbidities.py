@@ -287,7 +287,7 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
 
     return conditions
 
-def get_comorbidityIndex(conditionsDF, method="Glasheen2019"):
+def get_comorbidityIndex(conditionsDf, method="Glasheen2019"):
     '''This function takes a dataframe with the comorbidities and returns the same dataframe
     with the comorbidity index added as a column.
     Currently, only the Glasheen2019 approach has been implemented.'''
