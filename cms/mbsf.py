@@ -450,8 +450,8 @@ def add_meanContinuousFfsAndRfrncYrForCountyYear(mbsfDF):
     mbsfDF = mbsfDF.withColumn("meanContinuousFfsAndRfrncYrForCountyYear", F.mean(F.col("continuousFfsAndRfrncYr")).over(eachCountyYear))
     return mbsfDF
 
-def add_rucc(mbsfDF, ersRuccDF):
-    mbsfDF = mbsfDF.join(ersRuccDF.select(F.col("FIPS").alias("fipsCounty"),F.col("RUCC_2013").alias("rucc")),
+def add_rucc_info(mbsfDF, ersRuccDF):
+    mbsfDF = mbsfDF.join(ersRuccDF.select(F.col("FIPS").alias("fipsCounty"),F.col("RUCC_2013").alias("rucc"), F.col("ruccGroup")),
                           on="fipsCounty",
                           how="left_outer")
     return mbsfDF
@@ -491,7 +491,7 @@ def add_beneficiary_info(mbsfDF, dataDICT):
     mbsfDF = add_fipsCounty(mbsfDF, dataDICT["cbsa"])
     mbsfDF = add_fipsState(mbsfDF)
     mbsfDF = add_region(mbsfDF)
-    mbsfDF = add_rucc(mbsfDF, dataDICT["ersRucc"])
+    mbsfDF = add_rucc_info(mbsfDF, dataDICT["ersRucc"])
     mbsfDF = add_enrollment_info(mbsfDF)
     mbsfDF = add_willDie(mbsfDF)
     mbsfDF = add_sdoh_info(mbsfDF, dataDICT["sdoh"])

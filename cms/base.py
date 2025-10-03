@@ -500,7 +500,7 @@ def add_provider_pos_info(baseDF, posDF):
                          how="left_outer"))
     return baseDF
 
-def add_providerSysId(baseDF, chspHospDF):
+def add_provider_system_info(baseDF, chspHospDF):
     '''The providerSysId variable indicates whether a hospital is part of a health system or not.
     If this variable is Null then the hospital is not part of a health system.
     eg see page 21 of https://www.ahrq.gov/sites/default/files/wysiwyg/chsp/compendium/2021-hospital-linkage-techdoc-rev.pdf
@@ -508,6 +508,7 @@ def add_providerSysId(baseDF, chspHospDF):
     I am referring just to hospitals because the chspHospDF is the hospital linkage file from AHRQ.'''
     baseDF = baseDF.join(chspHospDF.select(F.col("ccn").alias("PROVIDER"),
                                            F.col("health_sys_id").alias("providerSysId"),
+                                           F.col("isVI").alias("providerIsVI"),
                                            F.col("year").alias("THRU_DT_YEAR")),
                          on=["THRU_DT_YEAR","PROVIDER"],
                          how="left_outer")
@@ -527,13 +528,13 @@ def add_provider_info(baseDF, data):
     baseDF = add_rehabilitation(baseDF)
     baseDF = add_hospitalFromClaim(baseDF)
     baseDF = add_providerCountyName(baseDF, data["cbsa"])
-    baseDF = add_providerRucc(baseDF, data["ersRucc"])
+    baseDF = add_provider_rucc_info(baseDF, data["ersRucc"])
     baseDF = add_providerMaPenetration(baseDF, data["maPenetration"])
     #right now I prefer cost report data because they seem to be about 99.5% complete, vs 80% complete for cbi
     #baseDF = add_cbi_info(baseDF, cbiDF)
     baseDF = add_provider_cost_report_info(baseDF, data["hospCost2018"])
     baseDF = add_aha_info(baseDF, data["aha"])
-    baseDF = add_providerSysId(baseDF, data["chspHosp"])
+    baseDF = add_provider_system_info(baseDF, data["chspHosp"])
     baseDF = add_providerCmi(baseDF, data["cmi"])
     baseDF = add_providerIn50StatesOrDc(baseDF)
     return baseDF
@@ -983,8 +984,10 @@ def add_provider_cost_report_info(baseDF,costReportDF):
     baseDF = baseDF.join(costReportDF
                            .select(
                                F.col("Provider CCN").alias("Provider"),
-                               F.col("Rural Versus Urban").alias("providerRuralVersusUrban"),
-                               F.col("Number of Beds").cast('int').alias("providerNumberOfBeds"),
+                               #F.col("Rural Versus Urban").alias("providerRuralVersusUrban"), #replace this with the boolean variable below
+                               F.col("providerRuralVersusUrbanIsRural"),
+                               F.col("numberOfBeds").alias("providerNumberOfBeds"),
+                               F.col("numberOfBedsGroup").alias("providerNumberOfBedsGroup"),
                                F.col("Number of Interns and Residents (FTE)").alias("providerNumberOfResidents")),
                          #see note on add_cbi_info on why I am not using ORGNPINM for the join
                          #hospital cost report files include only the CMS Certification Number (Provider ID, CCN), they do not include NPI
@@ -1100,8 +1103,9 @@ def add_providerMaPenetration(baseDF, maPenetrationDF):
                          how="left_outer")
     return baseDF
 
-def add_providerRucc(baseDF, ersRuccDF):
-    baseDF = baseDF.join(ersRuccDF.select(F.col("FIPS").alias("providerFIPS"),F.col("RUCC_2013").alias("providerRucc")),
+def add_provider_rucc_info(baseDF, ersRuccDF):
+    baseDF = baseDF.join(ersRuccDF.select(F.col("FIPS").alias("providerFIPS"),F.col("RUCC_2013").alias("providerRucc"), 
+                                          F.col("ruccGroup").alias("providerRuccGroup")),
                          on=["providerFIPS"],
                          how="left_outer")
     return baseDF
@@ -1492,11 +1496,19 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
     baseDF = (baseDF.withColumn("homeDays90", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                .when( F.col("90DaysAfterAdmissionDateDead")==1, 
                                                       F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtallMinusHha90"))
-                                               .otherwise( 90-F.col("losAtallMinusHha90") ))
+                                               .otherwise( 90-F.col("losAtallMinusHha90") )) 
+                    .withColumn("homeDays90Group", F.when( F.col("homeDays90")==0, 0) #in analyses a categorical variable might be more useful
+                                                    .when( F.col("homeDays90")<=30, 1)
+                                                    .when( F.col("homeDays90")<=60, 2) 
+                                                    .when( F.col("homeDays90")<=90, 3))
                     .withColumn("homeDays365", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                 .when( F.col("365DaysAfterAdmissionDateDead")==1, 
                                                        F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtallMinusHha365"))
-                                                .otherwise( 365-F.col("losAtallMinusHha365") )))
+                                                .otherwise( 365-F.col("losAtallMinusHha365") ))
+                    .withColumn("homeDays365Group", F.when( F.col("homeDays365")==0, 0) #in analyses a categorical variable might be more useful
+                                                     .when( F.col("homeDays365")<=120, 1)
+                                                     .when( F.col("homeDays365")<=240, 2) 
+                                                     .when( F.col("homeDays365")<=360, 3)))
 
     #now include HHA and label these as home living independently rates
     hhaDF = hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
@@ -1508,10 +1520,20 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
                                                           .when( F.col("90DaysAfterAdmissionDateDead")==1, 
                                                                  F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtall90"))
                                                           .otherwise( 90-F.col("losAtall90") ))
+                    .withColumn("homeDaysIndependent90Group", 
+                                F.when( F.col("homeDaysIndependent90")==0, 0) #in analyses a categorical variable might be more useful
+                                 .when( F.col("homeDaysIndependent90")<=30, 1)
+                                 .when( F.col("homeDaysIndependent90")<=60, 2) 
+                                 .when( F.col("homeDaysIndependent90")<=90, 3))
                     .withColumn("homeDaysIndependent365", F.when( F.col("STUS_CD")==20, F.lit(0))
                                                            .when( F.col("365DaysAfterAdmissionDateDead")==1, 
                                                                   F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtall365"))
-                                                           .otherwise( 365-F.col("losAtall365") )))
+                                                           .otherwise( 365-F.col("losAtall365") ))
+                    .withColumn("homeDaysIndependent365Group", 
+                                F.when( F.col("homeDaysIndependent365")==0, 0) #in analyses a categorical variable might be more useful
+                                 .when( F.col("homeDaysIndependent365")<=120, 1)
+                                 .when( F.col("homeDaysIndependent365")<=240, 2)
+                                 .when( F.col("homeDaysIndependent365")<=360, 3)))
     return baseDF
 
 def add_prior_hospitalization_info(baseDF, ipBaseDF):
@@ -1536,7 +1558,8 @@ def add_prior_hospitalization_info(baseDF, ipBaseDF):
                           how="left_outer")
                     .fillna(0, subset="hospitalizationsIn12Months")
                     .withColumn("hospitalizationsIn12Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") < 12, F.lit(None) )
-                                                               .otherwise( F.col("hospitalizationsIn12Months") )))
+                                                               .otherwise( F.col("hospitalizationsIn12Months") ))
+                    .withColumn("hospitalizedIn12Months", (F.col("hospitalizationsIn12Months")>0).cast('int')))
 
     baseDF = (baseDF.join(
                        ipBaseDF.join(baseDF.select("DSYSRTKY","ADMSN_DT_DAY","CLAIMNO"),
@@ -1552,8 +1575,20 @@ def add_prior_hospitalization_info(baseDF, ipBaseDF):
                           how="left_outer")
                     .fillna(0, subset="hospitalizationsIn6Months")
                     .withColumn("hospitalizationsIn6Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") < 6, F.lit(None) )
-                                                               .otherwise( F.col("hospitalizationsIn6Months") )))
+                                                               .otherwise( F.col("hospitalizationsIn6Months") ))
+                    .withColumn("hospitalizedIn6Months", (F.col("hospitalizationsIn6Months")>0).cast('int')))
+    return baseDF
 
+def add_adi_info(baseDF, adiDF):
+    '''baseDF must have the blockGroup column in order to add the ADI info to it
+    blockGroup is not part of the base Medicare claim files.'''
+    baseDF = baseDF.join(adiDF
+                          .select(
+                           F.col("FIPS").alias("blockGroup"), 
+                           F.col("adiNatRank"), F.col("adiNatRankGroup"), #national 
+                           F.col("adiStaRank"), F.col("adiStaRankGroup")), #state
+                                 on=["blockGroup"],
+                                 how="left_outer")
     return baseDF
 
 def drop_unused_columns(baseDF):

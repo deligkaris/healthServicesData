@@ -222,6 +222,8 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_sdohDF(df, filename)
     elif file=="census":
         df = prep_censusDF(df, filename)
+    elif (file=="adi"):
+        df = prep_adiDF(df)
     return df   
 
 def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkaris/DATA', pathToAHAData='/fs/ess/PAS2164/AHA'):
@@ -230,8 +232,22 @@ def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkari
     data = read_data(spark, filenames)
     return data
 
+def prep_adiDF(adiDF):
+    adiDF = (adiDF
+              .withColumn("adiNatRank", F.when( F.col("ADI_NATRANK").isin("GQ-PH", "GQ", "PH", "QDI"), F.lit(None)).otherwise(F.col("ADI_NATRANK")))
+              .withColumn("adiStaRank", F.when( F.col("ADI_STATERNK").isin("GQ-PH", "GQ", "PH", "QDI"), F.lit(None)).otherwise(F.col("ADI_STATERNK")))
+              #add the categorical variables below because they are useful in analyses sometimes
+              .withColumn("adiNatRankGroup", F.when( F.col("adiNatRank")<=25, 4 ).when( F.col("adiNatRank")<=50, 3 )
+                                              .when( F.col("adiNatRank")<=75, 2 ).when( F.col("adiNatRank")<=100, 1 ))
+              .withColumn("adiStaRankGroup", F.when( F.col("adiStaRank")<=25, 4 ).when( F.col("adiStaRank")<=50, 3 )
+                                              .when( F.col("adiStaRank")<=75, 2 ).when( F.col("adiStaRank")<=100, 1 ))
+    return adiDF
+
 def prep_ersRuccDF(ersRuccDF):
-    ersRuccDF = ersRuccDF.withColumn('RUCC_2013', F.col("RUCC_2013").cast('int'))
+    ersRuccDF = (ersRuccDF.withColumn('RUCC_2013', F.col("RUCC_2013").cast('int'))
+                          .withColumn('ruccGroup', F.when( F.col("RUCC_2013")<=3, 0) #the number of categories is too large for analyses so do a group
+                                                    .when( F.col("RUCC_2013")<=6, 1)
+                                                    .when( F.col("RUCC_2013")<=9, 2)))
     return ersRuccDF
 
 def prep_sdohDF(sdohDF, filename):
@@ -291,6 +307,12 @@ def prep_chspHospDF(chspHospDF, filename):
     #for reasons unknown, the same CCN, 104079, appears in 2 lines in this file with two different compendium_hospital_id, and all else the same
     #I filter out the line with the ID that is not used at later years
     chspHospDF = chspHospDF.filter(F.col("compendium_hospital_id")!="CHSP00008136")
+    #The health_sys_id variable indicates whether a hospital is part of a health system or not.
+    #If this variable is Null then the hospital is not part of a health system.
+    #eg see page 21 of https://www.ahrq.gov/sites/default/files/wysiwyg/chsp/compendium/2021-hospital-linkage-techdoc-rev.pdf
+    #There are 4073 non null health sys id values in the chspHospDF and 2652 null values consistent with the Table IV.1 in the PDF.
+    #I am referring just to hospitals because the chspHospDF is the hospital linkage file from AHRQ
+    chspHospDF = chspHospDF.withColumn("isVI", F.when( F.col("health_sys_id").isNotNull(), F.lit(1)).otherwise(F.lit(0))) 
     return chspHospDF
 
 def prep_cmiDF(cmiDF):
@@ -342,7 +364,10 @@ def prep_ahaDF(ahaDF, filename):
                                            .when( F.col("CNTRL").isin([21,23]), 1)          #non-government, not-for-profit
                                            .when( F.col("CNTRL").isin([31,32,33]), 2)       #investor-owned, for-profit
                                            .when( F.col("CNTRL").isin([40,41,42,43,44,45,46,47,48]), 3) #government, federal
-                                           .otherwise(F.lit(None))))
+                                           .otherwise(F.lit(None)))
+                  #sometimes there are very few government federal or non-federal claims and it helps to group the tiny category with the other one
+                  .withColumn("ahaOwnerGroup", F.when( F.col("ahaOwner").isin(0,3), 0) #government
+                                                .otherwise( F.col("ahaOwner") )))
 
     if ahaYear > 2016:
         ahaDF = (ahaDF.withColumn("STRCHOS", F.col("STRCHOS").cast('int'))
@@ -405,10 +430,15 @@ def prep_maPenetrationDF(maPenetrationDF):
 
 def prep_hospCostDF(hospCostDF):
     eachCCN = Window.partitionBy("Provider CCN")
-    hospCostDF = (hospCostDF.withColumn("maxTotalBedDaysAvailable",
-                                       F.max(F.col("Total Bed Days Available").cast('int')).over(eachCCN))
+    hospCostDF = (hospCostDF.withColumn("maxTotalBedDaysAvailable", F.max(F.col("Total Bed Days Available").cast('int')).over(eachCCN))
                             .filter(F.col("maxTotalBedDaysAvailable")==(F.col("Total Bed Days Available").cast('int')))
-                            .drop("maxTotalBedDaysAvailable"))
+                            .drop("maxTotalBedDaysAvailable")
+                            #the rural vs urban column is categorical with 2 categories, 'R' and 'U', for analyses, I need a boolean so convert it here
+                            .withColumn("providerRuralVersusUrbanIsRural", (F.col("Rural Versus Urban")=="R").cast('int'))
+                            .withColumn("numberOfBeds", F.col("Number of Beds").cast('double'))
+                            .withColumn("numberOfBedsGroup", F.when( F.col("numberOfBeds")<100, F.lit(0) ) #in analyses a categorical variable can be helpful
+                                                              .when( F.col("numberOfBeds")<400, F.lit(1) )
+                                                              .when( F.col("numberOfBeds")>=400, F.lit(2) )))
     return hospCostDF
 
 def prep_posDF(posDF):
