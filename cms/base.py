@@ -1,5 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
+from pyspark.sql.types import IntegerType
 from .mbsf import add_ohResident
 from .revenue import filter_claims, add_ed, add_mri, add_ct, get_revenue_info
 from .claims import get_claims
@@ -1829,6 +1830,29 @@ def add_adi_info(baseDF, adiDF):
                            F.col("adiStaRank"), F.col("adiStaRankGroup")), #state
                                  on=["blockGroup"],
                                  how="left_outer")
+    return baseDF
+
+def add_majorDiagnosticOrTherapeuticOrProcedures(baseDF, procedureClassesDF, sparkInstance):
+    '''Adds a column that is 1 if any of the claim procedure codes represent a major diagnostic or
+    therapeutic operating room procedure and 0 otherwise.
+    These are any and all codes for Procedure classes 3 and 4 in the procedure classes dataset by HCUP.
+    Reference: https://hcup-us.ahrq.gov/toolssoftware/procedureicd10/procedure_icd10.jsp? 
+    The list of ICD10 codes that represent these procedures is about 60K long so some care has been taken to 
+    making this a doable computation. 
+    It is not clear to me if the ICD10 codes of those procedures can be represented with a regular expression but 
+    I assume that it is not since HCUP has not come up with one...'''
+    majorPrcdrCodeList = (procedureClassesDF
+                           .filter(F.col("PROCEDURE-CLASS").isin([3,4]))
+                           .select("ICD-10-PCS-CODE").rdd.flatMap(lambda x: x).collect())
+    mpclBroadcast = sparkInstance.sparkContext.broadcast(set(majorPrcdrCodeList))
+
+    @F.udf(returnType=IntegerType())
+    def hasMajorCodes(prcdrCodeArray):
+        if not prcdrCodeArray:
+            return 0
+        return int(not set(prcdrCodeArray).isdisjoint(mpclBroadcast))
+
+    baseDF = baseDF.withColumn("majorDiagnosticOrTherapeuticOrProcedures", hasMajorCodes(F.col("prcdrCodeAll")))
     return baseDF
 
 def drop_unused_columns(baseDF):
