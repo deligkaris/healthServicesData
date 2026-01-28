@@ -979,8 +979,6 @@ def add_dgnsPoaCodeAll(baseDF):
                     .drop("dgnsPoaCodeStruct", "dgnsPoaFilteredCodeStruc"))
     return baseDF
 
-def add_dgnsPoa
-
 def add_tpaOsu(baseDF):
     return baseDF.withColumn("tpaOsu", F.col("osu")*F.col("tpa"))
 
