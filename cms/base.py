@@ -234,12 +234,17 @@ def add_septicShockDgns(baseDF):
     return baseDF 
 
 def add_septicShock(baseDF):
+    '''Septic shock.
+    Reference: https://journals.lww.com/ccmjournal/abstract/2019/04000/variation_in_identifying_sepsis_and_organ.1.aspx
+    Reference: https://journals.lww.com/lww-medicalcare/abstract/2014/06000/identifying_patients_with_severe_sepsis_using.18.aspx'''
     baseDF = add_septicShockDgns(baseDF)
     baseDF = baseDF.withColumn("septicShock", F.when( F.col("septicShockDgns")==1 ,1).otherwise(0))
     return baseDF
 
 def add_septicShockPoa(baseDF):
-    '''Adds a flag for septic shock present on admission.'''
+    '''Adds a flag for septic shock present on admission.
+    Reference: https://journals.lww.com/ccmjournal/abstract/2019/04000/variation_in_identifying_sepsis_and_organ.1.aspx
+    Reference: https://journals.lww.com/lww-medicalcare/abstract/2014/06000/identifying_patients_with_severe_sepsis_using.18.aspx'''
     septicShockDgnsCodes = ("R6521",)
     baseDF = baseDF.withColumn( "septicShockPoa", F.expr( f"filter(dgnsPoaCodeAll, x -> x in {septicShockDgnsCodes})"))
     return baseDF
@@ -288,7 +293,8 @@ def add_shockDgns(baseDF):
     return baseDF
 
 def add_shock(baseDF):
-    '''Acute organ failure: shock'''
+    '''Acute organ failure: shock.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = baseDF.withColumn("shock", F.when( F.col("shockDgns")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
@@ -307,7 +313,8 @@ def add_acuteRespiratoryFailurePrcdr(baseDF):
     return baseDF
 
 def add_acuteRespiratoryFailure(baseDF):
-    '''Acute respiratory failure'''
+    '''Acute respiratory failure.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteRespiratoryFailureDgns(baseDF)
     baseDF = add_acuteRespiratoryFailurePrcdr(baseDF)
     baseDF = baseDF.withColumn("acuteRespiratoryFailure", 
@@ -330,7 +337,8 @@ def add_acuteNeurologicalFailurePrcdr(baseDF):
     return baseDF
 
 def add_acuteNeurologicalFailure(baseDF):
-    '''Acute neurological failure'''
+    '''Acute neurological failure.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteNeurologicalFailureDgns(baseDF)
     baseDF = add_acuteNeurologicalFailurePrcdr(baseDF)
     baseDF = baseDF.withColumn("acuteNeurologicalFailure", 
@@ -346,7 +354,8 @@ def add_coagulopathyDgns(baseDF):
     return baseDF
 
 def add_coagulopathy(baseDF):
-    '''Acute hematological failure'''
+    '''Acute hematological failure.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_coagulopathyDgns(baseDF)
     baseDF = baseDF.withColumn("coagulopathy", F.when( F.col("coagulopathyDgns")==1, F.lit(1)).otherwise(F.lit(0)))
     return baseDF
@@ -359,7 +368,8 @@ def add_acuteHepaticInjuryFailureDgns(baseDF):
     return baseDF
 
 def add_acuteHepaticInjuryFailure(baseDF):
-    '''Acute hepatic injury or failure'''
+    '''Acute hepatic injury or failure.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteHepaticInjuryFailureDgns(baseDF)
     baseDF = baseDF.withColumn("acuteHepaticInjuryFailure", F.when( F.col("acuteHepaticInjuryFailureDgns")==1, F.lit(1)).otherwise(F.lit(0)))
     return baseDF
@@ -378,7 +388,8 @@ def add_acuteRenalInjuryFailurePrcdr(baseDF):
     return baseDF
 
 def add_acuteRenalInjuryFailure(baseDF):
-    '''Acute renal injury or failure'''
+    '''Acute renal injury or failure.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteRenalInjuryFailureDgns(baseDF)
     baseDF = add_acuteRenalInjuryFailurePrcdr(baseDF)
     baseDF = baseDF.withColumn("acuteRenalInjuryFailure", 
@@ -393,6 +404,8 @@ def add_acidosisDgns(baseDF):
     return baseDF
 
 def add_acidosis(baseDF):
+    '''Acidosis.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acidosisDgns(baseDF)
     baseDF = baseDF.withColumn("acidosis", F.when( F.col("acidosisDgns")==1, F.lit(1)).otherwise(F.lit(0)) )
     return baseDF
@@ -414,16 +427,17 @@ def add_imv(baseDF):
     baseDF = baseDF.withColumn("imv", F.when( F.col("imvPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
-def add_emoPrcdr(baseDF):
+def add_ecmoPrcdr(baseDF):
     '''Extracorporeal membrane oxygenation.'''
-    emoPrcdrCodes = ("5A1522F", "5A1522G", "5A1522H") #VA, VA and VV
-    baseDF = baseDF.withColumn("emoPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {emoPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    ecmoPrcdrCodes = ("5A1522F", "5A1522G", "5A1522H") #VA, VA and VV
+    baseDF = baseDF.withColumn("ecmoPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {ecmoPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
     return baseDF
 
-def add_emo(baseDF):
-    '''Extracorporeal membrane oxygenation.'''
-    baseDF = add_emoPrcdr(baseDF)
-    baseDF = baseDF.withColumn("emo", F.when( F.col("emoPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
+def add_ecmo(baseDF):
+    '''Extracorporeal membrane oxygenation.
+    Reference: https://doi.org/10.1051/ject/2025043'''
+    baseDF = add_ecmoPrcdr(baseDF)
+    baseDF = baseDF.withColumn("ecmo", F.when( F.col("ecmoPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_rrtPrcdr(baseDF):
@@ -432,7 +446,8 @@ def add_rrtPrcdr(baseDF):
     return baseDF
 
 def add_rrt(baseDF):
-    '''Renal replacement therapy'''
+    '''Renal replacement therapy.
+    Reference: https://journals.lww.com/ccmjournal/abstract/2023/11000/the_relationship_between_hospital_capability_and.4.aspx'''
     baseDF = add_rrtPrcdr(baseDF)
     baseDF = baseDF.withColumn("rrt", F.when( F.col("rrtPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
@@ -474,7 +489,9 @@ def add_endoscopyPrcdr(baseDF):
     baseDF = baseDF.withColumn("endoscopyPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {endoscopyPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
     return baseDF
 
-def add_endoscopy(baseDF)
+def add_endoscopy(baseDF):
+    '''Endoscopy.
+    Reference: https://journals.lww.com/ajg/abstract/2020/03000/safety_of_endoscopy_for_hospitalized_patients_with.14.aspx'''
     baseDF = add_endoscopyPrcdr(baseDF)
     baseDF = baseDF.withColumn("endoscopy", F.when( F.col("endoscopyPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
