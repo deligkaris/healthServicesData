@@ -168,7 +168,8 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     filenames["strokeCentersJC"] = [pathToData + "/JOINT-COMMISSION/StrokeCertificationList.csv"]
 
     #hcup, procedure classes for ICD10
-    filenames["procedureClasses"] = [pathToData + "/HCUP/PClassR_v2026-1.csv"]
+    #https://hcup-us.ahrq.gov/toolssoftware/procedureicd10/procedure_icd10.jsp?
+    filenames["procedureClasses"] = [pathToData + "/HCUP/PClassR_v2026-1-modified.csv"]
 
     return filenames
 
