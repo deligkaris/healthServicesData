@@ -976,7 +976,7 @@ def add_dgnsPoaCodeAll(baseDF):
     baseDF = (baseDF.withColumn("dgnsPoaCodeStruct", F.arrays_zip("dgnsCodeAll", "poaCodeAll"))
                     .withColumn("dgnsPoaFilteredCodeStruct", F.expr("filter(dgnsPoaCodeStruct, x -> x.poaCodeAll == 'Y')"))
                     .withColumn("dgnsPoaCodeAll", F.expr("transform(dgnsPoaFilteredCodeStruct, x -> x.dgnsCodeAll)"))
-                    .drop("dgnsPoaCodeStruct", "dgnsPoaFilteredCodeStruc")
+                    .drop("dgnsPoaCodeStruct", "dgnsPoaFilteredCodeStruc"))
     return baseDF
 
 def add_dgnsPoa
