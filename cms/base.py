@@ -226,73 +226,324 @@ def add_anyStroke(baseDF):
     baseDF = baseDF.withColumn("anyStroke", F.when( eval(anyStrokeCondition), 1).otherwise(0))
     return baseDF
 
-def add_parkinsonsPrncpalDgns(baseDF):
+def add_septicShockDgns(baseDF):
+    septicShockDgnsCodes = ("R6521",)
+    baseDF = (baseDF.withColumn("septicShockCodes", F.expr( f"filter(dgnsCodeAll, x -> x in {septicShockDgnsCodes})")) 
+                    .withColumn("septicShockDgns", F.when( F.size(F.col("septicShockDgnsCodes"))>0,     1).otherwise(0))
+                    .drop("septicShockDgnsCodes"))
+    return baseDF 
 
+def add_septicShock(baseDF):
+    baseDF = add_septicShockDgns(baseDF)
+    baseDF = baseDF.withColumn("septicShock", F.when( F.col("septicShockDgns")==1 ,1).otherwise(0))
+    return baseDF
+
+def add_septicShockPoa(baseDF):
+    '''Adds a flag for septic shock present on admission.'''
+    septicShockDgnsCodes = ("R6521",)
+    baseDF = baseDF.withColumn( "septicShockPoa", F.expr( f"filter(dgnsPoaCodeAll, x -> x in {septicShockDgnsCodes})"))
+    return baseDF
+
+def add_parkinsonsPrncpalDgns(baseDF):
     baseDF = baseDF.withColumn("parkinsons",
                               F.when((F.regexp_extract( F.trim(F.col("PRNCPAL_DGNS_CD")), r'^G20[\d]*',0) !=''), 1)
                                .otherwise(0))
-
     return baseDF
 
 def add_parkinsons(baseDF):
-
     dgnsColumnList = [f"ICD_DGNS_CD{x}" for x in range(1,26)] #all 25 DGNS columns
-
     baseDF = (baseDF.withColumn("dgnsList", #add an array of all dgns codes found in their claims
                                 F.array(dgnsColumnList))
                     .withColumn("parkinsonsList", #keeps codes that match the regexp pattern
                                 F.expr(f'filter(dgnsList, x -> x rlike "G20[0-9]?")')))
-
     baseDF = baseDF.withColumn("parkinsons",
                                F.when( F.size(F.col("parkinsonsList"))>0, 1)
                                 .otherwise(0))
-
     return baseDF
 
 def add_dbsPrcdr(baseDF): # dbs: deep brain stimulation
-
-    #this function tries to find dbs in procedure codes only, and those are found in inpatient claims
-
+    '''this function tries to find dbs in procedure codes only, and those are found in inpatient claims'''
     dbsPrcdrCodes = ("00H00MZ", "00H03MZ")
     baseDF = (baseDF.withColumn("dbsPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {dbsPrcdrCodes})")))
-
     #if dbs prcdr codes are found, then dbs was performed
-    baseDF = baseDF.withColumn("dbsPrcdr",
-                               F.when( F.size(F.col("dbsPrcdrCodes"))>0,     1)
-                                .otherwise(0))
-
+    baseDF = baseDF.withColumn("dbsPrcdr", F.when( F.size(F.col("dbsPrcdrCodes"))>0,     1).otherwise(0))
     return baseDF
 
 def add_dbsCpt(baseDF):
-
     #this function tries to find dbs in current procedural terminology, cpt, codes, and those are found in carrier files
-
     dbsCptCodes = ("61855", "61862", "61863", "61865", "61867")
-
     eachClaim = Window.partitionBy("CLAIMNO")
-
     #find dbs cpt codes in claims
-    baseDF = (baseDF.withColumn("hcpcsCodeAll",
-                                F.collect_set(F.col("HCPCS_CD")).over(eachClaim))
-                    .withColumn("dbsCptCodes",
-                                F.expr(f"filter(hcpcsCodeAll, x - > x in {dbsCptCodes})")))
+    baseDF = (baseDF.withColumn("hcpcsCodeAll", F.collect_set(F.col("HCPCS_CD")).over(eachClaim))
+                    .withColumn("dbsCptCodes", F.expr(f"filter(hcpcsCodeAll, x - > x in {dbsCptCodes})")))
 
     #if dbs cpt codes are found, then dbsCpt was performed
-    baseDF = baseDF.withColumn("dbsCpt",
-                               F.when( F.size(F.col("dbsCptCodes"))>0,     1)
-                                .otherwise(0))
+    baseDF = baseDF.withColumn("dbsCpt", F.when( F.size(F.col("dbsCptCodes"))>0,     1).otherwise(0))
+    return baseDF
 
+def add_shockDgns(baseDF):
+    '''Acute organ failure: shock'''
+    shockDgnsCodes = ("R57", "I951", "I952", "I953", "I958", "I959", "R031", "R6521")
+    baseDF = baseDF.withColumn("shockDgns", F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {shockDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_shock(baseDF):
+    '''Acute organ failure: shock'''
+    baseDF = baseDF.withColumn("shock", F.when( F.col("shockDgns")==1, F.lit(1) ).otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteRespiratoryFailureDgns(baseDF):
+    '''Acute respiratory failure'''
+    arfDgnsCodes = ("J80", "J960", "J969", "R063", "R092", "R0600", "R0603", "R0609", "R0683", "R0689")
+    baseDF = baseDF.withColumn("acuteRespiratoryFailureDgns", 
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {arfDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteRespiratoryFailurePrcdr(baseDF):
+    '''Acute respiratory failure'''
+    arfPrcdrCodes = ("5A1935Z", "5A1945Z", "5A1955Z")
+    baseDF = baseDF.withColumn("acuteRespiratoryFailurePrcdr", 
+                               F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {arfPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteRespiratoryFailure(baseDF):
+    '''Acute respiratory failure'''
+    baseDF = add_acuteRespiratoryFailureDgns(baseDF)
+    baseDF = add_acuteRespiratoryFailurePrcdr(baseDF)
+    baseDF = baseDF.withColumn("acuteRespiratoryFailure", 
+                               F.when( (F.col("acuteRespiratoryFailureDgns")==1) | (F.col("acuteRespiratoryFailurePrcdr")==1), F.lit(1))
+                                .otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteNeurologicalFailureDgns(baseDF):
+    '''Acute neurological failure'''
+    anfDgnsCodes = ("F05", "F06", "F53", "G931", "G934", "R401", "R402", "I6783")
+    baseDF = baseDF.withColumn("acuteNeurologicalFailureDgns", 
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {anfDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteNeurologicalFailurePrcdr(baseDF):
+    '''Acute neurological failure'''
+    anfPrcdrCodes = ("4A0034Z", "4A00X4Z", "4A0134Z", "4A01X4Z", "4A1034Z", "4A10X4Z")
+    baseDF = baseDF.withColumn("acuteNeurologicalFailurePrcdr", 
+                               F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {anfPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteNeurologicalFailure(baseDF):
+    '''Acute neurological failure'''
+    baseDF = add_acuteNeurologicalFailureDgns(baseDF)
+    baseDF = add_acuteNeurologicalFailurePrcdr(baseDF)
+    baseDF = baseDF.withColumn("acuteNeurologicalFailure", 
+                               F.when( (F.col("acuteNeurologicalFailureDgns")==1) | (F.col("acuteNeurologicalFailurePrcdr")==1), F.lit(1))
+                                .otherwise(F.lit(0)))
+    return baseDF
+
+def add_coagulopathyDgns(baseDF):
+    '''Acute hematological failure'''
+    ahfDgnsCodes = ("D65", "D688", "D689", "D696", "D473", "D681", "D6959", "D6951")
+    baseDF = baseDF.withColumn("coagulopathyDgns",
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {ahfDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_coagulopathy(baseDF):
+    '''Acute hematological failure'''
+    baseDF = add_coagulopathyDgns(baseDF)
+    baseDF = baseDF.withColumn("coagulopathy", F.when( F.col("coagulopathyDgns")==1, F.lit(1)).otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteHepaticInjuryFailureDgns(baseDF):
+    '''Acute hepatic injury or failure'''
+    ahifDgnsCodes = ("K720", "K762", "K763", "K716", "K759", "K7291")
+    baseDF = baseDF.withColumn("acuteHepaticInjuryFailureDgns",
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {ahifDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteHepaticInjuryFailure(baseDF):
+    '''Acute hepatic injury or failure'''
+    baseDF = add_acuteHepaticInjuryFailureDgns(baseDF)
+    baseDF = baseDF.withColumn("acuteHepaticInjuryFailure", F.when( F.col("acuteHepaticInjuryFailureDgns")==1, F.lit(1)).otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteRenalInjuryFailureDgns(baseDF):
+    '''Acute renal injury or failure'''
+    arifDgnsCodes = ("N17", "N003")
+    baseDF = baseDF.withColumn("acuteRenalInjuryFailureDgns",
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {arifDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteRenalInjuryFailurePrcdr(baseDF):
+    '''Acute renal injury or failure.
+    Note that this is the same as renal replacement therapy based on procedure codes.'''
+    baseDF = baseDF.withColumn("acuteRenalInjuryFailurePrcdr", F.exists( "prcdrCodeAll", lambda x: F.regexp_extract( x, r'^5A1D[\d]*',0) !='' ).cast('int'))
+    return baseDF
+
+def add_acuteRenalInjuryFailure(baseDF):
+    '''Acute renal injury or failure'''
+    baseDF = add_acuteRenalInjuryFailureDgns(baseDF)
+    baseDF = add_acuteRenalInjuryFailurePrcdr(baseDF)
+    baseDF = baseDF.withColumn("acuteRenalInjuryFailure", 
+                               F.when( (F.col("acuteRenalInjuryFailureDgns")==1) | (F.col("acuteRenalInjuryFailurePrcdr")==1), F.lit(1))
+                                .otherwise(F.lit(0)))
+    return baseDF
+
+def add_acidosisDgns(baseDF):
+    aDgnsCodes = ("E872",)
+    baseDF = baseDF.withColumn("acidosisDgns",
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {aDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_acidosis(baseDF):
+    baseDF = add_acidosisDgns(baseDF)
+    baseDF = baseDF.withColumn("acidosis", F.when( F.col("acidosisDgns")==1, F.lit(1)).otherwise(F.lit(0)) )
+    return baseDF
+
+def add_imvPrcdr(baseDF): 
+    '''invasive mechanical ventilation using procedure codes
+    ICD9 96.7 -> ICD10 "5A1935Z", "5A1945Z", "5A1955Z" procedure codes
+    general equivalence mappings: https://www.nber.org/research/data/icd-9-cm-and-icd-10-cm-and-icd-10-pcs-crosswalk-or-general-equivalence-mappings
+    and https://jamanetwork.com/journals/jamainternalmedicine/fullarticle/2771820
+    and https://www.neurology.org/doi/10.1212/CPJ.0000000000200143
+    '''
+    imvPrcdrCodes = ("5A1935Z", "5A1945Z", "5A1955Z")
+    baseDF = baseDF.withColumn("imvPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {imvPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_imv(baseDF):
+    '''invasive mechanical ventilation'''
+    baseDF = add_imvPrcdr(baseDF)
+    baseDF = baseDF.withColumn("imv", F.when( F.col("imvPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
+    return baseDF
+
+def add_emoPrcdr(baseDF):
+    '''Extracorporeal membrane oxygenation.'''
+    emoPrcdrCodes = ("5A1522F", "5A1522G", "5A1522H") #VA, VA and VV
+    baseDF = baseDF.withColumn("emoPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {emoPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_emo(baseDF):
+    '''Extracorporeal membrane oxygenation.'''
+    baseDF = add_emoPrcdr(baseDF)
+    baseDF = baseDF.withColumn("emo", F.when( F.col("emoPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
+    return baseDF
+
+def add_rrtPrcdr(baseDF):
+    '''Renal replacement therapy'''
+    baseDF = baseDF.withColumn("rrtPrcdr", F.exists( "prcdrCodeAll", lambda x: F.regexp_extract( x, r'^5A1D[\d]*',0) !='' ).cast('int'))
+    return baseDF
+
+def add_rrt(baseDF):
+    '''Renal replacement therapy'''
+    baseDF = add_rrtPrcdr(baseDF)
+    baseDF = baseDF.withColumn("rrt", F.when( F.col("rrtPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
+    return baseDF
+
+def add_endoscopyPrcdr(baseDF):
+    '''Endoscopy procedure'''
+    endoscopyPrcdrCodes = (
+      '0D917ZX', '0D918ZX', '0D927ZX', '0D928ZX', '0D937ZX', '0D938ZX', '0D947ZX', '0D948ZX', '0D957ZX', '0D958ZX', '0D967ZX', '0D968ZX', '0D977ZX', 
+      '0D978ZX', '0D987ZX', '0D988ZX', '0D997ZX', '0D998ZX', '0D9A7ZX', '0D9A8ZX', '0D9B7ZX', '0D9B8ZX', '0D9C4ZX', '0D9C7ZX', '0D9C8ZX', '0DB17ZX', 
+      '0DB18ZX', '0DB27ZX', '0DB28ZX', '0DB37ZX', '0DB38ZX', '0DB47ZX', '0DB48ZX', '0DB57ZX', '0DB58ZX', '0DB67ZX', '0DB68ZX', '0DB77ZX', '0DB78ZX', 
+      '0DB97ZX', '0DB98ZX', '0DD18ZX', '0DD28ZX', '0DD38ZX', '0DD48ZX', '0DD58ZX', '0DD68ZX', '0DD78ZX', '0DD98ZX', '0DDA8ZX', '0DDB8ZX', '0DDC8ZX', 
+      '0DJ08ZZ', '0DJ68ZZ', '0D9E4ZX', '0D9E7ZX', '0D9E8ZX', '0D9F4ZX', '0D9F7ZX', '0D9F8ZX', '0D9G4ZX', '0D9G7ZX', '0D9G8ZX', '0D9H4ZX', '0D9H7ZX', 
+      '0D9H8ZX', '0D9K4ZX', '0D9K7ZX', '0D9K8ZX', '0D9L4ZX', '0D9L7ZX', '0D9L8ZX', '0D9M4ZX', '0D9M7ZX', '0D9M8ZX', '0D9N4ZX', '0D9N7ZX', '0D9N8ZX', 
+      '0DBE7ZX', '0DBE8ZX', '0DBF7ZX', '0DBF8ZX', '0DBG7ZX', '0DBG8ZX', '0DBH7ZX', '0DBH8ZX', '0DBK7ZX', '0DBK8ZX', '0DBL7ZX', '0DBL8ZX', '0DBM7ZX', 
+      '0DBM8ZX', '0DBN7ZX', '0DBN8ZX', '0DD88ZX', '0DDE8ZX', '0DDF8ZX', '0DDG8ZX', '0DDH8ZX', '0DDK8ZX', '0DDL8ZX', '0DDM8ZX', '0DDN8ZX', '0D20X0Z', 
+      '0D20XUZ', '0D20XYZ', '0D514ZZ', '0D518ZZ', '0D524ZZ', '0D528ZZ', '0D534ZZ', '0D538ZZ', '0D544ZZ', '0D548ZZ', '0D554ZZ', '0D558ZZ', '0D564ZZ', 
+      '0D568ZZ', '0D574ZZ', '0D578ZZ', '0D594ZZ', '0D598ZZ', '0D767DZ', '0D767ZZ', '0D768DZ', '0D768ZZ', '0D774DZ', '0D777DZ', '0D777ZZ', '0D778DZ', 
+      '0D778ZZ', '0D790DZ', '0D793DZ', '0D794DZ', '0D797DZ', '0D797ZZ', '0D798DZ', '0D798ZZ', '0D9130Z', '0D913ZZ', '0D9230Z', '0D923ZZ', '0D9330Z', 
+      '0D933ZZ', '0D9430Z', '0D943ZZ', '0D9530Z', '0D953ZZ', '0D9630Z', '0D963ZZ', '0D9730Z', '0D973ZZ', '0D9930Z', '0D993ZZ', '0D9970Z', '0D9980Z', 
+      '0DB14ZZ', '0DB18ZZ', '0DB24ZZ', '0DB28ZZ',
+      '0DB34ZZ', '0DB38ZZ', '0DB48ZZ', '0DB54ZZ', '0DB58ZZ', '0DB94ZZ', '0DB98ZZ', '0DH00YZ', '0DH03YZ', '0DH04YZ', '0DH07YZ', '0DH08YZ', '0DH50DZ', 
+      '0DH50UZ', '0DH53DZ', '0DH53UZ', '0DH53YZ', '0DH54DZ', '0DH54UZ', '0DH54YZ', '0DH573Z', '0DH57DZ', '0DH57UZ', '0DH57YZ', '0DH583Z', '0DH58DZ', 
+      '0DH58UZ', '0DH58YZ', '0DH63YZ', '0DH64YZ', '0DH673Z', '0DH67DZ', '0DH67UZ', '0DH67YZ', '0DH683Z', '0DH68DZ', '0DH68UZ', '0DH68YZ', '0DH90DZ', 
+      '0DH93DZ', '0DH94DZ', '0DH973Z', '0DH97DZ', '0DH97UZ', '0DH983Z', '0DH98DZ', '0DH98UZ', '0DL10CZ', '0DL10DZ', '0DL10ZZ', '0DL13CZ', '0DL13DZ', 
+      '0DL13ZZ', '0DL14CZ', '0DL14DZ', '0DL14ZZ', '0DL17DZ', '0DL17ZZ', '0DL18DZ', '0DL18ZZ', '0DL20CZ', '0DL20DZ', '0DL20ZZ', '0DL23CZ', '0DL23DZ', 
+      '0DL23ZZ', '0DL24CZ', '0DL24DZ', '0DL24ZZ', '0DL27DZ', '0DL27ZZ', '0DL28DZ', '0DL28ZZ', '0DL30CZ', '0DL30DZ', '0DL30ZZ', '0DL33CZ', '0DL33DZ', 
+      '0DL33ZZ', '0DL34CZ', '0DL34DZ', '0DL34ZZ', '0DL37DZ', '0DL37ZZ', '0DL38DZ', '0DL38ZZ', '0DL40CZ', '0DL40DZ', '0DL40ZZ', '0DL43CZ', '0DL43DZ', 
+      '0DL43ZZ', '0DL44CZ', '0DL44DZ', '0DL44ZZ', '0DL47DZ', '0DL47ZZ', '0DL48DZ', '0DL48ZZ', '0DL50CZ', '0DL50DZ', '0DL50ZZ', '0DL53CZ', '0DL53DZ', 
+      '0DL53ZZ', '0DL54CZ', '0DL54DZ', '0DL54ZZ', '0DL57DZ', '0DL57ZZ', '0DL58DZ', '0DL58ZZ', '0DN97ZZ', '0DN98ZZ', '0DP03YZ', '0DP04YZ', '0DP070Z', 
+      '0DP072Z', '0DP073Z', '0DP07DZ', '0DP07UZ', '0DP07YZ', '0DP080Z', '0DP082Z', '0DP083Z', '0DP08DZ', '0DP08YZ', '0DP0X0Z', '0DP0X2Z', '0DP0X3Z', 
+      '0DP0XDZ', '0DP0XUZ', '0DP57DZ', '0DP58DZ', '0DP5X1Z', '0DP5X2Z', '0DP5X3Z', '0DP5XDZ', '0DP5XUZ', '0DP63YZ', '0DP64YZ', '0DP670Z', '0DP672Z', 
+      '0DP673Z', '0DP67DZ', '0DP67UZ', '0DP67YZ', '0DP680Z', '0DP682Z', '0DP683Z', '0DP68DZ', '0DP68UZ', '0DP68YZ', '0DP6X0Z', '0DP6X2Z', '0DP6X3Z', 
+      '0DP6XDZ', '0DP6XUZ', '0DS5XZZ', '0DS6XZZ', '0DS9XZZ', '0DV67DZ', '0DV68DZ', '0DW03YZ', '0DW04YZ', '0DW07YZ', '0DW08YZ', '0DW0X0Z', '0DW0X2Z', 
+      '0DW0X3Z', '0DW0X7Z', '0DW0XCZ', '0DW0XDZ', '0DW0XJZ', '0DW0XKZ', '0DW0XUZ', '0DW50YZ', '0DW53YZ', '0DW54YZ', '0DW57YZ', '0DW58YZ', '0DW5XDZ', 
+      '0DW63YZ', '0DW64YZ', '0DW67YZ', '0DW68YZ', '0DW6X0Z', '0DW6X2Z', '0DW6X3Z', '0DW6X7Z', '0DW6XCZ', '0DW6XDZ', '0DW6XJZ', '0DW6XKZ', '0DW6XUZ', 
+      '0DWD3YZ', '0DWD4YZ', '0DWD7YZ', '0DWD8YZ', '3E0G328', '3E0G329', '3E0G33Z', '3E0G37Z', '3E0G3BZ',
+      '3E0G3GC', '3E0G3NZ', '3E0G3SF', '3E0G3TZ', '3E0G4GC', '3E0G728', '3E0G729', '3E0G73Z', '3E0G77Z', '3E0G7BZ', '3E0G7GC', '3E0G7NZ', '3E0G7SF', 
+      '3E0G7TZ', '3E0G828', '3E0G829', '3E0G83Z', '3E0G87Z', '3E0G8BZ', '3E0G8GC', '3E0G8NZ', '3E0G8SF', '3E0G8TZ', '3E1G38Z', '3E1G78Z', '3E1G88Z')
+    baseDF = baseDF.withColumn("endoscopyPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {endoscopyPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_endoscopy(baseDF)
+    baseDF = add_endoscopyPrcdr(baseDF)
+    baseDF = baseDF.withColumn("endoscopy", F.when( F.col("endoscopyPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
+    return baseDF
+
+def add_intubationPrcdr(baseDF):
+    '''ICD9 96.04 -> ICD10 "0BH17EZ", "0BH18EZ" 
+       ICD9 96.05 -> ICD10 "0B717DZ", "0B718DZ", "0BH07DZ", "0WHQ7YZ"
+    general equivalence mappings: https://www.nber.org/research/data/icd-9-cm-and-icd-10-cm-and-icd-10-pcs-crosswalk-or-general-equivalence-mappings
+    https://www.neurology.org/doi/10.1212/CPJ.0000000000200143 (this defines as intubation only the first 2 ICD10 codes
+    '''
+    intubationPrcdrCodes = ("0BH17EZ", "0BH18EZ", "0B717DZ", "0B718DZ", "0BH07DZ", "0WHQ7YZ") 
+    baseDF = baseDF.withColumn("intubationPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {intubationPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_intubation(baseDF):
+    baseDF = add_intubationPrcdr(baseDF)
+    baseDF = baseDF.withColumn("intubation", F.when( F.col("intubationPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
+    return baseDF
+
+def add_tracheostomyPrcdr(baseDF):
+    '''ICD9 31.1, 31.21, 31.29 -> ICD10 "0B110F4", "0B110Z4", "0B113F4", "0B113Z4", "0B114F4", "0B114Z4" 
+    see general equivalence mappings: https://www.nber.org/research/data/icd-9-cm-and-icd-10-cm-and-icd-10-pcs-crosswalk-or-general-equivalence-mappings'''
+    #https://journals.lww.com/ccejournal/fulltext/2021/09000/the_epidemiology_of_adult_tracheostomy_in_the.12.aspx
+    #https://cdn-links.lww.com/permalink/ccx/a/ccx_0_0_2021_08_07_kempker_cce-d-21-00030_sdc1.pdf
+    tracheostomyPrcdrCodes = ("0B110F4", "0B110Z4", "0B113F4", "0B113Z4", "0B114F4", "0B114Z4")
+    baseDF = baseDF.withColumn("tracheostomyPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {tracheostomyPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_tracheostomy(baseDF):
+    baseDF = add_tracheostomyPrcdr(baseDF)
+    baseDF = baseDF.withColumn("tracheostomy", F.when( F.col("tracheostomyPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
+    return baseDF
+
+def add_pegPrcdr(baseDF):
+    '''percutaneous endoscopic gastrostomy
+    ICD9 procedure code -> ICD10 
+    43.11 -> "0DH63UZ", "0DH64UZ"
+    43.19 -> "0D16074", "0D160J4", "0D160K4", "0D160Z4", "0D163J4", "0D16474", "0D164J4", "0D164K4", "0D164Z4",
+             "0D16874", "0D168J4", "0D168K4", "0D168Z4"
+    43.2 -> did not find any from the NBER crosswalk map
+    44.32 -> "0DW04UZ", "0DW08UZ"
+    from https://www.frontiersin.org/journals/aging-neuroscience/articles/10.3389/fnagi.2023.1276731/full#supplementary-material I also got
+    "0DH60UZ", "0DH67UZ", "0DH68UZ", "0DHA[03478]UZ"
+    '''
+    pegPrcdrCodes = ("0DH63UZ", "0DH64UZ", "0D16074", "0D160J4", "0D160K4", "0D160Z4", "0D163J4", "0D16474", "0D164J4", "0D164K4", "0D164Z4",
+                     "0D16874", "0D168J4", "0D168K4", "0D168Z4", "0DW04UZ", "0DW08UZ", "0DH60UZ", "0DH67UZ", "0DH68UZ", 
+                     "0DHA0UZ", "0DHA3UZ", "0DHA4UZ", "0DHA7UZ", "0DHA8UZ")
+    baseDF = baseDF.withColumn("pegPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {pegPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_pegDgns(baseDF):
+    '''percutaneous endoscopic gastrostomy
+    see '''
+    pegDgnsCodes = ("Z931", "Z931") #they are the same by design, will come back to this
+    baseDF = baseDF.withColumn("pegDgns", F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {pegDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    return baseDF
+
+def add_peg(baseDF):
+    '''percutaneous endoscopic gastrostomy
+    '''
+    baseDF = add_pegPrcdr(baseDF)
+    baseDF = baseDF.withColumn("peg", F.when( F.col("pegPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_ohProvider(baseDF):
     # keep providers in OH (PRSTATE)
     # ohio is code 36, SSA code, https://resdac.org/cms-data/variables/state-code-claim-ssa
     ohProviderCondition = '(F.col("PRSTATE")=="36")'
-
-    baseDF = baseDF.withColumn("ohProvider",
-                               F.when(eval(ohProviderCondition), 1)
-                                .otherwise(0))
-
+    baseDF = baseDF.withColumn("ohProvider", F.when(eval(ohProviderCondition), 1).otherwise(0))
     return baseDF
             
 def add_firstClaim(baseDF):
@@ -698,6 +949,21 @@ def add_prcdrCodeAll(baseDF):
     baseDF = baseDF.withColumn("prcdrCodeAll", F.array(prcdrCodeColumns))
     return baseDF
 
+def add_poaCodeAll(baseDF):
+    poaCodeColumns = [f"CLM_POA_IND_SW{x}" for x in range(1,26)]
+    baseDF = baseDF.withColumn("poaCodeAll", F.array(poaCodeColumns))
+    return baseDF
+
+def add_dgnsPoaCodeAll(baseDF):
+    '''Adds a column that contains all the diagnostic codes that were present on admission.'''
+    baseDF = (baseDF.withColumn("dgnsPoaCodeStruct", F.arrays_zip("dgnsCodeAll", "poaCodeAll"))
+                    .withColumn("dgnsPoaFilteredCodeStruct", F.expr("filter(dgnsPoaCodeStruct, x -> x.poaCodeAll == 'Y')"))
+                    .withColumn("dgnsPoaCodeAll", F.expr("transform(dgnsPoaFilteredCodeStruct, x -> x.dgnsCodeAll)"))
+                    .drop("dgnsPoaCodeStruct", "dgnsPoaFilteredCodeStruc")
+    return baseDF
+
+def add_dgnsPoa
+
 def add_tpaOsu(baseDF):
     return baseDF.withColumn("tpaOsu", F.col("osu")*F.col("tpa"))
 
@@ -996,8 +1262,13 @@ def add_provider_cost_report_info(baseDF,costReportDF):
     return baseDF
 
 def add_transferToIn(baseDF):
-    #visits that resulted in a discharge to short term hospital (code 2) or other IPT care (code 5)
+    '''visits that resulted in a discharge to short term hospital (code 2) or other IPT care (code 5)'''
     baseDF = baseDF.withColumn( "transferToIn", F.when( F.col("STUS_CD").isin([2,5]), 1).otherwise(0))
+    return baseDF
+
+def add_transferFromDifferentFacility(baseDF):
+    '''Visits/admissions where the source of the referral was a different facility/hospital.''' 
+    baseDF = baseDF.withColumn( "transferFromDifferentFacility", F.when( F.col("SRC_ADMS")==4, 1 ).otherwise(0))
     return baseDF
 
 #def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
@@ -1008,39 +1279,27 @@ def add_transferToIn(baseDF):
 #    return baseDF
 
 def add_daysDeadAfterThroughDate(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
-
     baseDF = (baseDF.withColumn( "daysDeadAfterThroughDate", F.col("DEATH_DT_DAY")-F.col("THRU_DT_DAY")))
-                                 
     return baseDF
 
 def add_daysDeadAfterAdmissionDate(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
-                    
     baseDF = (baseDF.withColumn( "daysDeadAfterAdmissionDate", F.col("DEATH_DT_DAY")-F.col("ADMSN_DT_DAY")))
-                 
     return baseDF
             
 def add_90DaysAfterThroughDateDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfter
-
-    baseDF = baseDF.withColumn( "90DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 90, 1)
-                                                               .otherwise(0))
+    baseDF = baseDF.withColumn( "90DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 90, 1).otherwise(0))
     return baseDF
 
 def add_90DaysAfterAdmissionDateDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfter
-    
-    baseDF = baseDF.withColumn( "90DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 90, 1)
-                                                                 .otherwise(0))
+    baseDF = baseDF.withColumn( "90DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 90, 1).otherwise(0))
     return baseDF
 
 def add_365DaysAfterThroughDateDead(baseDF): #this is the 365 day mortality flag
-
-    baseDF = baseDF.withColumn( "365DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 365, 1)
-                                                                .otherwise(0))
+    baseDF = baseDF.withColumn( "365DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 365, 1).otherwise(0))
     return baseDF
 
 def add_365DaysAfterAdmissionDateDead(baseDF): #this is the 365 day mortality flag
-                                    
-    baseDF = baseDF.withColumn( "365DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 365, 1)
-                                                                  .otherwise(0))
+    baseDF = baseDF.withColumn( "365DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 365, 1).otherwise(0))
     return baseDF 
 
 def add_los(baseDF): #length of stay = los
@@ -1052,10 +1311,7 @@ def add_los(baseDF): #length of stay = los
     return baseDF
 
 def add_losDays(baseDF): #adds an array of all days of the claim's duration
-    
-    baseDF = baseDF.withColumn("losDays",
-                              F.sequence( F.col("ADMSN_DT_DAY"),F.col("THRU_DT_DAY") ))
-    
+    baseDF = baseDF.withColumn("losDays", F.sequence( F.col("ADMSN_DT_DAY"),F.col("THRU_DT_DAY") ))
     return baseDF
 
 def add_losDaysOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
@@ -1331,59 +1587,30 @@ def add_numberOfResidents(baseDF, hospCostDF):
 
     return baseDF
 
-def add_providerStrokeVol(baseDF, stroke="anyStroke"):
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    baseDF = baseDF.withColumn("providerStrokeVol", F.sum( F.col(stroke) ).over(eachProvider))
-    return baseDF
-
-def add_provider_stroke_treatment_info(baseDF, inpatient=True):
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    baseDF = (baseDF.withColumn("providerTpaMean", F.mean( F.col("tpa") ).over(eachProvider))
-                    .withColumn("providerTpaVol", F.sum( F.col("tpa") ).over(eachProvider)))
-    if (inpatient):
-        baseDF = (baseDF.withColumn("providerEvtMean", F.mean( F.col("evt") ).over(eachProvider))
-                        .withColumn("providerEvtVol", F.sum( F.col("evt") ).over(eachProvider)))
-    return baseDF
-
-def add_provider_stroke_info(baseDF, inpatient=True, stroke="anyStroke"):
-    baseDF = add_provider_stroke_treatment_info(baseDF, inpatient=inpatient)
-    baseDF = add_providerStrokeVol(baseDF, stroke=stroke)
-    return baseDF
-
 def add_numberOfClaims(baseDF):
-
     eachDsysrtky = Window.partitionBy("DSYSRTKY")
-
-    baseDF = baseDF.withColumn("numberOfClaims",
-                               F.size(F.collect_set(F.col("CLAIMNO")).over(eachDsysrtky)))
-
+    baseDF = baseDF.withColumn("numberOfClaims", F.size(F.collect_set(F.col("CLAIMNO")).over(eachDsysrtky)))
     return baseDF
 
 def filter_beneficiaries(baseDF, mbsfDF):
-
     baseDF = baseDF.join(mbsfDF.select(F.col("DSYSRTKY"), F.col("RFRNC_YR").alias("THRU_DT_YEAR")), 
                          on=["DSYSRTKY","THRU_DT_YEAR"],
                          how="left_semi")
-
     return baseDF
 
 def add_cAppalachiaResident(baseDF):  
-
     #cAppalachia: central Appalachia, Kentucky, North Carolina, Ohio, Tennessee, Virginia, West Virginia)
     cAppalachiaCond = 'F.col("STATE_CD").isin(["18","34","36","44","49","51"])'
-
-    baseDF = baseDF.withColumn("cAppalachiaResident",
+    baseDF = baseDF.withColumn("cAppalachiaResident", 
                                F.when( eval(cAppalachiaCond), 1)
                                 .otherwise(0))
     return baseDF
    
 def add_denied(baseDF):
-
     #this applies to the carrier base file, unsure if/how it can extend to other base files
     #the code appears as either "0" or "00", I think it is a 2 character code
     #https://www.cms.gov/priorities/innovation/files/x/bundled-payments-for-care-improvement-carrier-file.pdf
     deniedCond = '(F.col("PMTDNLCD").isin(["0","00"]))' 
-
     baseDF = baseDF.withColumn("denied",
                                F.when( eval(deniedCond),1)
                                 .otherwise(0))
@@ -1414,10 +1641,8 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
 #outputs: baseDF with four additional columns, losAtX90, losDaysAtX90, losAtX365, losDaysAtX365
 #note: due to the complex joins etc I prefer to add the four columns at the same time here
 def add_los_at_X_info(baseDF, XDF, X="hosp"):
-
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90)
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=365)
-
     #XDF = (XDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) #need only 3 columns from this df
     #          .join(baseDF.select("DSYSRTKY"),
     #                on="DSYSRTKY",

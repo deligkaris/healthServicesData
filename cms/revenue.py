@@ -6,6 +6,25 @@ import re
 #maybe I should rethink how to to do the base and revenue summary join
 #for now implement filters either on base or on claims
 
+def add_icu(revenueDF, inClaim=False):
+    '''
+    https://resdac.org/cms-data/variables/intensive-care-unit-icu-indicator-code
+    https://resdac.org/cms-data/variables/intensive-care-day-count
+    https://www.ncbi.nlm.nih.gov/books/NBK273991/table/sb185.t4/
+    https://www.jstor.org/stable/27798363 #they used codes 174 and 175 for ICU also but those might be for neonatal ICU...
+    '''
+    if (inClaim):
+        eachClaim = Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])
+        revenueDF = (revenueDF.withColumn("icu",
+                                          F.when( (F.col("REV_CNTR")>= 200) & (F.col("REV_CNTR") <= 209) & (F.col("REV_CNTR") != 205) ,1)
+                                           .otherwise(0))
+                              .withColumn("icuInClaim", F.max(F.col("icu")).over(eachClaim)))
+    else:
+        revenueDF = revenueDF.withColumn("icu",
+                                         F.when( (F.col("REV_CNTR")>= 200) & (F.col("REV_CNTR") <= 209) & (F.col("REV_CNTR") != 205) ,1)
+                                          .otherwise(0))
+    return revenueDF
+
 def add_ed(revenueDF, inClaim=False):
     # https://resdac.org/articles/how-identify-hospital-claims-emergency-room-visits-medicare-claims-data
     # Claims in the Outpatient and Inpatient files are identified via Revenue Center Code 
@@ -87,10 +106,11 @@ def add_revenue_info(revenueDF, inClaim=True):
     revenueDF = add_ed(revenueDF, inClaim=inClaim) 
     revenueDF = add_mri(revenueDF, inClaim=inClaim)
     revenueDF = add_ct(revenueDF, inClaim=inClaim)
+    revenueDF = add_icu(revenueDF, inClaim=inClaim)
     return revenueDF
 
 def get_revenue_info(revenueDF, inClaim=True):
-    '''inClaim = True will cause the summary to be returned.'''
+    '''inClaim = True will cause the claim summary to be returned, which is what I need almost always...'''
     #revenueDF = filter_claims(revenueDF, baseDF) #costs time so avoid for now
     revenueDF = add_revenue_info(revenueDF, inClaim=inClaim)
     if inClaim:

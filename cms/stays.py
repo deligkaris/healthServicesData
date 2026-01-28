@@ -3,6 +3,35 @@ import pyspark.sql.functions as F
 import cms.revenue as revenueF
 import cms.claims as claimsF
 
+def add_providerStrokeVol(staysDF, stroke="anyStroke"):
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    staysDF = staysDF.withColumn("providerStrokeVol", F.sum( F.col(stroke) ).over(eachProvider))
+    return staysDF
+
+def add_providerSepticShockVol(staysDF):
+    '''Adds a column with the annual volume of septic shock diagnosis for each organization.'''
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    staysDF = staysDF.withColumn("providerSepticShockVol", F.sum( F.col("septicShock") ).over(eachProvider))
+    return staysDF
+
+def add_provider_stroke_treatment_info(staysDF, inpatient=True):
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    staysDF = (staysDF.withColumn("providerTpaMean", F.mean( F.col("tpa") ).over(eachProvider))
+                      .withColumn("providerTpaVol", F.sum( F.col("tpa") ).over(eachProvider)))
+    if (inpatient):
+        staysDF = (staysDF.withColumn("providerEvtMean", F.mean( F.col("evt") ).over(eachProvider))
+                          .withColumn("providerEvtVol", F.sum( F.col("evt") ).over(eachProvider)))
+    return staysDF
+
+def add_provider_stroke_info(staysDF, inpatient=True, stroke="anyStroke"):
+    staysDF = add_provider_stroke_treatment_info(staysDF, inpatient=inpatient)
+    staysDF = add_providerStrokeVol(staysDF, stroke=stroke)
+    return staysDF
+
+def add_provider_septic_shock_info(staysDF):
+    staysDF = add_providerSepticShockVol(staysDF)
+    return staysDF
+
 def add_provider_revenue_info(staysDF):
     '''Must be called using the revenue summary.'''
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
@@ -25,7 +54,7 @@ def propagate_stay_info(claimsDF, claimType="op"):
     #most columns are 0/1 but nihss is not
     #however, when more than 1 claims are the same stay, they have the same nihss, for 2016 and 17 at least, so this works for nihss too
     columnsToPropagate = ["ishStrokeDgns", "ishStrokeDrg", "ishStroke", "tpaPrcdr", "tpaDgns", "tpaDrg", "tpa", "ccvPrcdr", "evtDrg",
-                        "evtPrcdr", "evt", "ed", "mri", "ct", "nihss", "nihssGroup"]
+                        "evtPrcdr", "evt", "icu", "ed", "mri", "ct", "nihss", "nihssGroup"]
     for col in columnsToPropagate:
         if col in claimsDF.columns: #use in order to apply all claim types
             print(f"Note: Column {col} will be aggregated over all claims that comprise of a single stay/visit.")

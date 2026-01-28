@@ -167,6 +167,9 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #joint commission website
     filenames["strokeCentersJC"] = [pathToData + "/JOINT-COMMISSION/StrokeCertificationList.csv"]
 
+    #hcup, procedure classes for ICD10
+    filenames["procedureClasses"] = [pathToData + "/HCUP/PClassR_v2026-1.csv"]
+
     return filenames
 
 #includes both dataframes and other non-spark data
@@ -240,7 +243,7 @@ def prep_adiDF(adiDF):
               .withColumn("adiNatRankGroup", F.when( F.col("adiNatRank")<=25, 4 ).when( F.col("adiNatRank")<=50, 3 )
                                               .when( F.col("adiNatRank")<=75, 2 ).when( F.col("adiNatRank")<=100, 1 ))
               .withColumn("adiStaRankGroup", F.when( F.col("adiStaRank")<=25, 4 ).when( F.col("adiStaRank")<=50, 3 )
-                                              .when( F.col("adiStaRank")<=75, 2 ).when( F.col("adiStaRank")<=100, 1 ))
+                                              .when( F.col("adiStaRank")<=75, 2 ).when( F.col("adiStaRank")<=100, 1 )))
     return adiDF
 
 def prep_ersRuccDF(ersRuccDF):

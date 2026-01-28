@@ -182,6 +182,8 @@ def add_preliminary_info(dataframes, data, runTests=False):
                 dataframes[claimTypePart] = baseF.add_discharge_date_info(dataframes[claimTypePart],claimType=claimType)
                 dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
                 dataframes[claimTypePart] = baseF.add_dgnsCodeAll(dataframes[claimTypePart])
+                dataframes[claimTypePart] = baseF.add_poaCodeAll(dataframes[claimTypePart])
+                dataframes[claimTypePart] = baseF.add_dgnsPoaCodeAll(dataframes[claimTypePart])
                 dataframes[claimTypePart] = baseF.add_provider_info(dataframes[claimTypePart], data)
                 dataframes[claimTypePart] = baseF.add_los(dataframes[claimTypePart])
                 #assumes that mbsf has already been processed here

@@ -132,6 +132,20 @@ def add_dyadTransferVol(transfersDF):
     transfersDF = transfersDF.withColumn("dyadTransferVol", F.count( F.col("fromCLAIMNO") ).over(eachDyad))
     return transfersDF
 
+def add_dyadProportionTransfersOut(transfersDF):
+    '''The proportion of all transfers out from the sending organization that go to the receiving organization by year.
+    This column should have a minimum of 0. and a maximum of 1.'''
+    transfersDF = transfersDF.withColumn("dyadProportionTransfersOut", 
+                                         F.when( F.col("nodeOutVol")!=0, F.col("dyadTransferVol")/F.col("nodeOutVol") ).otherwise(F.lit(0.))) 
+    return transfersDF
+
+def add_dyadProportionTransfersIn(transfersDF):
+    '''The proportion of all transfers in to the receiving organization that came from the sending organization in the dyad by year.
+    This column should have a minimum of 0. and a maximum of 1.'''
+    transfersDF = transfersDF.withColumn("dyadProportionTransfersIn",
+                                         F.when( F.col("nodeInVol")!=0, F.col("dyadTransferVol")/F.col("nodeInVol") ).otherwise(F.lit(0.)))
+    return transfersDF
+
 def add_dyad_evt_info(transfersDF):
     eachDyad = Window.partitionBy("dyad")
     transfersDF = (transfersDF.withColumn("dyadEvtVol", F.sum( F.col("toevt") ).over(eachDyad))
@@ -171,6 +185,15 @@ def add_dyadAcrossStates(transfersDF):
                                           .when( (F.col("toproviderStateFIPS").isNull()) |
                                                  (F.col("fromproviderStateFIPS").isNull()), F.lit(None))
                                           .otherwise(0))
+    return transfersDF
+
+def add_nodeHhi(transfersDF):
+    '''Calculates the Herfindahl-Hirschman index (HHI) of sending hospital's transfer destinations.
+    It is unique to each organization and year and reflects the competitiveness of the receiving hospitals for transfers from this sending organization.
+    The minimum is '''
+    eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
+    transfersDF = transfersDF.withColumn("nodeHhi", 
+                                         F.sum(F.col("dyadProportionTransfersOut") * F.col("dyadProportionsTransfersOut")).over(eachFromProvider))
     return transfersDF
 
 def add_node_stroke_treatment_info(transfersDF):
@@ -221,6 +244,8 @@ def add_dyad_info(transfersDF):
     transfersDF = add_dyad(transfersDF)
     transfersDF = add_dyadVi(transfersDF)
     transfersDF = add_dyadTransferVol(transfersDF)
+    transfersDF = add_dyadProportionTransfersOut(transfersDF)
+    transfersDF = add_dyadProportionTransfersIn(transfersDF)
     transfersDF = add_dyadAcrossCounties(transfersDF)
     transfersDF = add_dyadAcrossStates(transfersDF)
     return transfersDF
