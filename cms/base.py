@@ -1846,7 +1846,7 @@ def add_majorDiagnosticOrTherapeuticOrProcedures(baseDF, procedureClassesDF, spa
                            .select("ICD-10-PCS-CODE").rdd.flatMap(lambda x: x).collect())
     mpclBroadcast = sparkInstance.sparkContext.broadcast(set(majorPrcdrCodeList))
 
-    del mpclBroadcast
+    del majorPrcdrCodeList
 
     @F.udf(returnType=IntegerType())
     def hasMajorCodes(prcdrCodeArray):
