@@ -1846,14 +1846,15 @@ def add_majorDiagnosticOrTherapeuticOrProcedures(baseDF, procedureClassesDF, spa
                            .select("ICD-10-PCS-CODE").rdd.flatMap(lambda x: x).collect())
     mpclBroadcast = sparkInstance.sparkContext.broadcast(set(majorPrcdrCodeList))
 
+    del mpclBroadcast
+
     @F.udf(returnType=IntegerType())
     def hasMajorCodes(prcdrCodeArray):
         if not prcdrCodeArray:
             return 0
-        return int(not set(prcdrCodeArray).isdisjoint(mpclBroadcast))
+        return int(not set(prcdrCodeArray).isdisjoint(mpclBroadcast.value))
 
-    baseDF = baseDF.withColumn("majorDiagnosticOrTherapeuticOrProcedures", hasMajorCodes(F.col("prcdrCodeAll")))
-    return baseDF
+    return baseDF.withColumn("majorDiagnosticOrTherapeuticOrProcedures", hasMajorCodes(F.col("prcdrCodeAll")))
 
 def drop_unused_columns(baseDF):
     dropColumns = (list(map(lambda x: f"ICD_DGNS_CD{x}",range(1,26))) + #some of these are in IP some are in OP claims, this is not a problem
