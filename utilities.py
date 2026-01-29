@@ -228,6 +228,8 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_censusDF(df, filename)
     elif (file=="adi"):
         df = prep_adiDF(df)
+    elif file=="procedureClasses":
+        df = prep_procedureClassesDF(df)
     return df   
 
 def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkaris/DATA', pathToAHAData='/fs/ess/PAS2164/AHA'):
@@ -235,6 +237,10 @@ def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkari
     filenames = get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal)
     data = read_data(spark, filenames)
     return data
+
+def prep_procedureClassesDF(df):
+    df = df.withColumn("ICD-10-PCS-CODE", F.regexp_replace(F.col("ICD-10-PCS-CODE"), "'", '"'))
+    return df
 
 def prep_adiDF(adiDF):
     adiDF = (adiDF
