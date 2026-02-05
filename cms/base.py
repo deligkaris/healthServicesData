@@ -248,7 +248,7 @@ def add_septicShockPoa(baseDF):
     Reference: https://journals.lww.com/lww-medicalcare/abstract/2014/06000/identifying_patients_with_severe_sepsis_using.18.aspx'''
     septicShockDgnsCodes = ("R6521",)
     baseDF = baseDF.withColumn( "septicShockPoa", 
-                                F.when( F.array_intersect(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in septicShockDgnsCodes])), F.lit(1))
+                                F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in septicShockDgnsCodes])), F.lit(1))
                                  .otherwise(F.lit(0)))
     return baseDF
 
