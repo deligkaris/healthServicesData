@@ -252,8 +252,8 @@ def add_septicShockPoa(baseDF):
 
 def add_parkinsonsPrncpalDgns(baseDF):
     baseDF = baseDF.withColumn("parkinsons",
-                              F.when((F.regexp_extract( F.trim(F.col("PRNCPAL_DGNS_CD")), r'^G20[\d]*',0) !=''), 1)
-                               .otherwise(0))
+                              F.when((F.regexp_extract( F.trim(F.col("PRNCPAL_DGNS_CD")), r'^G20[\d]*',0) !=''), F.lit(1))
+                               .otherwise(F.lit(0)))
     return baseDF
 
 def add_parkinsons(baseDF):
