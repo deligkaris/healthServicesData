@@ -247,7 +247,7 @@ def add_septicShockPoa(baseDF):
     Reference: https://journals.lww.com/ccmjournal/abstract/2019/04000/variation_in_identifying_sepsis_and_organ.1.aspx
     Reference: https://journals.lww.com/lww-medicalcare/abstract/2014/06000/identifying_patients_with_severe_sepsis_using.18.aspx'''
     septicShockDgnsCodes = ("R6521",)
-    baseDF = baseDF.withColumn( "septicShockPoa", F.array_intersect(F.col("dgnsPoaCodeAll") F.array([F.lit(c) for c in septicShockDgnsCodes])))
+    baseDF = baseDF.withColumn( "septicShockPoa", F.array_intersect(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in septicShockDgnsCodes])))
     return baseDF
 
 def add_parkinsonsPrncpalDgns(baseDF):
