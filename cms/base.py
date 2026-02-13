@@ -292,13 +292,22 @@ def add_dbsCpt(baseDF):
 def add_shockDgns(baseDF):
     '''Acute organ failure: shock'''
     shockDgnsCodes = ("R57", "I951", "I952", "I953", "I958", "I959", "R031", "R6521")
-    baseDF = baseDF.withColumn("shockDgns", F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {shockDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("shockDgns", 
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {shockDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
     return baseDF
 
 def add_shock(baseDF):
     '''Acute organ failure: shock.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = baseDF.withColumn("shock", F.when( F.col("shockDgns")==1, F.lit(1) ).otherwise(F.lit(0)))
+    return baseDF
+
+def add_shockPoa(baseDF):
+    '''Adds a column shockPoa for shock present on admission.'''
+    shockDgnsCodes = ("R57", "I951", "I952", "I953", "I958", "I959", "R031", "R6521")
+    baseDF = baseDF.withColumn( "shockPoa",
+                                F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in shockDgnsCodes])), F.lit(1))
+                                 .otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteRespiratoryFailureDgns(baseDF):
@@ -325,6 +334,15 @@ def add_acuteRespiratoryFailure(baseDF):
                                 .otherwise(F.lit(0)))
     return baseDF
 
+def add_acuteRespiratoryFailurePoa(baseDF):
+    '''Acute respiratory failure present on admission.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
+    arfDgnsCodes = ("J80", "J960", "J969", "R063", "R092", "R0600", "R0603", "R0609", "R0683", "R0689")
+    baseDF = baseDF.withColumn("acuteRespiratoryFailurePoa",
+                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in arfDgnsCodes])), F.lit(1))
+                                 .otherwise(F.lit(0)))
+    return baseDF
+
 def add_acuteNeurologicalFailureDgns(baseDF):
     '''Acute neurological failure'''
     anfDgnsCodes = ("F05", "F06", "F53", "G931", "G934", "R401", "R402", "I6783")
@@ -349,6 +367,15 @@ def add_acuteNeurologicalFailure(baseDF):
                                 .otherwise(F.lit(0)))
     return baseDF
 
+def add_acuteNeurologicalFailurePoa(baseDF):
+    '''Acute neurological failure present on admission.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
+    anfDgnsCodes = ("F05", "F06", "F53", "G931", "G934", "R401", "R402", "I6783")
+    baseDF = baseDF.withColumn("acuteNeurologicalFailurePoa",
+                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in anfDgnsCodes])), F.lit(1))
+                                 .otherwise(F.lit(0)))
+    return baseDF
+
 def add_coagulopathyDgns(baseDF):
     '''Acute hematological failure'''
     ahfDgnsCodes = ("D65", "D688", "D689", "D696", "D473", "D681", "D6959", "D6951")
@@ -361,6 +388,15 @@ def add_coagulopathy(baseDF):
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_coagulopathyDgns(baseDF)
     baseDF = baseDF.withColumn("coagulopathy", F.when( F.col("coagulopathyDgns")==1, F.lit(1)).otherwise(F.lit(0)))
+    return baseDF
+
+def add_coagulopathyPoa(baseDF):
+    '''Acute hematological failure present on admission.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
+    ahfDgnsCodes = ("D65", "D688", "D689", "D696", "D473", "D681", "D6959", "D6951")
+    baseDF = baseDF.withColumn("coagulopathyPoa",
+                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in ahfDgnsCodes])), F.lit(1))
+                                 .otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteHepaticInjuryFailureDgns(baseDF):
@@ -377,6 +413,15 @@ def add_acuteHepaticInjuryFailure(baseDF):
     baseDF = baseDF.withColumn("acuteHepaticInjuryFailure", F.when( F.col("acuteHepaticInjuryFailureDgns")==1, F.lit(1)).otherwise(F.lit(0)))
     return baseDF
 
+def add_acuteHepaticInjuryFailurePoa(baseDF):
+    '''Acute hepatic injury or failure present on admission.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
+    ahifDgnsCodes = ("K720", "K762", "K763", "K716", "K759", "K7291")
+    baseDF = baseDF.withColumn("acuteHepaticInjuryFailurePoa",
+                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in ahifDgnsCodes])), F.lit(1))
+                                 .otherwise(F.lit(0)))
+    return baseDF
+
 def add_acuteRenalInjuryFailureDgns(baseDF):
     '''Acute renal injury or failure'''
     arifDgnsCodes = ("N17", "N003")
@@ -387,7 +432,8 @@ def add_acuteRenalInjuryFailureDgns(baseDF):
 def add_acuteRenalInjuryFailurePrcdr(baseDF):
     '''Acute renal injury or failure.
     Note that this is the same as renal replacement therapy based on procedure codes.'''
-    baseDF = baseDF.withColumn("acuteRenalInjuryFailurePrcdr", F.exists( "prcdrCodeAll", lambda x: F.regexp_extract( x, r'^5A1D[\d]*',0) !='' ).cast('int'))
+    baseDF = baseDF.withColumn("acuteRenalInjuryFailurePrcdr", 
+                               F.exists( "prcdrCodeAll", lambda x: F.regexp_extract( x, r'^5A1D[\d]*',0) !='' ).cast('int'))
     return baseDF
 
 def add_acuteRenalInjuryFailure(baseDF):
@@ -398,6 +444,15 @@ def add_acuteRenalInjuryFailure(baseDF):
     baseDF = baseDF.withColumn("acuteRenalInjuryFailure", 
                                F.when( (F.col("acuteRenalInjuryFailureDgns")==1) | (F.col("acuteRenalInjuryFailurePrcdr")==1), F.lit(1))
                                 .otherwise(F.lit(0)))
+    return baseDF
+
+def add_acuteRenalInjuryFailurePoa(baseDF):
+    '''Acute renal injury or failure present on admission.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
+    arifDgnsCodes = ("N17", "N003")
+    baseDF = baseDF.withColumn("acuteRenalInjuryFailurePoa",
+                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in arifDgnsCodes])), F.lit(1))
+                                 .otherwise(F.lit(0)))
     return baseDF
 
 def add_acidosisDgns(baseDF):
@@ -411,6 +466,15 @@ def add_acidosis(baseDF):
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acidosisDgns(baseDF)
     baseDF = baseDF.withColumn("acidosis", F.when( F.col("acidosisDgns")==1, F.lit(1)).otherwise(F.lit(0)) )
+    return baseDF
+
+def add_acidosisPoa(baseDF):
+    '''Acidosis present on admission.
+    Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
+    aDgnsCodes = ("E872",)
+    baseDF = baseDF.withColumn("acidosisPoa",
+                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in aDgnsCodes])), F.lit(1))
+                                 .otherwise(F.lit(0)))
     return baseDF
 
 def add_imvPrcdr(baseDF): 
@@ -1857,6 +1921,49 @@ def add_majorDiagnosticOrTherapeuticOrProcedures(baseDF, procedureClassesDF, spa
         return int(not set(prcdrCodeArray).isdisjoint(mpclBroadcast.value))
 
     return baseDF.withColumn("majorDiagnosticOrTherapeuticOrProcedures", hasMajorCodes(F.col("prcdrCodeAll")))
+
+def add_acuteOrganFailure(baseDF):
+    '''Adds a column with 1 if any of the acute organ failure flags are 1, 0 if none of the acute organ failures are 1'''
+    baseDF = baseDF.withColumn("acuteOrganFailure",
+                               F.when( 
+                                   F.col("shock")+F.col("acuteRespiratoryFailure")+F.col("acuteNeurologicalFailure")+
+                                   F.col("coagulopathy")+F.col("acuteHepaticInjuryFailure")+F.col("acuteRenalInjuryFailure")+F.col("acidosis")>0, F.lit(1))
+                                .otherwise(F.lit(0)))
+    return baseDF  
+
+def add_acuteOrganFailurePoa(baseDF):
+    '''Adds a column with 1 if any of the acute organ failure present on admission flags are 1, 0 if none of the acute organ failures poa are 1'''
+    baseDF = baseDF.withColumn("acuteOrganFailurePoa",
+                               F.when( 
+                                   F.col("shockPoa")+F.col("acuteRespiratoryFailurePoa")+F.col("acuteNeurologicalFailurePoa")+
+                                   F.col("coagulopathyPoa")+F.col("acuteHepaticInjuryFailurePoa")+F.col("acuteRenalInjuryFailurePoa")+
+                                   F.col("acidosisPoa")>0, F.lit(1))
+                                .otherwise(F.lit(0)))
+    return baseDF  
+
+def add_acute_organ_failure_info(baseDF):
+    '''Adds various columns related to acute organ failures'''
+    baseDF = add_shock(baseDF)
+    baseDF = add_acuteRespiratoryFailure(baseDF)
+    baseDF = add_acuteNeurologicalFailure(baseDF)
+    baseDF = add_coagulopathy(baseDF) #acute hematological failure
+    baseDF = add_acuteHepaticInjuryFailure(baseDF)
+    baseDF = add_acuteRenalInjuryFailure(baseDF)
+    baseDF = add_acidosis(baseDF)
+    baseDF = add_acuteOrganFailure(baseDF)
+    return baseDF
+
+def add_acute_organ_failure_poa_info(baseDF):
+    '''Adds various columns related to acute organ failures present on admission'''
+    baseDF = add_shockPoa(baseDF)
+    baseDF = add_acuteRespiratoryFailurePoa(baseDF)
+    baseDF = add_acuteNeurologicalFailurePoa(baseDF)
+    baseDF = add_coagulopathyPoa(baseDF) #acute hematological failure
+    baseDF = add_acuteHepaticInjuryFailurePoa(baseDF)
+    baseDF = add_acuteRenalInjuryFailurePoa(baseDF)
+    baseDF = add_acidosisPoa(baseDF)
+    baseDF = add_acuteOrganFailurePoa(baseDF)
+    return baseDF
 
 def drop_unused_columns(baseDF):
     dropColumns = (list(map(lambda x: f"ICD_DGNS_CD{x}",range(1,26))) + #some of these are in IP some are in OP claims, this is not a problem
