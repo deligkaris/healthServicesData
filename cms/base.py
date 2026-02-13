@@ -1075,6 +1075,7 @@ def add_beneficiary_info(baseDF, mbsfDF, data, claimType="op"):
     baseDF = add_365DaysAfterThroughDateDead(baseDF)
     if (claimType=="ip"):
         baseDF = add_daysDeadAfterAdmissionDate(baseDF)
+        baseDF = add_30DaysAfterAdmissionDateDead(baseDF)
         baseDF = add_90DaysAfterAdmissionDateDead(baseDF)
         baseDF = add_365DaysAfterAdmissionDateDead(baseDF)
  
@@ -1370,6 +1371,10 @@ def add_daysDeadAfterAdmissionDate(baseDF): #assumes add_through_date_info and a
             
 def add_90DaysAfterThroughDateDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfter
     baseDF = baseDF.withColumn( "90DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 90, 1).otherwise(0))
+    return baseDF
+
+def add_30DaysAfterAdmissionDateDead(baseDF): #this is the 30 day mortality flag, assumes I have run add_daysDeadAfter
+    baseDF = baseDF.withColumn( "30DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 30, 1).otherwise(0))
     return baseDF
 
 def add_90DaysAfterAdmissionDateDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfter
@@ -1998,6 +2003,17 @@ def get_clean_through_dates(baseDF):
        cannot know for sure without additional work, so keep only positive and null daysDeadAfterVisit 
        also cannot use NULL for this because null means no death date available'''
     return baseDF.filter( (F.col("daysDeadAfterThroughDate")>=0) | (F.col("daysDeadAfterThroughDate").isNull()) )
+
+def add_diedInVisit(baseDF):
+    '''Adds a binary column with flag indicating if patient died in this visit.''' 
+    baseDF = baseDF.withColumn("diedInVisit", (F.col("STUS_CD")==20).cast('int'))
+    return baseDF
+
+def add_dischargeHomeWithin2Days(baseDF):
+    '''Adds a binary column with flag indicating if patient was discharged home within 2 days.'''
+    baseDF = baseDF.withColumn("dischargeHomeWithin2Days", F.when( (F.col("STUS_CD")==1) & (F.col("los")<=2), F.lit(1)).otherwise(F.lit(0)))
+    return baseDF
+
 
 
 
