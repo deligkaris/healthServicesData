@@ -485,7 +485,7 @@ def add_imvPrcdr(baseDF):
     and https://www.neurology.org/doi/10.1212/CPJ.0000000000200143
     '''
     imvPrcdrCodes = ("5A1935Z", "5A1945Z", "5A1955Z")
-    baseDF = baseDF.withColumn("imvPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {imvPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("imvPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {imvPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_imv(baseDF):
@@ -497,7 +497,7 @@ def add_imv(baseDF):
 def add_ecmoPrcdr(baseDF):
     '''Extracorporeal membrane oxygenation.'''
     ecmoPrcdrCodes = ("5A1522F", "5A1522G", "5A1522H") #VA, VA and VV
-    baseDF = baseDF.withColumn("ecmoPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {ecmoPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("ecmoPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {ecmoPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_ecmo(baseDF):
