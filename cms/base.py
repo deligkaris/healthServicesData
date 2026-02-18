@@ -553,7 +553,7 @@ def add_endoscopyPrcdr(baseDF):
       '0DWD3YZ', '0DWD4YZ', '0DWD7YZ', '0DWD8YZ', '3E0G328', '3E0G329', '3E0G33Z', '3E0G37Z', '3E0G3BZ',
       '3E0G3GC', '3E0G3NZ', '3E0G3SF', '3E0G3TZ', '3E0G4GC', '3E0G728', '3E0G729', '3E0G73Z', '3E0G77Z', '3E0G7BZ', '3E0G7GC', '3E0G7NZ', '3E0G7SF', 
       '3E0G7TZ', '3E0G828', '3E0G829', '3E0G83Z', '3E0G87Z', '3E0G8BZ', '3E0G8GC', '3E0G8NZ', '3E0G8SF', '3E0G8TZ', '3E1G38Z', '3E1G78Z', '3E1G88Z')
-    baseDF = baseDF.withColumn("endoscopyPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {endoscopyPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("endoscopyPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {endoscopyPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_endoscopy(baseDF):
@@ -570,7 +570,7 @@ def add_intubationPrcdr(baseDF):
     https://www.neurology.org/doi/10.1212/CPJ.0000000000200143 (this defines as intubation only the first 2 ICD10 codes
     '''
     intubationPrcdrCodes = ("0BH17EZ", "0BH18EZ", "0B717DZ", "0B718DZ", "0BH07DZ", "0WHQ7YZ") 
-    baseDF = baseDF.withColumn("intubationPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {intubationPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("intubationPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {intubationPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_intubation(baseDF):
@@ -584,7 +584,7 @@ def add_tracheostomyPrcdr(baseDF):
     #https://journals.lww.com/ccejournal/fulltext/2021/09000/the_epidemiology_of_adult_tracheostomy_in_the.12.aspx
     #https://cdn-links.lww.com/permalink/ccx/a/ccx_0_0_2021_08_07_kempker_cce-d-21-00030_sdc1.pdf
     tracheostomyPrcdrCodes = ("0B110F4", "0B110Z4", "0B113F4", "0B113Z4", "0B114F4", "0B114Z4")
-    baseDF = baseDF.withColumn("tracheostomyPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {tracheostomyPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("tracheostomyPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {tracheostomyPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_tracheostomy(baseDF):
@@ -606,14 +606,14 @@ def add_pegPrcdr(baseDF):
     pegPrcdrCodes = ("0DH63UZ", "0DH64UZ", "0D16074", "0D160J4", "0D160K4", "0D160Z4", "0D163J4", "0D16474", "0D164J4", "0D164K4", "0D164Z4",
                      "0D16874", "0D168J4", "0D168K4", "0D168Z4", "0DW04UZ", "0DW08UZ", "0DH60UZ", "0DH67UZ", "0DH68UZ", 
                      "0DHA0UZ", "0DHA3UZ", "0DHA4UZ", "0DHA7UZ", "0DHA8UZ")
-    baseDF = baseDF.withColumn("pegPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {pegPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("pegPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {pegPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_pegDgns(baseDF):
     '''percutaneous endoscopic gastrostomy
     see '''
     pegDgnsCodes = ("Z931", "Z931") #they are the same by design, will come back to this
-    baseDF = baseDF.withColumn("pegDgns", F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {pegDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("pegDgns", F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {pegDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_peg(baseDF):
