@@ -1397,8 +1397,15 @@ def add_los(baseDF): #length of stay = los
     #baseDF = baseDF.replace(0,1,subset="los") 
     return baseDF
 
-def add_losDays(baseDF): #adds an array of all days of the claim's duration
-    baseDF = baseDF.withColumn("losDays", F.sequence( F.col("ADMSN_DT_DAY"),F.col("THRU_DT_DAY") ))
+def add_losDays(baseDF):
+    '''Adds an array of all days of the claim's duration.
+    Some claims have both an admission date and a claim through date, and those 2 dates might be different, so I need a sequence.
+    Some claims though have only a claim through date, and in that case the array contains only 1 day, the claim through date.
+    I checked that all claims have a claim through date which makes sense since that is crucial for billing.'''
+    baseDF = baseDF.withColumn("losDays", 
+                               F.when( (F.col("ADMSN_DT_DAY").isNotNull() & F.col("THRU_DT_DAY").isNotNull()),  F.sequence( F.col("ADMSN_DT_DAY"),F.col("THRU_DT_DAY") ))
+                                .when( (F.col("ADMSN_DT_DAY").isNull() & F.col("THRU_DT_DAY").isNotNull()), F.array(F.col("THRU_DT_DAY")))
+                                .otherwise(F.lit(None)))
     return baseDF
 
 def add_losDaysOverXUntilY(baseDF,X="CLAIMNO",Y="THRU_DT_DAY"):
