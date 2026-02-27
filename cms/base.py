@@ -2021,6 +2021,27 @@ def add_dischargeHomeWithin2Days(baseDF):
     baseDF = baseDF.withColumn("dischargeHomeWithin2Days", F.when( (F.col("STUS_CD")==1) & (F.col("los")<=2), F.lit(1)).otherwise(F.lit(0)))
     return baseDF
 
+def add_admissionSource(baseDF, cmsDFS):
+
+    eachDsysrtky = Window.partitionBy("DSYSRTKY")
+    ipRehabDf = (baseF.add_losDays(cmsDFS["ipBase"].filter(F.col("rehabilitation")==1))
+                .select(F.col("DSYSRTKY"), 
+                        F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
+                        F.lit("ipRehab").alias("claimType"))
+                .distinct())
+    ipLtcDf = (baseF.add_losDays(cmsDFS["ipBase"].filter(F.col("ltcHospital")==1))
+              .select(F.col("DSYSRTKY"), 
+                      F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
+                      F.lit("ipLtc").alias("claimType"))
+              .distinct())
+     
+
+
+
+
+
+
+
 
 
 

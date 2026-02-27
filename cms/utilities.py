@@ -178,6 +178,7 @@ def add_preliminary_info(dataframes, data, runTests=False):
             dataframes[claimTypePart] = baseF.add_ssaCounty(dataframes[claimTypePart])
             if (claimType in ["ip","snf","hosp","hha"]):
                 dataframes[claimTypePart] = baseF.add_admission_date_info(dataframes[claimTypePart],claimType=claimType)
+                dataframes[claimTypePart] = baseF.add_losDays(dataframes[claimTypePart])
             if (claimType=="ip"):
                 dataframes[claimTypePart] = baseF.add_discharge_date_info(dataframes[claimTypePart],claimType=claimType)
                 dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
