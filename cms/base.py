@@ -2044,7 +2044,7 @@ def add_admissionSource(baseDF, cmsDFS):
                     F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
                     F.lit("hha").alias("claimType"))
             .distinct())
-    hospDf = (hospBase
+    hospDf = (cmsDFS["hospBase"]
               .select(F.col("DSYSRTKY"), 
                       F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
                       F.lit("hosp").alias("claimType"))
