@@ -2024,16 +2024,62 @@ def add_dischargeHomeWithin2Days(baseDF):
 def add_admissionSource(baseDF, cmsDFS):
 
     eachDsysrtky = Window.partitionBy("DSYSRTKY")
-    ipRehabDf = (baseF.add_losDays(cmsDFS["ipBase"].filter(F.col("rehabilitation")==1))
+    ipRehabDf = (cmsDFS["ipBase"].filter(F.col("rehabilitation")==1)
                 .select(F.col("DSYSRTKY"), 
                         F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
                         F.lit("ipRehab").alias("claimType"))
                 .distinct())
-    ipLtcDf = (baseF.add_losDays(cmsDFS["ipBase"].filter(F.col("ltcHospital")==1))
+    ipLtcDf = (cmsDFS["ipBase"].filter(F.col("ltcHospital")==1)
               .select(F.col("DSYSRTKY"), 
                       F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
                       F.lit("ipLtc").alias("claimType"))
               .distinct())
+    snfDf = (cmsDFS["snfBase"]
+            .select(F.col("DSYSRTKY"), 
+                    F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
+                    F.lit("snf").alias("claimType"))
+            .distinct())
+    hhaDf = (cmsDFS["hhaBase"]
+            .select(F.col("DSYSRTKY"), 
+                    F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
+                    F.lit("hha").alias("claimType"))
+            .distinct())
+    hospDf = (hospBase
+              .select(F.col("DSYSRTKY"), 
+                      F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
+                      F.lit("hosp").alias("claimType"))
+              .distinct())
+    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [ipRehabDf, ipLtcDf, snfDf, hhaDf, hospDf])
+             .withColumn("otherClaims", 
+                         F.collect_list(
+                          F.struct(
+                             F.col("losDays").alias("losDays"),
+                             F.col("claimType").alias("claimType"))
+                         ).over(eachDsysrtky))
+             .select("DSYSRTKY", "otherClaims")
+             .distinct())
+    baseDF = (baseDF
+              .join(allDF,
+                    on="DSYSRTKY",
+                    how="left_outer")
+              .withColumn("otherClaimsOnAdmission",
+                          F.filter(
+                             F.col("otherClaims"),
+                             lambda x: F.array_contains(x.losDays, F.col("ADMSN_DT_DAY")))
+                           .getField("claimType"))
+              .withColumn("admissionSource",
+                          F.when( (F.col("otherClaimsOnAdmission").isNull()) | (F.size(F.col("otherClaimsOnAdmission"))==0), F.lit("home"))
+                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "hosp"), "hosp")
+                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "ipRehab"), "ipRehab")
+                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "snf"), "snf")
+                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "ipLtc"), "ipLtc")
+                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "hha"), "hha")
+                           .otherwise(F.lit(None)))) #None should never appear in this column...
+    return baseDF  
+               
+
+
+    
      
 
 
