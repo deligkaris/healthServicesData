@@ -229,7 +229,7 @@ def add_anyStroke(baseDF):
 
 def add_septicShockDgns(baseDF):
     septicShockDgnsCodes = ("R6521",)
-    baseDF = baseDF.withColumn( "septicShocDgns",
+    baseDF = baseDF.withColumn( "septicShockDgns",
                                 F.when( F.arrays_overlap(F.col("dgnsCodeAll"), F.array([F.lit(c) for c in septicShockDgnsCodes])), F.lit(1))
                                  .otherwise(F.lit(0)))
     #baseDF = (baseDF.withColumn("septicShockCodes", F.expr( f"filter(dgnsCodeAll, x -> x in {septicShockDgnsCodes})")) 
