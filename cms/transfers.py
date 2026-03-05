@@ -45,6 +45,7 @@ def get_transfers(fromClaimsDF, toClaimsDF):
                              how = "inner") #drop any claims that do not match
     transfersDF = get_clean_transfers(transfersDF)
     transfersDF = add_firstTransfer(transfersDF)
+    transfersDF = add_node_and_dyad_info(transfersDF)
     return transfersDF
 
 def add_transfertpa(transfersDF):
