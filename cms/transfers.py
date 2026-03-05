@@ -194,7 +194,7 @@ def add_nodeHhi(transfersDF):
     The minimum is '''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     transfersDF = transfersDF.withColumn("nodeHhi", 
-                                         F.sum(F.col("dyadProportionTransfersOut") * F.col("dyadProportionsTransfersOut")).over(eachFromProvider))
+                                         F.sum(F.col("dyadProportionTransfersOut") * F.col("dyadProportionTransfersOut")).over(eachFromProvider))
     return transfersDF
 
 def add_node_stroke_treatment_info(transfersDF):
