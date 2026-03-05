@@ -256,7 +256,12 @@ def add_node_info(transfersDF):
     transfersDF = add_node_revenue_info(transfersDF)
     return transfersDF
 
-
+def add_node_and_dyad_info(transfersDF):
+ 
+    transfersDF = add_node_info(transfersDF)
+    transfersDF = add_dyad_info(transfersDF)
+    transfersDF = add_nodeHhi(transfersDF)
+    return transfersDF
 
 
 
