@@ -2083,8 +2083,8 @@ def add_source_and_destination_info(baseDF, cmsDFS):
                            .when( F.array_contains(F.col("otherClaimsOnAdmission"), "ipRehab"), "ipRehab")
                            .when( F.array_contains(F.col("otherClaimsOnAdmission"), "snf"), "snf")
                            .when( F.array_contains(F.col("otherClaimsOnAdmission"), "ipLtc"), "ipLtc")
-                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "hha"), "hha")
                            .when( F.array_contains(F.col("otherClaimsOnAdmission"), "ipOther"), "ipOther")
+                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "hha"), "hha")
                            .otherwise(F.lit(None))) #None should never appear in this column...
               .withColumn("otherClaimsOnThru",
                           F.filter(
@@ -2097,8 +2097,8 @@ def add_source_and_destination_info(baseDF, cmsDFS):
                            .when( F.array_contains(F.col("otherClaimsOnThru"), "ipRehab"), "ipRehab")
                            .when( F.array_contains(F.col("otherClaimsOnThru"), "snf"), "snf")
                            .when( F.array_contains(F.col("otherClaimsOnThru"), "ipLtc"), "ipLtc")
+                           .when( F.array_contains(F.col("otherClaimsOnThru"), "ipOther"), "ipOther")
                            .when( F.array_contains(F.col("otherClaimsOnThru"), "hha"), "hha")
-                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "ipOther"), "ipOther")
                            .otherwise(F.lit(None)))) #None should never appear in this column...          
     return baseDF  
                
