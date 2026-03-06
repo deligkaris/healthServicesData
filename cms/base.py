@@ -2102,7 +2102,7 @@ def add_source_and_destination_info(baseDF, cmsDFS):
                            .otherwise(F.lit(None)))) #None should never appear in this column...          
     return baseDF  
                
-def add_shortTermInpatientOrganizations(baseDF):
+def add_shortTermInpatientOrganization(baseDF):
     '''Classifies claims based on whether the claim organization is a short term inpatient care facility or not, for adults only.'''    
     baseDF = baseDF.withColumn("shortTermInpatientOrganization", 
                                F.when( ((F.col("gachAll")==1) | (F.col("rachAll")==1) | (F.col("cahAll")==1)) &
