@@ -2059,7 +2059,7 @@ def add_source_and_destination_info(baseDF, cmsDFS):
                       F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
                       F.lit("hosp").alias("claimType"))
               .distinct())
-    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [ipRehabDf, ipLtcDf, ipOther, snfDf, hhaDf, hospDf])
+    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [ipRehabDf, ipLtcDf, ipOtherDf, snfDf, hhaDf, hospDf])
              .withColumn("otherClaims", 
                          F.collect_list(
                           F.struct(
