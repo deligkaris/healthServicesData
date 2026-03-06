@@ -2026,8 +2026,8 @@ def add_dischargeHomeWithin2Days(baseDF):
     baseDF = baseDF.withColumn("dischargeHomeWithin2Days", F.when( (F.col("STUS_CD")==1) & (F.col("los")<=2), F.lit(1)).otherwise(F.lit(0)))
     return baseDF
 
-def add_admissionSource(baseDF, cmsDFS):
-
+def add_source_and_destination_info(baseDF, cmsDFS):
+    '''Searches in claims to find'''
     eachDsysrtky = Window.partitionBy("DSYSRTKY")
     ipRehabDf = (cmsDFS["ipBase"].filter(F.col("rehabilitation")==1)
                 .select(F.col("DSYSRTKY"), 
@@ -2039,6 +2039,11 @@ def add_admissionSource(baseDF, cmsDFS):
                       F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
                       F.lit("ipLtc").alias("claimType"))
               .distinct())
+    ipOtherDf = (cmsDFS["ipBase"].filter(F.col("ltcHospital")==0).filter(F.col("rehabilitation")==0)
+              .select(F.col("DSYSRTKY"), 
+                      F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"),
+                      F.lit("ipOther").alias("claimType"))
+              .distinct())  
     snfDf = (cmsDFS["snfBase"]
             .select(F.col("DSYSRTKY"), 
                     F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
@@ -2054,7 +2059,7 @@ def add_admissionSource(baseDF, cmsDFS):
                       F.array_distinct(F.flatten(F.collect_list(F.col("losDays")).over(eachDsysrtky))).alias("losDays"), 
                       F.lit("hosp").alias("claimType"))
               .distinct())
-    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [ipRehabDf, ipLtcDf, snfDf, hhaDf, hospDf])
+    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [ipRehabDf, ipLtcDf, ipOther, snfDf, hhaDf, hospDf])
              .withColumn("otherClaims", 
                          F.collect_list(
                           F.struct(
@@ -2079,7 +2084,22 @@ def add_admissionSource(baseDF, cmsDFS):
                            .when( F.array_contains(F.col("otherClaimsOnAdmission"), "snf"), "snf")
                            .when( F.array_contains(F.col("otherClaimsOnAdmission"), "ipLtc"), "ipLtc")
                            .when( F.array_contains(F.col("otherClaimsOnAdmission"), "hha"), "hha")
-                           .otherwise(F.lit(None)))) #None should never appear in this column...
+                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "ipOther"), "ipOther")
+                           .otherwise(F.lit(None))) #None should never appear in this column...
+              .withColumn("otherClaimsOnThru",
+                          F.filter(
+                             F.col("otherClaims"),
+                             lambda x: F.array_contains(x.losDays, F.col("THRU_DT_DAY")))
+                           .getField("claimType"))
+              .withColumn("thruDestination",
+                          F.when( (F.col("otherClaimsOnThru").isNull()) | (F.size(F.col("otherClaimsOnThru"))==0), F.lit("home"))
+                           .when( F.array_contains(F.col("otherClaimsOnThru"), "hosp"), "hosp")
+                           .when( F.array_contains(F.col("otherClaimsOnThru"), "ipRehab"), "ipRehab")
+                           .when( F.array_contains(F.col("otherClaimsOnThru"), "snf"), "snf")
+                           .when( F.array_contains(F.col("otherClaimsOnThru"), "ipLtc"), "ipLtc")
+                           .when( F.array_contains(F.col("otherClaimsOnThru"), "hha"), "hha")
+                           .when( F.array_contains(F.col("otherClaimsOnAdmission"), "ipOther"), "ipOther")
+                           .otherwise(F.lit(None)))) #None should never appear in this column...          
     return baseDF  
                
 def add_shortTermInpatientOrganizations(baseDF):
