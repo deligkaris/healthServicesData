@@ -2005,7 +2005,9 @@ def drop_unused_columns(baseDF):
                 "EHR_PGM_RDCTN_IND_SW", "CLM_SITE_NTRL_PYMT_CST_AMT", "CLM_SITE_NTRL_PYMT_IPPS_AMT", 
                 "CLM_FULL_STD_PYMT_AMT", "CLM_SS_OUTLIER_STD_PYMT_AMT", "ACO_ID_NUM", "FI_NUM",
                 "PTB_DED", "PTB_COIN", "PRVDRPMT", "BENEPMT", "RFR_PHYSN_NPI", "RFR_PHYSN_SPCLTY_CD", 
-                 "CLM_OP_TRANS_TYPE_CD", "CLM_OP_ESRD_MTHD_CD", "prcdrCodeAll", "dgnsCodeAll"])
+                "CLM_OP_TRANS_TYPE_CD", "CLM_OP_ESRD_MTHD_CD", "prcdrCodeAll", "dgnsCodeAll",
+                "rehabilitation", "rehabilitationFromTaxonomyAll", "rehabilitationFromTaxonomyPrimary", "rehabilitationFromCCN",
+                       "pediatricHospital", "psychiatricHospital", "ltcHospital"])
     return baseDF.drop(*dropColumns)
 
 def get_clean_through_dates(baseDF):
@@ -2080,7 +2082,13 @@ def add_admissionSource(baseDF, cmsDFS):
                            .otherwise(F.lit(None)))) #None should never appear in this column...
     return baseDF  
                
-
+def add_shortTermInpatientOrganizations(baseDF):
+    '''Classifies claims based on whether the claim organization is a short term inpatient care facility or not, for adults only.'''    
+    baseDF = baseDF.withColumn("shortTermInpatientOrganization", 
+                               F.when( ((F.col("gachAll")==1) | (F.col("rachAll")==1) | (F.col("cahAll")==1)) &
+                                       (F.col("rehabilitation")==0) & (F.col("pediatricHospital")==0) & 
+                                       (F.col("psychiatricHospital")==0) & (F.col("ltcHospital")==0), F.lit(1)).otherwise(F.lit(0)))
+    return baseDF
 
     
      
