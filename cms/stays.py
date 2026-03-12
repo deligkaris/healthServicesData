@@ -14,6 +14,14 @@ def add_providerSepticShockVol(staysDF):
     staysDF = staysDF.withColumn("providerSepticShockVol", F.sum( F.col("septicShock") ).over(eachProvider))
     return staysDF
 
+def add_provider_capability_info(staysDF, col="imv"):
+    '''Adds a binary column with the capability for each organization regarding the column specified in the function call.
+    The column provided must be a binary column as well.'''
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    colName = "provider" + col[0].upper() + col[1:] + "Capability"
+    staysDF = staysDF.withColumn(colName, F.max( F.col(col) ).over(eachProvider)) 
+    return staysDF
+
 def add_provider_stroke_treatment_info(staysDF, inpatient=True):
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
     staysDF = (staysDF.withColumn("providerTpaMean", F.mean( F.col("tpa") ).over(eachProvider))
