@@ -63,7 +63,7 @@ def propagate_stay_info(claimsDF, claimType="op"):
     #however, when more than 1 claims are the same stay, they have the same nihss, for 2016 and 17 at least, so this works for nihss too
     columnsToPropagate = ["ishStrokeDgns", "ishStrokeDrg", "ishStroke", "tpaPrcdr", "tpaDgns", "tpaDrg", "tpa", "ccvPrcdr", "evtDrg",
                         "evtPrcdr", "evt", "icu", "ed", "mri", "ct", "nihss", "nihssGroup", "diedInVisit", "dischargeHomeWithin2Days",
-                        "septicShock"]
+                        "septicShock", "majorDiagnosticOrTherapeuticOrProcedures", "rrt"]
     print("Note: columns aggregated over all claims that comprise a single stay/visit are...", end="")
     colsDone = list()
     for col in columnsToPropagate:
