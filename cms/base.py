@@ -2111,18 +2111,19 @@ def add_shortTermInpatientOrganization(baseDF):
                                        (F.col("psychiatricHospital")==0) & (F.col("ltcHospital")==0), F.lit(1)).otherwise(F.lit(0)))
     return baseDF
 
-def add_orgnpinm_column_prior_year(baseDF, column="providerSepticShockVol"):
+def add_column_prior_year(baseDF, column="providerSepticShockVol", who="ORGNPINM"):
     '''Adds the column's value from the prior year.
     For some organizations the prior year will be 2 years prior because spark will use whatever row is lagging/behind the current one
     so in that case I need to manually change the prior year quantity to null.'''
-    eachOrgnpinmYear = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"]).orderBy("THRU_DT_YEAR")
+    eachWhoYear = Window.partitionBy([who,"THRU_DT_YEAR"]).orderBy("THRU_DT_YEAR")
     baseDF = (baseDF
-              .withColumn("priorThruYear", F.lag("THRU_DT_YEAR",1).over(eachOrgnpinmYear))
-              .withColumn(column+"PriorYear", F.lag(column,1).over(eachOrgnpinmYear))
+              .withColumn("priorThruYear", F.lag("THRU_DT_YEAR",1).over(eachWhoYear))
+              .withColumn(column+"PriorYear", F.lag(column,1).over(eachWhoYear))
               .withColumn(column+"PriorYear", F.when( F.col("THRU_DT_YEAR")-F.col("priorThruYear")==1, F.col(column+"PriorYear")).otherwise(F.lit(None))))
     return baseDF   
      
-
+def add_orgnpinm_column_prior_year(baseDF, column="providerSepticShockVol"):
+    return add_column_prior_year(baseDF, column=column, who="ORGNPINM")
 
 
 
