@@ -378,7 +378,14 @@ def prep_ahaDF(ahaDF, filename):
                                            .otherwise(F.lit(None)))
                   #sometimes there are very few government federal or non-federal claims and it helps to group the tiny category with the other one
                   .withColumn("ahaOwnerGroup", F.when( F.col("ahaOwner").isin(0,3), 0) #government
-                                                .otherwise( F.col("ahaOwner") )))
+                                                .otherwise( F.col("ahaOwner") ))
+                  #system member, if SYSID is not blank then this is 1
+                  #but in practice MHSMEMB is either null, or 1 or 8 or 2 (counts = 6149, 12411, 2, 5 respectively for 2016)
+                  #I will set this to 1 only when MHSMEMB is 1 as it is supposed to be 
+                  #also, the related SYSID variable is only the last 4 digits of the AHA health care system identifier so 
+                  #there is some uncertainty if the same SYSID really means the same health system
+                  .withColumn("MHSMEMB", F.col("MHSMEMB").cast('int'))
+                  .withColumn("ahaSystemMember", F.when( F.col("MHSMEMB")==1, F.lit(1) ).otherwise(F.lit(0))))
 
     if ahaYear > 2016:
         ahaDF = (ahaDF.withColumn("STRCHOS", F.col("STRCHOS").cast('int'))
@@ -459,7 +466,10 @@ def prep_posDF(posDF):
                   .withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
                   .withColumn("hospital", F.when( F.col("PRVDR_CTGRY_CD")=="01", 1).otherwise(0))
                   .withColumn("cah", F.when( (F.col("hospital")==1) &  (F.col("PRVDR_CTGRY_SBTYP_CD")=="11"), 1).otherwise(0))
-                  .withColumn("shortTerm",  F.when( (F.col("hospital")==1) & (F.col("PRVDR_CTGRY_SBTYP_CD")=="01"), 1).otherwise(0)))
+                  .withColumn("shortTerm",  F.when( (F.col("hospital")==1) & (F.col("PRVDR_CTGRY_SBTYP_CD")=="01"), 1).otherwise(0))
+                  .withColumn("posIsRural", F.when( F.col("CBSA_URBN_RRL_IND")=="R", F.lit(1))
+                                             .when( F.col("CBSA_URBN_RRL_IND")=="U", F.lit(0))
+                                             .otherwise(F.lit(None)))) #there are nulls but also "001" and "041" (very few though)
     posDF = add_processed_name(posDF,colToProcess="FAC_NAME")
     return posDF
 

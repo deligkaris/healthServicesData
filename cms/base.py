@@ -832,8 +832,11 @@ def add_provider_pos_info(baseDF, posDF):
     #                     #on=[F.col("countyname").contains(F.col("providerCounty"))], #in 1 test gave identical results as above
     #                     how="left_outer")
     #the posDF will give me ~99.9%of the providerFIPS codes
-    baseDF = (baseDF.join(posDF.select( F.col("PRVDR_NUM").alias("PROVIDER"), F.col("providerFIPS"), F.col("providerStateFIPS"),
-                                        F.col("GNRL_CNTL_TYPE_CD"), F.col("cah").alias("posCah") ),
+    baseDF = (baseDF.join(posDF
+                           .select( F.col("PRVDR_NUM").alias("PROVIDER"), F.col("providerFIPS"), F.col("providerStateFIPS"),
+                                    F.col("GNRL_CNTL_TYPE_CD"), 
+                                    F.col("cah").alias("posCah"),
+                                    F.col("posIsRural") ),
                          on=["PROVIDER"],
                          how="left_outer"))
     return baseDF
@@ -1730,7 +1733,9 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                                       F.col("ahaCbsaType"),
                                       F.col("ahaNisTeachingHospital"),
                                       F.col("ahaResidentToBedRatio"),
-                                      F.col("ahaBedsIcu")),
+                                      F.col("ahaBedsIcu"),
+                                      F.col("ahaMemberSystem"),
+                                      F.col("SYSID").alias("ahaMemberSystemId")), #member health system ID
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
     return baseDF
