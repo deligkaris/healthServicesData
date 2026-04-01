@@ -2,6 +2,7 @@ import re
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import cms.base as baseF
+import cms.stays as staysF
 
 def get_closest_to_claim(transfersDF):
     eachFromClaim=Window.partitionBy("fromTHRU_DT_DAY", "fromCLAIMNO")
