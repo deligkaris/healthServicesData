@@ -246,6 +246,11 @@ def add_node_from_to_info(transfersDF):
                               .withColumn("nodeToSizeOfFromNodes", F.size( F.col("nodeToSetOfFromNodes") )))
     return transfersDF
 
+def add_node_hhi_info(transfersDF):
+    transfersDF = add_nodeHhi(transfersDF)
+    transfersDF = staysF.add_column_prior(transfersDF, column="nodeHhi", who="fromORGNPINM", when="fromTHRU_DT_YEAR")
+    return transfersDF
+
 def add_dyad_info(transfersDF):
     transfersDF = add_dyad(transfersDF)
     transfersDF = add_dyadVi(transfersDF)
@@ -254,6 +259,8 @@ def add_dyad_info(transfersDF):
     transfersDF = add_dyadProportionTransfersIn(transfersDF)
     transfersDF = add_dyadAcrossCounties(transfersDF)
     transfersDF = add_dyadAcrossStates(transfersDF)
+    transfersDF = staysF.add_column_prior(transfersDF, column="dyadProportionTransfersOut", who="fromORGNPINM", when="fromTHRU_DT_YEAR") 
+    transfersDF = staysF.add_column_prior(transfersDF, column="dyadProportionTransfersIn", who="toORGNPINM", when="toTHRU_DT_YEAR") 
     return transfersDF
 
 def add_node_info(transfersDF):
@@ -263,10 +270,9 @@ def add_node_info(transfersDF):
     return transfersDF
 
 def add_node_and_dyad_info(transfersDF):
- 
     transfersDF = add_node_info(transfersDF)
     transfersDF = add_dyad_info(transfersDF)
-    transfersDF = add_nodeHhi(transfersDF)
+    transfersDF = add_node_hhi_info(transfersDF)
     return transfersDF
 
 
