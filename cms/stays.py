@@ -124,4 +124,18 @@ def add_first_stay_info(staysDF):
                                                  .otherwise(0) )) #the value of 0 includes both true 'not first admissions' but also 'impossible to know if first admission'
     return staysDF
                                     
+def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", when="THRU_DT_YEAR"):
+    '''Adds the column's value from the prior year.
+    For some organizations the prior year will be 2 years prior because spark will use whatever row is lagging/behind the current one
+    so in that case I need to manually change the prior year quantity to null.'''
+    eachWhoWhen = Window.partitionBy([who,when]).orderBy(when)
+    staysDF = (staysDF
+              .withColumn("prior", F.lag(when,1).over(eachWhoWhen))
+              .withColumn(column+"Prior", F.lag(column,1).over(eachWhoWhen))
+              .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior")).otherwise(F.lit(None))))
+    return staysDF   
+     
+def add_orgnpinm_column_prior_year(staysF, column="providerSepticShockVol"):
+    return add_column_prior(staysDF, column=column, who="ORGNPINM", when="THRU_DT_YEAR")
+
 
