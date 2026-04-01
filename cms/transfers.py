@@ -192,9 +192,14 @@ def add_nodeHhi(transfersDF):
     '''Calculates the Herfindahl-Hirschman index (HHI) of sending hospital's transfer destinations.
     It is unique to each organization and year and reflects the competitiveness of the receiving hospitals for transfers from this sending organization.
     The minimum is '''
+    eachDyad = Window.partitionBy(["dyad", "fromTHRU_DT_YEAR"])
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
-    transfersDF = transfersDF.withColumn("nodeHhi", 
-                                         F.sum(F.col("dyadProportionTransfersOut") * F.col("dyadProportionTransfersOut")).over(eachFromProvider))
+    transfersDF = (transfersDF
+                    .withColumn("dyadRowNumber", F.row_number().over(eachDyad)) #use this to get the first row from each dyad to avoid double counting
+                    .withColumn("dyadProportionTransfersOutSquared", 
+                                  F.when(F.col("dyadRowNumber")==1, F.pow(F.col("dyadProportionTransfersOut"), 2)).otherwise(F.lit(0.)))
+                    .withColumn("nodeHhi", F.sum(F.col("dyadProportionTransfersOutSquared")).over(eachFromProvider))
+                    .drop("dyadRowNumber", "dyadProportionTransfersOutSquared"))
     return transfersDF
 
 def add_node_stroke_treatment_info(transfersDF):
