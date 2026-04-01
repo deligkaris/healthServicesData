@@ -135,7 +135,7 @@ def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", w
               .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior")).otherwise(F.lit(None))))
     return staysDF   
      
-def add_orgnpinm_column_prior_year(staysF, column="providerSepticShockVol"):
+def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockVol"):
     return add_column_prior(staysDF, column=column, who="ORGNPINM", when="THRU_DT_YEAR")
 
 
