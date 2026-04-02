@@ -193,7 +193,7 @@ def add_nodeHhi(transfersDF):
     '''Calculates the Herfindahl-Hirschman index (HHI) of sending hospital's transfer destinations.
     It is unique to each organization and year and reflects the competitiveness of the receiving hospitals for transfers from this sending organization.
     The minimum is '''
-    eachDyad = Window.partitionBy(["dyad", "fromTHRU_DT_YEAR"]).orderBy("fromTHRU_DT_YEAR")
+    eachDyad = Window.partitionBy(["dyad", "fromTHRU_DT_YEAR"]).orderBy("fromTHRU_DT_YEAR") #dyad includes the year too but I also need to orderBy...
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     transfersDF = (transfersDF
                     .withColumn("dyadRowNumber", F.row_number().over(eachDyad)) #use this to get the first row from each dyad to avoid double counting

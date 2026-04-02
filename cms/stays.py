@@ -71,8 +71,7 @@ def propagate_stay_info(claimsDF, claimType="op"):
             claimsDF = claimsDF.withColumn(col, F.max(F.col(col)).over(eachStay))
             colsDone += [col]
     colsDoneString = ",".join(colsDone)
-    print(colsDoneString)
-    print("Note: check your dataframe's schema to see if any columns should have been propagated and were not...")
+    print(colsDoneString+"...check your dataframe's schema to see if any columns should have been propagated and were not...")
     return claimsDF
 
 def get_unique_stays(claimsDF, claimType="op"):
