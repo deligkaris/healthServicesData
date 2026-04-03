@@ -152,7 +152,8 @@ def fix_year(df, claimType, claimPart):
                 .withColumn("RFRNC_YR",
                             F.when( F.col("lengthRFRNC_YR")==2, F.concat(F.lit("20"), F.col("RFRNC_YR").cast('string')))
                              .otherwise(F.col("RFRNC_YR").cast('string')))
-                .withColumn("RFRNC_YR", F.col("RFRNC_YR").cast('int')))
+                .withColumn("RFRNC_YR", F.col("RFRNC_YR").cast('int'))
+                .drop("lengthRFRNC_YR"))
     return df
 
 def enforce_schema(df, claimType, claimPart):
