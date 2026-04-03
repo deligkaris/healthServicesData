@@ -134,14 +134,6 @@ def pad_zeros(df, claimType, claimPart):
         df = (df.withColumn("STATE_CD", F.lpad(F.col("STATE_CD").cast('int').cast("string"),2,'0'))
                 .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast('int').cast("string"),3,'0'))
                 .select( [F.lpad(F.col(c).cast('int').cast("string"),5,'0').alias(c) if c in stCntCols else F.col(c) for c in df.columns] ))
-                #old approach, using format_string, I doubt when-otherwise was needed, I think I was trying to be explicit....
-                #.withColumn("STATE_CD", 
-                #            F.when( F.col("STATE_CD").isNull(), F.col("STATE_CD") )
-                #             .otherwise( F.format_string("%02d",F.col("STATE_CD"))))
-                #.withColumn("CNTY_CD", 
-                #            F.when( F.col("CNTY_CD").isNull(), F.col("CNTY_CD") )
-                #             .otherwise( F.format_string("%03d",F.col("CNTY_CD"))))
-                #.select([ F.when( ~F.col(c).isNull(), F.format_string("%05d",F.col(c))).alias(c)  if c in stCntCols else F.col(c) for c in df.columns ]))
     return df  
 
 def fix_year(df, claimType, claimPart):
@@ -288,11 +280,18 @@ def add_through_date_info(df):
     return df
 
 def repartition_dfs(dataframes):
+    '''After a lot of work on the dataframes they tend to get stored in imbalanced ways in the executors so 
+    at those times a repartition is necessary.
+    However, it is not clear to me what is the best value for the first argument.'''
     for key in dataframes.keys():
         dataframes[key] = dataframes[key].repartition(80,"DSYSRTKY") 
     return dataframes
 
 def run_cms_data_tests(dataframes):
+    '''Some years ago the CMS dataframes had more than one row with the same claim number for the same year or, for the mbsf dataframe,
+    more than one row with the same beneficiary id for the same year
+    This practice was ended some years ago but still, these old dataframes need to be cleaned so this is testing if the dataframes
+    are all ok from this perspective.'''
     for claimTypePart in list(dataframes.keys()):
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
         if (claimPart=="Base"):
