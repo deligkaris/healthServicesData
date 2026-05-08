@@ -248,7 +248,8 @@ def add_septicShock(baseDF):
 def add_septicShockPoa(baseDF):
     '''Adds a flag for septic shock present on admission.
     Reference: https://journals.lww.com/ccmjournal/abstract/2019/04000/variation_in_identifying_sepsis_and_organ.1.aspx
-    Reference: https://journals.lww.com/lww-medicalcare/abstract/2014/06000/identifying_patients_with_severe_sepsis_using.18.aspx'''
+    Reference: https://journals.lww.com/lww-medicalcare/abstract/2014/06000/identifying_patients_with_severe_sepsis_using.18.aspx
+    When one of all ICD10 diagnostic codes is R6521 and its associated present on admission flag is true then should return 1, else 0.'''
     septicShockDgnsCodes = ("R6521",)
     baseDF = baseDF.withColumn( "septicShockPoa", 
                                 F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in septicShockDgnsCodes])), F.lit(1))
@@ -295,12 +296,12 @@ def add_dbsCpt(baseDF):
 def add_shockDgns(baseDF):
     '''Acute organ failure: shock'''
     shockDgnsCodes = ("R57", "I951", "I952", "I953", "I958", "I959", "R031", "R6521")
-    baseDF = baseDF.withColumn("shockDgns", 
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {shockDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("shockDgns",
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {shockDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_shock(baseDF):
-    '''Acute organ failure: shock.
+    '''Acute organ failure: shock. Returns 1 if any of the diagnostic codes are R57, I951, I952, I953, I958, I959, R031, R6521.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = baseDF.withColumn("shock", F.when( F.col("shockDgns")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
@@ -316,19 +317,19 @@ def add_shockPoa(baseDF):
 def add_acuteRespiratoryFailureDgns(baseDF):
     '''Acute respiratory failure'''
     arfDgnsCodes = ("J80", "J960", "J969", "R063", "R092", "R0600", "R0603", "R0609", "R0683", "R0689")
-    baseDF = baseDF.withColumn("acuteRespiratoryFailureDgns", 
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {arfDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("acuteRespiratoryFailureDgns",
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {arfDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteRespiratoryFailurePrcdr(baseDF):
     '''Acute respiratory failure'''
     arfPrcdrCodes = ("5A1935Z", "5A1945Z", "5A1955Z")
-    baseDF = baseDF.withColumn("acuteRespiratoryFailurePrcdr", 
-                               F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {arfPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+    baseDF = baseDF.withColumn("acuteRespiratoryFailurePrcdr",
+                               F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {arfPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteRespiratoryFailure(baseDF):
-    '''Acute respiratory failure.
+    '''Acute respiratory failure. Returns 1 if any of the diagnostic codes are J80, J960, J969, R063, R092, R0600, R0603, R0609, R0683, R0689 or if any of the procedure codes are 5A1935Z, 5A1945Z, 5A1955Z.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteRespiratoryFailureDgns(baseDF)
     baseDF = add_acuteRespiratoryFailurePrcdr(baseDF)
@@ -350,14 +351,14 @@ def add_acuteNeurologicalFailureDgns(baseDF):
     '''Acute neurological failure'''
     anfDgnsCodes = ("F05", "F06", "F53", "G931", "G934", "R401", "R402", "I6783")
     baseDF = baseDF.withColumn("acuteNeurologicalFailureDgns", 
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {anfDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {anfDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteNeurologicalFailurePrcdr(baseDF):
     '''Acute neurological failure'''
     anfPrcdrCodes = ("4A0034Z", "4A00X4Z", "4A0134Z", "4A01X4Z", "4A1034Z", "4A10X4Z")
     baseDF = baseDF.withColumn("acuteNeurologicalFailurePrcdr", 
-                               F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {anfPrcdrCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+                               F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {anfPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteNeurologicalFailure(baseDF):
@@ -383,7 +384,7 @@ def add_coagulopathyDgns(baseDF):
     '''Acute hematological failure'''
     ahfDgnsCodes = ("D65", "D688", "D689", "D696", "D473", "D681", "D6959", "D6951")
     baseDF = baseDF.withColumn("coagulopathyDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {ahfDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {ahfDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_coagulopathy(baseDF):
@@ -406,7 +407,7 @@ def add_acuteHepaticInjuryFailureDgns(baseDF):
     '''Acute hepatic injury or failure'''
     ahifDgnsCodes = ("K720", "K762", "K763", "K716", "K759", "K7291")
     baseDF = baseDF.withColumn("acuteHepaticInjuryFailureDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {ahifDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {ahifDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteHepaticInjuryFailure(baseDF):
@@ -429,7 +430,7 @@ def add_acuteRenalInjuryFailureDgns(baseDF):
     '''Acute renal injury or failure'''
     arifDgnsCodes = ("N17", "N003")
     baseDF = baseDF.withColumn("acuteRenalInjuryFailureDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {arifDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {arifDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteRenalInjuryFailurePrcdr(baseDF):
@@ -461,7 +462,7 @@ def add_acuteRenalInjuryFailurePoa(baseDF):
 def add_acidosisDgns(baseDF):
     aDgnsCodes = ("E872",)
     baseDF = baseDF.withColumn("acidosisDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {aDgnsCodes})") )>0, F.lit(1) ),otherwise(F.lit(0)))
+                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {aDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acidosis(baseDF):
@@ -1040,6 +1041,7 @@ def add_prcdrCodeAll(baseDF):
     return baseDF
 
 def add_poaCodeAll(baseDF):
+    '''Adds a column poaCodeAll that contains an array of all present on admission codes (CLM_POA_IND_SW1 through CLM_POA_IND_SW25).'''
     poaCodeColumns = [f"CLM_POA_IND_SW{x}" for x in range(1,26)]
     baseDF = baseDF.withColumn("poaCodeAll", F.array(poaCodeColumns))
     return baseDF
@@ -1049,7 +1051,7 @@ def add_dgnsPoaCodeAll(baseDF):
     baseDF = (baseDF.withColumn("dgnsPoaCodeStruct", F.arrays_zip("dgnsCodeAll", "poaCodeAll"))
                     .withColumn("dgnsPoaFilteredCodeStruct", F.expr("filter(dgnsPoaCodeStruct, x -> x.poaCodeAll == 'Y')"))
                     .withColumn("dgnsPoaCodeAll", F.expr("transform(dgnsPoaFilteredCodeStruct, x -> x.dgnsCodeAll)"))
-                    .drop("dgnsPoaCodeStruct", "dgnsPoaFilteredCodeStruc"))
+                    .drop("dgnsPoaCodeStruct", "dgnsPoaFilteredCodeStruct"))
     return baseDF
 
 def add_tpaOsu(baseDF):
