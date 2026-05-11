@@ -4,7 +4,7 @@ from pyspark.sql.types import IntegerType
 from .mbsf import add_ohResident
 from .revenue import filter_claims, add_ed, add_mri, add_ct, get_revenue_info
 from .claims import get_claims
-from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, daysInYearsPrior, usRegionFipsCodes, monthsInYearsPrior
+from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, get_daysInYearsPrior, usRegionFipsCodes, get_monthsInYearsPrior
 import re
 from functools import reduce
 
@@ -134,11 +134,11 @@ def add_admission_date_info(baseDF, claimType="op"):
                                 ).cast('int'))
                     # keep the year too
                     .withColumn( "ADMSN_DT_YEAR", F.col("ADMSN_DT").substr(1,4).cast('int'))
-                    .withColumn("ADMSN_DT_MONTHSINYEARSPRIOR", monthsInYearsPrior[F.col("ADMSN_DT_YEAR")])
+                    .withColumn("ADMSN_DT_MONTHSINYEARSPRIOR", get_monthsInYearsPrior()[F.col("ADMSN_DT_YEAR")])
                     .withColumn("ADMSN_DT_MONTHOFYEAR", F.col("ADMSN_DT").substr(5,2).cast('int'))
                     .withColumn("ADMSN_DT_MONTH", F.col("ADMSN_DT_MONTHOFYEAR") + F.col("ADMSN_DT_MONTHSINYEARSPRIOR"))
                     # find number of days from yearStart-1 to year of admission -1
-                    .withColumn( "ADMSN_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("ADMSN_DT_YEAR")])
+                    .withColumn( "ADMSN_DT_DAYSINYEARSPRIOR", get_daysInYearsPrior()[F.col("ADMSN_DT_YEAR")])
                     # days in years prior to admission + days in year of admission = day nunber
                     .withColumn("ADMSN_DT_DAY", (F.col("ADMSN_DT_DAYSINYEARSPRIOR") + F.col("ADMSN_DT_DAYOFYEAR")).cast('int'))
                     .drop("ADMSN_DT_MONTHSINYEARSPRIOR", "ADMSN_DT_MONTHOFYEAR", "ADMSN_DT_DAYSINYEARSPRIOR", "ADMSN_DT_DAYOFYEAR"))
@@ -157,7 +157,7 @@ def add_discharge_date_info(baseDF, claimType="op"):
                     # keep the claim through year too
                     .withColumn( "DSCHRGDT_YEAR", F.col("DSCHRGDT").substr(1,4).cast('int'))
                     # find number of days from yearStart-1 to year of admission -1
-                    .withColumn( "DSCHRGDT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("DSCHRGDT_YEAR")])
+                    .withColumn( "DSCHRGDT_DAYSINYEARSPRIOR", get_daysInYearsPrior()[F.col("DSCHRGDT_YEAR")])
                     # days in years prior to admission + days in year of admission = day nunber
                     .withColumn( "DSCHRGDT_DAY", (F.col("DSCHRGDT_DAYSINYEARSPRIOR") + F.col("DSCHRGDT_DAYOFYEAR")).cast('int'))
                     .drop("DSCHRGDT_DAYSINYEARSPRIOR", "DSCHRGDT_DAYOFYEAR"))
@@ -362,7 +362,7 @@ def add_acuteNeurologicalFailurePrcdr(baseDF):
     return baseDF
 
 def add_acuteNeurologicalFailure(baseDF):
-    '''Acute neurological failure.
+    '''Acute neurological failure. Returns 1 if any of the diagnostic codes are F05, F06, F53, G931, G934, R401, R402, I6783 or if any of the procedure codes are 4A0034Z, 4A00X4Z, 4A0134Z, 4A01X4Z, 4A1034Z, 4A10X4Z.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteNeurologicalFailureDgns(baseDF)
     baseDF = add_acuteNeurologicalFailurePrcdr(baseDF)
@@ -388,7 +388,7 @@ def add_coagulopathyDgns(baseDF):
     return baseDF
 
 def add_coagulopathy(baseDF):
-    '''Acute hematological failure.
+    '''Acute hematological failure. Returns 1 if any of the diagnostic codes is D65, D688, D689, D696, D473, D681, D6959, D6951.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_coagulopathyDgns(baseDF)
     baseDF = baseDF.withColumn("coagulopathy", F.when( F.col("coagulopathyDgns")==1, F.lit(1)).otherwise(F.lit(0)))
@@ -411,7 +411,7 @@ def add_acuteHepaticInjuryFailureDgns(baseDF):
     return baseDF
 
 def add_acuteHepaticInjuryFailure(baseDF):
-    '''Acute hepatic injury or failure.
+    '''Acute hepatic injury or failure. Returns 1 if any of the diagnostic codes are K720, K762, K763, K716, K759, K7291.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteHepaticInjuryFailureDgns(baseDF)
     baseDF = baseDF.withColumn("acuteHepaticInjuryFailure", F.when( F.col("acuteHepaticInjuryFailureDgns")==1, F.lit(1)).otherwise(F.lit(0)))
@@ -441,7 +441,7 @@ def add_acuteRenalInjuryFailurePrcdr(baseDF):
     return baseDF
 
 def add_acuteRenalInjuryFailure(baseDF):
-    '''Acute renal injury or failure.
+    '''Acute renal injury or failure. Returns 1 if any of the diagnostic codes are N17, N003 or if any of the procedure codes start with 5A1D.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteRenalInjuryFailureDgns(baseDF)
     baseDF = add_acuteRenalInjuryFailurePrcdr(baseDF)

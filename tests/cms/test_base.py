@@ -644,3 +644,267 @@ class TestAddAcuteRespiratoryFailure:
         ])
         results = [r["acuteRespiratoryFailure"] for r in add_acuteRespiratoryFailure(df).collect()]
         assert results == [1, 1, 0, 0, 1]
+
+
+# ============================================================
+# End-to-end tests for add_acuteNeurologicalFailure
+# ============================================================
+
+ANF_DGNS_CODES = ["F05", "F06", "F53", "G931", "G934", "R401", "R402", "I6783"]
+ANF_PRCDR_CODES = ["4A0034Z", "4A00X4Z", "4A0134Z", "4A01X4Z", "4A1034Z", "4A10X4Z"]
+
+
+class TestAddAcuteNeurologicalFailure:
+
+    @pytest.mark.parametrize("code", ANF_DGNS_CODES)
+    def test_each_dgns_code_alone_returns_1(self, spark, code):
+        from cms.base import add_acuteNeurologicalFailure
+        df = make_dgns_prcdr_df(spark, [([code], [])])
+        result = add_acuteNeurologicalFailure(df).collect()[0]
+        assert result["acuteNeurologicalFailure"] == 1
+
+    @pytest.mark.parametrize("code", ANF_PRCDR_CODES)
+    def test_each_prcdr_code_alone_returns_1(self, spark, code):
+        from cms.base import add_acuteNeurologicalFailure
+        df = make_dgns_prcdr_df(spark, [([], [code])])
+        result = add_acuteNeurologicalFailure(df).collect()[0]
+        assert result["acuteNeurologicalFailure"] == 1
+
+    def test_dgns_code_among_others_returns_1(self, spark):
+        from cms.base import add_acuteNeurologicalFailure
+        df = make_dgns_prcdr_df(spark, [(["I10", "E119", "G931"], ["00H00MZ"])])
+        result = add_acuteNeurologicalFailure(df).collect()[0]
+        assert result["acuteNeurologicalFailure"] == 1
+
+    def test_prcdr_code_among_others_returns_1(self, spark):
+        from cms.base import add_acuteNeurologicalFailure
+        df = make_dgns_prcdr_df(spark, [(["I10", "E119"], ["00H00MZ", "4A0134Z"])])
+        result = add_acuteNeurologicalFailure(df).collect()[0]
+        assert result["acuteNeurologicalFailure"] == 1
+
+    def test_no_matching_codes_returns_0(self, spark):
+        from cms.base import add_acuteNeurologicalFailure
+        df = make_dgns_prcdr_df(spark, [(["I10", "E119", "J189"], ["00H00MZ"])])
+        result = add_acuteNeurologicalFailure(df).collect()[0]
+        assert result["acuteNeurologicalFailure"] == 0
+
+    def test_empty_arrays_return_0(self, spark):
+        from cms.base import add_acuteNeurologicalFailure
+        df = make_dgns_prcdr_df(spark, [([], [])])
+        result = add_acuteNeurologicalFailure(df).collect()[0]
+        assert result["acuteNeurologicalFailure"] == 0
+
+    def test_similar_but_different_codes_return_0(self, spark):
+        # Codes near the ANF lists but not in them.
+        # F04/F07/F54/G930/G935/R400/R403/I6782 are not in the dgns list.
+        # 4A0044Z is not in the prcdr list.
+        from cms.base import add_acuteNeurologicalFailure
+        df = make_dgns_prcdr_df(spark, [
+            (["F04", "F07", "F54", "G930", "G935", "R400", "R403", "I6782"], ["4A0044Z"])
+        ])
+        result = add_acuteNeurologicalFailure(df).collect()[0]
+        assert result["acuteNeurologicalFailure"] == 0
+
+    def test_dgns_and_prcdr_both_match_returns_1(self, spark):
+        from cms.base import add_acuteNeurologicalFailure
+        df = make_dgns_prcdr_df(spark, [(["F05"], ["4A1034Z"])])
+        result = add_acuteNeurologicalFailure(df).collect()[0]
+        assert result["acuteNeurologicalFailure"] == 1
+
+    def test_multiple_rows_mixed(self, spark):
+        from cms.base import add_acuteNeurologicalFailure
+        df = make_dgns_prcdr_df(spark, [
+            (["F05"], []),                       # dgns match
+            ([], ["4A0034Z"]),                   # prcdr match
+            (["I10", "E119"], ["00H00MZ"]),      # neither
+            ([], []),                            # empty
+            (["I6783"], ["4A10X4Z"]),            # both match
+        ])
+        results = [r["acuteNeurologicalFailure"] for r in add_acuteNeurologicalFailure(df).collect()]
+        assert results == [1, 1, 0, 0, 1]
+
+
+# ============================================================
+# End-to-end tests for add_coagulopathy
+# ============================================================
+
+COAG_DGNS_CODES = ["D65", "D688", "D689", "D696", "D473", "D681", "D6959", "D6951"]
+
+
+class TestAddCoagulopathy:
+
+    @pytest.mark.parametrize("code", COAG_DGNS_CODES)
+    def test_each_code_alone_returns_1(self, spark, code):
+        from cms.base import add_coagulopathy
+        df = make_dgns_code_all_df(spark, [[code]])
+        result = add_coagulopathy(df).collect()[0]
+        assert result["coagulopathy"] == 1
+
+    def test_code_among_others_returns_1(self, spark):
+        from cms.base import add_coagulopathy
+        df = make_dgns_code_all_df(spark, [["I10", "E119", "D696", "J189"]])
+        result = add_coagulopathy(df).collect()[0]
+        assert result["coagulopathy"] == 1
+
+    def test_no_matching_code_returns_0(self, spark):
+        from cms.base import add_coagulopathy
+        df = make_dgns_code_all_df(spark, [["I10", "E119", "J189"]])
+        result = add_coagulopathy(df).collect()[0]
+        assert result["coagulopathy"] == 0
+
+    def test_empty_array_returns_0(self, spark):
+        from cms.base import add_coagulopathy
+        df = make_dgns_code_all_df(spark, [[]])
+        result = add_coagulopathy(df).collect()[0]
+        assert result["coagulopathy"] == 0
+
+    def test_similar_but_different_codes_return_0(self, spark):
+        # Codes near the coag list but not in it.
+        # D66 is hemophilia A (different from D65 / DIC).
+        # D687/D690 are not in the list; D6952/D6958 are not in the list.
+        from cms.base import add_coagulopathy
+        df = make_dgns_code_all_df(spark, [["D66", "D687", "D690", "D6952", "D6958", "D472"]])
+        result = add_coagulopathy(df).collect()[0]
+        assert result["coagulopathy"] == 0
+
+    def test_multiple_rows_mixed(self, spark):
+        from cms.base import add_coagulopathy
+        df = make_dgns_code_all_df(spark, [
+            ["D65"],
+            ["I10", "E119"],
+            ["J189", "D6959"],
+            [],
+            ["D688", "D689"],
+        ])
+        results = [r["coagulopathy"] for r in add_coagulopathy(df).collect()]
+        assert results == [1, 0, 1, 0, 1]
+
+
+# ============================================================
+# End-to-end tests for add_acuteHepaticInjuryFailure
+# ============================================================
+
+AHIF_DGNS_CODES = ["K720", "K762", "K763", "K716", "K759", "K7291"]
+
+
+class TestAddAcuteHepaticInjuryFailure:
+
+    @pytest.mark.parametrize("code", AHIF_DGNS_CODES)
+    def test_each_code_alone_returns_1(self, spark, code):
+        from cms.base import add_acuteHepaticInjuryFailure
+        df = make_dgns_code_all_df(spark, [[code]])
+        result = add_acuteHepaticInjuryFailure(df).collect()[0]
+        assert result["acuteHepaticInjuryFailure"] == 1
+
+    def test_code_among_others_returns_1(self, spark):
+        from cms.base import add_acuteHepaticInjuryFailure
+        df = make_dgns_code_all_df(spark, [["I10", "E119", "K762", "J189"]])
+        result = add_acuteHepaticInjuryFailure(df).collect()[0]
+        assert result["acuteHepaticInjuryFailure"] == 1
+
+    def test_no_matching_code_returns_0(self, spark):
+        from cms.base import add_acuteHepaticInjuryFailure
+        df = make_dgns_code_all_df(spark, [["I10", "E119", "J189"]])
+        result = add_acuteHepaticInjuryFailure(df).collect()[0]
+        assert result["acuteHepaticInjuryFailure"] == 0
+
+    def test_empty_array_returns_0(self, spark):
+        from cms.base import add_acuteHepaticInjuryFailure
+        df = make_dgns_code_all_df(spark, [[]])
+        result = add_acuteHepaticInjuryFailure(df).collect()[0]
+        assert result["acuteHepaticInjuryFailure"] == 0
+
+    def test_similar_but_different_codes_return_0(self, spark):
+        # Codes near the AHIF list but not in it.
+        # K721/K761/K764/K717/K758/K7290 are not in the list.
+        from cms.base import add_acuteHepaticInjuryFailure
+        df = make_dgns_code_all_df(spark, [["K721", "K761", "K764", "K717", "K758", "K7290"]])
+        result = add_acuteHepaticInjuryFailure(df).collect()[0]
+        assert result["acuteHepaticInjuryFailure"] == 0
+
+    def test_multiple_rows_mixed(self, spark):
+        from cms.base import add_acuteHepaticInjuryFailure
+        df = make_dgns_code_all_df(spark, [
+            ["K720"],
+            ["I10", "E119"],
+            ["J189", "K7291"],
+            [],
+            ["K762", "K763"],
+        ])
+        results = [r["acuteHepaticInjuryFailure"] for r in add_acuteHepaticInjuryFailure(df).collect()]
+        assert results == [1, 0, 1, 0, 1]
+
+
+# ============================================================
+# End-to-end tests for add_acuteRenalInjuryFailure
+# ============================================================
+
+ARIF_DGNS_CODES = ["N17", "N003"]
+# Real ICD-10-PCS codes for hemodialysis/peritoneal dialysis all start with 5A1D.
+ARIF_PRCDR_CODES = ["5A1D00Z", "5A1D60Z", "5A1D70Z", "5A1D80Z", "5A1D90Z"]
+
+
+class TestAddAcuteRenalInjuryFailure:
+
+    @pytest.mark.parametrize("code", ARIF_DGNS_CODES)
+    def test_each_dgns_code_alone_returns_1(self, spark, code):
+        from cms.base import add_acuteRenalInjuryFailure
+        df = make_dgns_prcdr_df(spark, [([code], [])])
+        result = add_acuteRenalInjuryFailure(df).collect()[0]
+        assert result["acuteRenalInjuryFailure"] == 1
+
+    @pytest.mark.parametrize("code", ARIF_PRCDR_CODES)
+    def test_each_prcdr_code_alone_returns_1(self, spark, code):
+        from cms.base import add_acuteRenalInjuryFailure
+        df = make_dgns_prcdr_df(spark, [([], [code])])
+        result = add_acuteRenalInjuryFailure(df).collect()[0]
+        assert result["acuteRenalInjuryFailure"] == 1
+
+    def test_dgns_code_among_others_returns_1(self, spark):
+        from cms.base import add_acuteRenalInjuryFailure
+        df = make_dgns_prcdr_df(spark, [(["I10", "E119", "N17"], ["00H00MZ"])])
+        result = add_acuteRenalInjuryFailure(df).collect()[0]
+        assert result["acuteRenalInjuryFailure"] == 1
+
+    def test_prcdr_code_among_others_returns_1(self, spark):
+        from cms.base import add_acuteRenalInjuryFailure
+        df = make_dgns_prcdr_df(spark, [(["I10", "E119"], ["00H00MZ", "5A1D70Z"])])
+        result = add_acuteRenalInjuryFailure(df).collect()[0]
+        assert result["acuteRenalInjuryFailure"] == 1
+
+    def test_no_matching_codes_returns_0(self, spark):
+        from cms.base import add_acuteRenalInjuryFailure
+        df = make_dgns_prcdr_df(spark, [(["I10", "E119", "J189"], ["00H00MZ"])])
+        result = add_acuteRenalInjuryFailure(df).collect()[0]
+        assert result["acuteRenalInjuryFailure"] == 0
+
+    def test_empty_arrays_return_0(self, spark):
+        from cms.base import add_acuteRenalInjuryFailure
+        df = make_dgns_prcdr_df(spark, [([], [])])
+        result = add_acuteRenalInjuryFailure(df).collect()[0]
+        assert result["acuteRenalInjuryFailure"] == 0
+
+    def test_similar_but_different_codes_return_0(self, spark):
+        # N18/N19/N002 are not in the dgns list. 5A2D00Z / 5B1D00Z don't start with 5A1D.
+        from cms.base import add_acuteRenalInjuryFailure
+        df = make_dgns_prcdr_df(spark, [(["N18", "N19", "N002"], ["5A2D00Z", "5B1D00Z"])])
+        result = add_acuteRenalInjuryFailure(df).collect()[0]
+        assert result["acuteRenalInjuryFailure"] == 0
+
+    def test_dgns_and_prcdr_both_match_returns_1(self, spark):
+        from cms.base import add_acuteRenalInjuryFailure
+        df = make_dgns_prcdr_df(spark, [(["N17"], ["5A1D90Z"])])
+        result = add_acuteRenalInjuryFailure(df).collect()[0]
+        assert result["acuteRenalInjuryFailure"] == 1
+
+    def test_multiple_rows_mixed(self, spark):
+        from cms.base import add_acuteRenalInjuryFailure
+        df = make_dgns_prcdr_df(spark, [
+            (["N17"], []),                       # dgns match
+            ([], ["5A1D60Z"]),                   # prcdr match
+            (["I10", "E119"], ["00H00MZ"]),      # neither
+            ([], []),                            # empty
+            (["N003"], ["5A1D80Z"]),             # both match
+        ])
+        results = [r["acuteRenalInjuryFailure"] for r in add_acuteRenalInjuryFailure(df).collect()]
+        assert results == [1, 1, 0, 0, 1]

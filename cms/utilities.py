@@ -8,7 +8,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.types import StructType
 import re
 from functools import reduce
-from utilities import yearMin, yearMax, daysInYearsPrior, monthsInYearsPrior
+from utilities import yearMin, yearMax, get_daysInYearsPrior, get_monthsInYearsPrior
 
 yearJKTransition = 2016 #year CMS switched from J to K format
 yearMinWithCMSData = 2012
@@ -268,11 +268,11 @@ def add_through_date_info(df):
                          .cast('int'))
                          #keep the claim through year too
                          .withColumn("THRU_DT_YEAR", F.col("THRU_DT").substr(1,4).cast('int'))
-                         .withColumn("THRU_DT_MONTHSINYEARSPRIOR", monthsInYearsPrior[F.col("THRU_DT_YEAR")])
+                         .withColumn("THRU_DT_MONTHSINYEARSPRIOR", get_monthsInYearsPrior()[F.col("THRU_DT_YEAR")])
                          .withColumn("THRU_DT_MONTHOFYEAR", F.col("THRU_DT").substr(5,2).cast('int'))
                          .withColumn("THRU_DT_MONTH", F.col("THRU_DT_MONTHOFYEAR") + F.col("THRU_DT_MONTHSINYEARSPRIOR"))
                          #find number of days from yearStart-1 to year of admission -1
-                         .withColumn("THRU_DT_DAYSINYEARSPRIOR", daysInYearsPrior[F.col("THRU_DT_YEAR")]) 
+                         .withColumn("THRU_DT_DAYSINYEARSPRIOR", get_daysInYearsPrior()[F.col("THRU_DT_YEAR")])
                          #assign a day number starting at day 1 of yearStart-1, 
                          # days in years prior to admission + days in year of admission = day number
                          .withColumn("THRU_DT_DAY", (F.col("THRU_DT_DAYSINYEARSPRIOR") + F.col("THRU_DT_DAYOFYEAR")).cast('int'))

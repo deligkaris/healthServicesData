@@ -23,8 +23,11 @@ for year in range(min(years),max(years)):
     daysInYearsPriorDict[year] = days
     months = nNonLeapYears*12 + nLeapYears*12
     monthsInYearsPriorDict[year] = months
-daysInYearsPrior = F.create_map([F.lit(x) for x in chain(*daysInYearsPriorDict.items())])
-monthsInYearsPrior = F.create_map([F.lit(x) for x in chain(*monthsInYearsPriorDict.items())])
+def get_daysInYearsPrior():
+    return F.create_map([F.lit(x) for x in chain(*daysInYearsPriorDict.items())])
+
+def get_monthsInYearsPrior():
+    return F.create_map([F.lit(x) for x in chain(*monthsInYearsPriorDict.items())])
 
 #definition of which states (fips codes) belong to which region
 usRegionFipsCodes = {"west":  ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"],

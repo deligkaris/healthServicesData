@@ -1,6 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
-from utilities import daysInYearsPrior, monthsInYearsPrior, usRegionFipsCodes
+from utilities import get_daysInYearsPrior, get_monthsInYearsPrior, usRegionFipsCodes
 
 #notes (most are from the Resdac tutorial: https://youtu.be/-nxGbTPVLo8?si=TsTNDXDpZlPTsvpX )
 #note: demographic information is largely reliable and valid (age, dob, sex, race, residence, date of death)
@@ -138,7 +138,7 @@ def add_ffsFirstMonthOfYear(mbsfDF):
     return mbsfDF
 
 def add_rfrncYrMonthsInYearsPrior(mbsfDF):
-    mbsfDF = mbsfDF.withColumn("rfrncYrMonthsInYearsPrior", monthsInYearsPrior[F.col("RFRNC_YR")])
+    mbsfDF = mbsfDF.withColumn("rfrncYrMonthsInYearsPrior", get_monthsInYearsPrior()[F.col("RFRNC_YR")])
     return mbsfDF
 
 def add_ffsFirstMonth(mbsfDF):
@@ -325,7 +325,7 @@ def add_death_date_info(mbsfDF):
                                  .otherwise(F.lit(None)))
                     # find number of days from yearStart-1 to year of death -1
                     .withColumn("DEATH_DT_DAYSINYEARSPRIOR", 
-                                F.when( F.col("V_DOD_SW")=="V", daysInYearsPrior[F.col("DEATH_DT_YEAR")])  #for the ones that have a valid death date
+                                F.when( F.col("V_DOD_SW")=="V", get_daysInYearsPrior()[F.col("DEATH_DT_YEAR")])  #for the ones that have a valid death date
                                  .otherwise(F.lit(None)))
                     # assign a day number starting at day 1 of yearStart-1
                     .withColumn("DEATH_DT_DAY",
