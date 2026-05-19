@@ -5,11 +5,13 @@ import cms.base as baseF
 import cms.stays as staysF
 
 def get_closest_to_claim(transfersDF):
+    '''Transfers include a from stay and a to stay...this function finds the to stay that is the closest in time to the from stay.'''
     eachFromClaim=Window.partitionBy("fromTHRU_DT_DAY", "fromCLAIMNO")
     transfersDF = transfersDF.withColumn("isClosestToClaim", (F.col("toADMSN_DT_DAY")==F.min(F.col("toADMSN_DT_DAY")).over(eachFromClaim)).cast('int'))
     return transfersDF.filter(F.col("isClosestToClaim")==1).drop("isClosestToClaim")
 
 def get_closest_from_claim(transfersDF):
+    '''Transfers include a from stay and a to stay...this function finds the from stay that is the closest in time to the to stay.'''
     eachToClaim=Window.partitionBy("toADMSN_DT_DAY", "toCLAIMNO")
     transfersDF = transfersDF.withColumn("isClosestFromClaim", (F.col("fromTHRU_DT_DAY")==F.max(F.col("fromTHRU_DT_DAY")).over(eachToClaim)).cast('int'))
     return transfersDF.filter(F.col("isClosestFromClaim")==1).drop("isClosestFromClaim")
@@ -29,12 +31,15 @@ def remove_uncertain_transfers(transfersDF):
     return transfersDF
 
 def get_clean_transfers(transfersDF):
+    '''Returns only transfers for which we have confidence in, no ambiguities'''
     transfersDF = get_closest_to_claim(transfersDF)
     transfersDF = get_closest_from_claim(transfersDF)
     transfersDF = remove_uncertain_transfers(transfersDF)
     return transfersDF
 
 def get_transfers(fromClaimsDF, toClaimsDF):
+    '''Takes two dataframes, one that represents stays in the from provider and another one that represents stays in the to provider.
+    Merges the two dataframes to create transfers from the from provider to the to provider.'''
     # rename the dataframe columns because pandas cannot handle two columns with the same name, just in case pd is used in analysis 
     toClaimsDF = toClaimsDF.toDF(*("to"+c for c in toClaimsDF.columns))
     fromClaimsDF = fromClaimsDF.toDF(*("from"+c for c in fromClaimsDF.columns))
@@ -63,7 +68,6 @@ def add_transfernihss(transfersDF):
 
 def add_transfernihssGroup(transfersDF):
     return transfersDF.withColumn("transfernihssGroup", F.when( F.col("fromnihssGroup").isNull(), F.col("tonihssGroup")).otherwise(F.col("fromnihssGroup")))   
-
 def add_stroke_info(transfersDF):
     transfersDF = add_transferct(transfersDF)
     transfersDF = add_transfermri(transfersDF)
@@ -81,6 +85,8 @@ def add_firstTransfer(transfersDF):
     return transfersDF
 
 def add_node_volume_info(transfersDF):
+    '''Given transfers, calculate the number of transfers that go out from a given from provider and the
+    number of transfers that go in to a given to provider.'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
     transfersDF = (transfersDF.withColumn("nodeOutVol", F.count( F.col("fromCLAIMNO") ).over(eachFromProvider))
@@ -88,6 +94,7 @@ def add_node_volume_info(transfersDF):
     return transfersDF
 
 def add_prior_hospitalization_info(transfersDF, ipBaseDF):
+    '''Adds columns about prior hospitalizations for each transfer patient'''
     transfersDF = (baseF.add_prior_hospitalization_info(
                            transfersDF.withColumnRenamed("toDSYSRTKY", "DSYSRTKY")
                                       .withColumnRenamed("toADMSN_DT_DAY", "ADMSN_DT_DAY")
@@ -103,6 +110,7 @@ def add_prior_hospitalization_info(transfersDF, ipBaseDF):
     return transfersDF
 
 def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF):
+    '''For the transfers dataframe, this function adds columns about the number of days the patients stayed home'''
     columnsInitial = transfersDF.columns
     columnsTemp = [re.sub("^to","",c) for c in columnsInitial] #need to rename transfers df because days_at_home needs standard column names
     transfersDF = transfersDF.toDF(*columnsTemp)
@@ -118,10 +126,12 @@ def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseD
     return transfersDF
 
 def add_dyad(transfersDF):
+    '''Dyad is defined by the two NPI numbers and the year'''
     transfersDF = transfersDF.withColumn("dyad", F.array( F.col("fromORGNPINM"),F.col("toORGNPINM"), F.col("fromTHRU_DT_YEAR")))
     return transfersDF
 
 def add_dyadVi(transfersDF):
+    '''Returns 1 if both providers of the dyad in a given year have the same SYSID and 0 otherwise'''
     transfersDF = transfersDF.withColumn("dyadVi", F.when( 
 						        (~F.col("fromproviderSysId").isNull()) & 
                                                         (~F.col("toproviderSysId").isNull()) &
@@ -130,6 +140,9 @@ def add_dyadVi(transfersDF):
     return transfersDF
 
 def add_dyadTransferVol(transfersDF):
+    '''Adds a dyadTransferVol column with the number of transfers for the specific dyad in a given year.
+    Because the dyad already includes the year (see add_dyad), partitioning by dyad alone is sufficient
+    for a per-(fromNode, toNode, year) count.'''
     eachDyad = Window.partitionBy("dyad")
     transfersDF = transfersDF.withColumn("dyadTransferVol", F.count( F.col("fromCLAIMNO") ).over(eachDyad))
     return transfersDF
@@ -149,6 +162,7 @@ def add_dyadProportionTransfersIn(transfersDF):
     return transfersDF
 
 def add_dyad_evt_info(transfersDF):
+    '''Adds evt related columns about each dyad'''
     eachDyad = Window.partitionBy("dyad")
     transfersDF = (transfersDF.withColumn("dyadEvtVol", F.sum( F.col("toevt") ).over(eachDyad))
                               .withColumn("dyadEvtMean", F.mean( F.col("toevt")).over(eachDyad))
@@ -156,6 +170,7 @@ def add_dyad_evt_info(transfersDF):
     return transfersDF
 
 def add_dyad_tpa_info(transfersDF):
+    '''Adds tpa related columns about each dyad'''
     eachDyad = Window.partitionBy("dyad")
     transfersDF = (transfersDF.withColumn("dyadTpaVol", F.sum( F.col("transfertpa") ).over(eachDyad))
                               .withColumn("dyadTpaMean", F.mean( F.col("transfertpa")).over(eachDyad))
@@ -163,6 +178,7 @@ def add_dyad_tpa_info(transfersDF):
     return transfersDF
 
 def add_dyad_stroke_treatment_info(transfersDF):
+    '''Adds various columns for each dyad regarding stroke treatments.'''
     transfersDF = add_dyad_tpa_info(transfersDF)
     transfersDF = add_dyad_evt_info(transfersDF)
     return transfersDF
@@ -192,7 +208,9 @@ def add_dyadAcrossStates(transfersDF):
 def add_nodeHhi(transfersDF):
     '''Calculates the Herfindahl-Hirschman index (HHI) of sending hospital's transfer destinations.
     It is unique to each organization and year and reflects the competitiveness of the receiving hospitals for transfers from this sending organization.
-    The minimum is '''
+    The minimum is 1/N (where N is the number of distinct destinations from the sending organization in that year),
+    achieved when transfers are evenly distributed across destinations; the maximum is 1, achieved when all transfers
+    from the sending organization go to a single destination.'''
     eachDyad = Window.partitionBy(["dyad", "fromTHRU_DT_YEAR"]).orderBy("fromTHRU_DT_YEAR") #dyad includes the year too but I also need to orderBy...
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     transfersDF = (transfersDF
@@ -248,11 +266,13 @@ def add_node_from_to_info(transfersDF):
     return transfersDF
 
 def add_node_hhi_info(transfersDF):
+    '''Adds the HHI for each provider and year and the one for the year prior.'''
     transfersDF = add_nodeHhi(transfersDF)
     transfersDF = staysF.add_column_prior(transfersDF, column="nodeHhi", who="fromORGNPINM", when="fromTHRU_DT_YEAR")
     return transfersDF
 
 def add_dyad_info(transfersDF):
+    '''Adds various columns about each dyad'''
     transfersDF = add_dyad(transfersDF)
     transfersDF = add_dyadVi(transfersDF)
     transfersDF = add_dyadTransferVol(transfersDF)
@@ -265,12 +285,14 @@ def add_dyad_info(transfersDF):
     return transfersDF
 
 def add_node_info(transfersDF):
+    '''Adds various columns about each node'''
     transfersDF = add_node_volume_info(transfersDF)
     transfersDF = add_node_from_to_info(transfersDF)
     transfersDF = add_node_revenue_info(transfersDF)
     return transfersDF
 
 def add_node_and_dyad_info(transfersDF):
+    '''Adds various columns about nodes and dyads'''
     transfersDF = add_node_info(transfersDF)
     transfersDF = add_dyad_info(transfersDF)
     transfersDF = add_node_hhi_info(transfersDF)

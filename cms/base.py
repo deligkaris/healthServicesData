@@ -460,13 +460,13 @@ def add_acuteRenalInjuryFailurePoa(baseDF):
     return baseDF
 
 def add_acidosisDgns(baseDF):
-    aDgnsCodes = ("E872",)
     baseDF = baseDF.withColumn("acidosisDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {aDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
+                               F.when( F.array_contains(F.col("dgnsCodeAll"), "E872"), F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acidosis(baseDF):
     '''Acidosis.
+    Flags rows that contain the ICD10 diagnostic code E872 in dgnsCodeAll.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acidosisDgns(baseDF)
     baseDF = baseDF.withColumn("acidosis", F.when( F.col("acidosisDgns")==1, F.lit(1)).otherwise(F.lit(0)) )
@@ -506,6 +506,7 @@ def add_ecmoPrcdr(baseDF):
 
 def add_ecmo(baseDF):
     '''Extracorporeal membrane oxygenation.
+    Flags rows that contain any ICD10 procedure code in {5A1522F, 5A1522G, 5A1522H} in prcdrCodeAll.
     Reference: https://doi.org/10.1051/ject/2025043'''
     baseDF = add_ecmoPrcdr(baseDF)
     baseDF = baseDF.withColumn("ecmo", F.when( F.col("ecmoPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
@@ -518,6 +519,7 @@ def add_rrtPrcdr(baseDF):
 
 def add_rrt(baseDF):
     '''Renal replacement therapy.
+    Flags rows that contain any ICD10 procedure code starting with 5A1D in prcdrCodeAll.
     Reference: https://journals.lww.com/ccmjournal/abstract/2023/11000/the_relationship_between_hospital_capability_and.4.aspx'''
     baseDF = add_rrtPrcdr(baseDF)
     baseDF = baseDF.withColumn("rrt", F.when( F.col("rrtPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
@@ -562,6 +564,7 @@ def add_endoscopyPrcdr(baseDF):
 
 def add_endoscopy(baseDF):
     '''Endoscopy.
+    Flags rows that contain any ICD10 procedure code from the endoscopy list (defined in add_endoscopyPrcdr) in prcdrCodeAll.
     Reference: https://journals.lww.com/ajg/abstract/2020/03000/safety_of_endoscopy_for_hospitalized_patients_with.14.aspx'''
     baseDF = add_endoscopyPrcdr(baseDF)
     baseDF = baseDF.withColumn("endoscopy", F.when( F.col("endoscopyPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
@@ -1358,7 +1361,8 @@ def add_transferToIn(baseDF):
     return baseDF
 
 def add_transferFromDifferentFacility(baseDF):
-    '''Visits/admissions where the source of the referral was a different facility/hospital.''' 
+    '''Visits/admissions where the source of the referral was a different facility/hospital.
+    Flags rows that have a SRC_ADMS of 4 (transfer from a different hospital).'''
     baseDF = baseDF.withColumn( "transferFromDifferentFacility", F.when( F.col("SRC_ADMS")==4, 1 ).otherwise(0))
     return baseDF
 
@@ -1369,33 +1373,54 @@ def add_transferFromDifferentFacility(baseDF):
 #                          how="left_outer") 
 #    return baseDF
 
-def add_daysDeadAfterThroughDate(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
+def add_daysDeadAfterThroughDate(baseDF):
+    '''Adds daysDeadAfterThroughDate = DEATH_DT_DAY - THRU_DT_DAY (number of days between
+    the claim through date and the patient's death). NULL if the patient has no death date.
+    Assumes add_through_date_info and add_death_date_info (from cms.utilities and cms.mbsf) have been run.'''
     baseDF = (baseDF.withColumn( "daysDeadAfterThroughDate", F.col("DEATH_DT_DAY")-F.col("THRU_DT_DAY")))
     return baseDF
 
-def add_daysDeadAfterAdmissionDate(baseDF): #assumes add_through_date_info and add_death_date_info (both from mbsf.py and base.py) have been run
+def add_daysDeadAfterAdmissionDate(baseDF):
+    '''Adds daysDeadAfterAdmissionDate = DEATH_DT_DAY - ADMSN_DT_DAY (number of days between
+    the claim admission date and the patient's death). NULL if the patient has no death date.
+    Assumes add_admission_date_info and add_death_date_info (from cms.base and cms.mbsf) have been run.'''
     baseDF = (baseDF.withColumn( "daysDeadAfterAdmissionDate", F.col("DEATH_DT_DAY")-F.col("ADMSN_DT_DAY")))
     return baseDF
-            
-def add_90DaysAfterThroughDateDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfter
+
+def add_90DaysAfterThroughDateDead(baseDF):
+    '''90-day mortality flag from the claim through date: 1 if the patient died within 90 days
+    of THRU_DT (inclusive), 0 otherwise (including patients still alive).
+    Assumes add_daysDeadAfterThroughDate has been run.'''
     baseDF = baseDF.withColumn( "90DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 90, 1).otherwise(0))
     return baseDF
 
-def add_30DaysAfterAdmissionDateDead(baseDF): #this is the 30 day mortality flag, assumes I have run add_daysDeadAfter
+def add_30DaysAfterAdmissionDateDead(baseDF):
+    '''30-day mortality flag from the admission date: 1 if the patient died within 30 days
+    of ADMSN_DT (inclusive), 0 otherwise (including patients still alive).
+    Assumes add_daysDeadAfterAdmissionDate has been run.'''
     baseDF = baseDF.withColumn( "30DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 30, 1).otherwise(0))
     return baseDF
 
-def add_90DaysAfterAdmissionDateDead(baseDF): #this is the 90 day mortality flag, assumes I have run add_daysDeadAfter
+def add_90DaysAfterAdmissionDateDead(baseDF):
+    '''90-day mortality flag from the admission date: 1 if the patient died within 90 days
+    of ADMSN_DT (inclusive), 0 otherwise (including patients still alive).
+    Assumes add_daysDeadAfterAdmissionDate has been run.'''
     baseDF = baseDF.withColumn( "90DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 90, 1).otherwise(0))
     return baseDF
 
-def add_365DaysAfterThroughDateDead(baseDF): #this is the 365 day mortality flag
+def add_365DaysAfterThroughDateDead(baseDF):
+    '''365-day mortality flag from the claim through date: 1 if the patient died within 365 days
+    of THRU_DT (inclusive), 0 otherwise (including patients still alive).
+    Assumes add_daysDeadAfterThroughDate has been run.'''
     baseDF = baseDF.withColumn( "365DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 365, 1).otherwise(0))
     return baseDF
 
-def add_365DaysAfterAdmissionDateDead(baseDF): #this is the 365 day mortality flag
+def add_365DaysAfterAdmissionDateDead(baseDF):
+    '''365-day mortality flag from the admission date: 1 if the patient died within 365 days
+    of ADMSN_DT (inclusive), 0 otherwise (including patients still alive).
+    Assumes add_daysDeadAfterAdmissionDate has been run.'''
     baseDF = baseDF.withColumn( "365DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 365, 1).otherwise(0))
-    return baseDF 
+    return baseDF
 
 def add_los(baseDF): #length of stay = los
     #https://resdac.org/cms-data/variables/day-count-length-stay

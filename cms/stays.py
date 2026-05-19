@@ -4,6 +4,7 @@ import cms.revenue as revenueF
 import cms.claims as claimsF
 
 def add_providerStrokeVol(staysDF, stroke="anyStroke"):
+    '''Calculates the stroke volume, number of rows, for each hospital and year'''
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
     staysDF = staysDF.withColumn("providerStrokeVol", F.sum( F.col(stroke) ).over(eachProvider))
     return staysDF
@@ -23,6 +24,8 @@ def add_provider_capability_info(staysDF, col="imv"):
     return staysDF
 
 def add_provider_stroke_treatment_info(staysDF, inpatient=True):
+    '''For each hospital and year, it adds various columns associated with stroke treatment.
+    Outpatient or inpatient stays are different though.'''
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
     staysDF = (staysDF.withColumn("providerTpaMean", F.mean( F.col("tpa") ).over(eachProvider))
                       .withColumn("providerTpaVol", F.sum( F.col("tpa") ).over(eachProvider)))
@@ -32,11 +35,13 @@ def add_provider_stroke_treatment_info(staysDF, inpatient=True):
     return staysDF
 
 def add_provider_stroke_info(staysDF, inpatient=True, stroke="anyStroke"):
+    '''Adds various columns about stroke for each hospital and year.'''
     staysDF = add_provider_stroke_treatment_info(staysDF, inpatient=inpatient)
     staysDF = add_providerStrokeVol(staysDF, stroke=stroke)
     return staysDF
 
 def add_provider_septic_shock_info(staysDF):
+    '''Adds columns about septic shock for each hospital and year'''
     staysDF = add_providerSepticShockVol(staysDF)
     return staysDF
 
@@ -100,6 +105,7 @@ def get_stays(baseDF, summaryDF, claimType="op", opBase=None, opRevenue=None):
     return staysDF
 
 def add_onDayOfFirstStay(staysDF):
+    '''Finds the first admission date for each beneficiary in the dataframe.'''
     eachDsysrtky = Window.partitionBy("DSYSRTKY")
     staysDF = staysDF.withColumn("onDayOfFirstStay", ( F.col("ADMSN_DT_DAY")==F.min(F.col("ADMSN_DT_DAY")).over(eachDsysrtky) ).cast('int'))
     return staysDF
@@ -127,14 +133,18 @@ def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", w
     '''Adds the column's value from the prior year.
     For some organizations the prior year will be 2 years prior because spark will use whatever row is lagging/behind the current one
     so in that case I need to manually change the prior year quantity to null.'''
-    eachWhoWhen = Window.partitionBy([who,when]).orderBy(when)
+    eachWho = Window.partitionBy(who).orderBy(when)
+    eachWhoWhen = Window.partitionBy(who, when)
     staysDF = (staysDF
-              .withColumn("prior", F.lag(when,1).over(eachWhoWhen))
-              .withColumn(column+"Prior", F.lag(column,1).over(eachWhoWhen))
-              .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior")).otherwise(F.lit(None))))
-    return staysDF   
+              .withColumn("prior", F.lag(when,1).over(eachWho))
+              .withColumn(column+"Prior", F.lag(column,1).over(eachWho))
+              .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior")).otherwise(F.lit(None)))
+              #lag fires only on the row-1 of each (who,when) group; broadcast the prior value to every row in the group
+              .withColumn(column+"Prior", F.max(F.col(column+"Prior")).over(eachWhoWhen)))
+    return staysDF
      
 def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockVol"):
+    '''For each hospital and year it addes a column of the variable column for that hospital but from the prior year.'''
     return add_column_prior(staysDF, column=column, who="ORGNPINM", when="THRU_DT_YEAR")
 
 
