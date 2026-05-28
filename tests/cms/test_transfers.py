@@ -2087,3 +2087,909 @@ class TestAddDaysAtHomeInfoTransfers:
         row = result.collect()[0]
         assert row["homeDays90"] == 90
         assert row["homeDays365"] == 365
+
+
+# ============================================================
+# End-to-end pipeline: raw ipBase + ipRevenue rows through the
+# REAL revenue + get_stays chain into get_transfers.
+#
+# Distinct from TestGetTransfersFromSingleProviderStays above,
+# which builds the stays DF by directly joining a per-claim
+# ed/ct/mri flags DF into baseDF and skips:
+#   - get_revenue_info -> get_revenue_summary -> get_claims
+#   - propagate_stay_info / get_unique_stays
+#   - add_provider_revenue_info (window sums over real flags)
+#
+# The helper deliberately runs only the dates + revenue +
+# get_stays + provider_revenue_info chain. The clinical
+# condition enrichers (add_septicShock, add_ishStroke, add_tpa,
+# add_evt, ...) are already exercised end-to-end in test_base.py
+# and test_stays.py and don't need to be retested here -- adding
+# them to this helper produces a logical plan deep enough to
+# saturate the catalyst optimizer at the default JVM heap.
+# ============================================================
+
+def _ip_base_row(dsysrtky, claimno, admsn_dt, thru_dt):
+    """Minimal ipBase row. ORGNPINM is injected by the helper since each
+    stays DF is built per-provider. PROVIDER defaults to "P1" so all rows
+    for the same beneficiary/admission share the propagate_stay_info
+    partition key (DSYSRTKY, PROVIDER, ORGNPINM, ADMSN_DT_DAY)."""
+    return {
+        "DSYSRTKY": dsysrtky,
+        "CLAIMNO": claimno,
+        "PROVIDER": "P1",
+        "ADMSN_DT": admsn_dt,
+        "THRU_DT": thru_dt,
+    }
+
+
+def _ip_rev_row(dsysrtky, claimno, thru_dt, rev_cntr=100):
+    """Minimal ipRevenue row. REV_CNTR=100 by default falls outside every
+    revenue range (ED 450-459, ICU 200-209, CT 350-359, MRI 610-619), so
+    rows that don't care about revenue contribute 0 to every flag."""
+    return {"DSYSRTKY": dsysrtky, "CLAIMNO": claimno,
+            "THRU_DT": thru_dt, "REV_CNTR": rev_cntr}
+
+
+def _real_pipeline_stays_for_provider(spark, *, orgnpinm, sysid, fips, state_fips,
+                                      base_rows, rev_rows):
+    """Build a stays DataFrame for ONE provider by running the revenue +
+    get_stays chain from raw ipBase + ipRevenue rows.
+
+    Stages, matching production for the integration links not otherwise
+    covered by test_base.py / test_stays.py:
+        1. ipBase -> add_through_date_info, add_admission_date_info("ip")
+        2. ipRevenue -> get_revenue_info(inClaim=True) -> revenue summary
+        3. get_stays(base, summary, "ip") -- get_claims + propagate_stay_info
+           + get_unique_stays
+        4. add_provider_revenue_info
+        5. Tag with providerSysId / providerFIPS / providerStateFIPS so the
+           downstream dyadVi / dyadAcrossCounties / dyadAcrossStates branches
+           in get_transfers have inputs to read.
+
+    base_rows: list of _ip_base_row dicts. ORGNPINM is injected by this
+        helper (not by the caller) so a single provider's rows share an NPI.
+    rev_rows: list of _ip_rev_row dicts. Caller must provide one rev row per
+        base CLAIMNO (the left join in get_claims would otherwise leave
+        revenue flags NULL, breaking add_provider_revenue_info's window sums).
+    """
+    from cms.utilities import add_through_date_info
+    from cms.base import add_admission_date_info
+    from cms.revenue import get_revenue_info
+    from cms.stays import get_stays, add_provider_revenue_info
+
+    base_rows = [dict(r, ORGNPINM=orgnpinm) for r in base_rows]
+    baseDF = _make_real_claim_df(spark, "ipBase", base_rows)
+    baseDF = add_through_date_info(baseDF)
+    baseDF = add_admission_date_info(baseDF, "ip")
+
+    revDF = _make_real_claim_df(spark, "ipRevenue", rev_rows)
+    summary = get_revenue_info(revDF, inClaim=True)
+    staysDF = get_stays(baseDF, summary, claimType="ip")
+    staysDF = add_provider_revenue_info(staysDF)
+
+    staysDF = (staysDF
+               .withColumn("providerSysId", F.lit(sysid).cast("int"))
+               .withColumn("providerFIPS", F.lit(fips).cast("string"))
+               .withColumn("providerStateFIPS", F.lit(state_fips).cast("string")))
+    return staysDF
+
+
+class TestEndToEndBaseToTransfersPipeline:
+    """Full-chain tests: raw ipBase + ipRevenue rows -> get_transfers.
+    Complements TestGetTransfersFromSingleProviderStays, which bypasses the
+    real revenue summarization (get_revenue_info -> get_revenue_summary ->
+    get_claims) and the propagate_stay_info / get_unique_stays dedup step."""
+
+    FROM_NPI = 100
+    TO_NPI = 200
+
+    def _from_stays(self, spark, base_rows, rev_rows):
+        return _real_pipeline_stays_for_provider(
+            spark, orgnpinm=self.FROM_NPI, sysid=7,
+            fips="01001", state_fips="01",
+            base_rows=base_rows, rev_rows=rev_rows,
+        )
+
+    def _to_stays(self, spark, base_rows, rev_rows):
+        return _real_pipeline_stays_for_provider(
+            spark, orgnpinm=self.TO_NPI, sysid=8,
+            fips="01003", state_fips="02",
+            base_rows=base_rows, rev_rows=rev_rows,
+        )
+
+    def test_revenue_pipeline_propagates_to_transfer(self, spark):
+        # ED flag on a from-side ipRevenue row (REV_CNTR=455) must traverse
+        # get_revenue_info -> get_revenue_summary -> get_claims ->
+        # propagate_stay_info -> get_unique_stays -> add_provider_revenue_info
+        # -> get_transfers, and land as fromed=1 / fromproviderEdVol=1.
+        from cms.transfers import get_transfers
+        from_df = self._from_stays(
+            spark,
+            base_rows=[_ip_base_row(1, 11, 20200110, 20200115)],
+            rev_rows=[_ip_rev_row(1, 11, 20200115, rev_cntr=455)],
+        )
+        to_df = self._to_stays(
+            spark,
+            base_rows=[_ip_base_row(1, 21, 20200115, 20200120)],
+            rev_rows=[_ip_rev_row(1, 21, 20200120)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromed"] == 1
+        assert r["toed"] == 0
+        assert r["fromproviderEdVol"] == 1
+        assert r["fromproviderEdMean"] == pytest.approx(1.0)
+        assert r["toproviderEdVol"] == 0
+
+    def test_multi_claim_stay_uses_final_discharge_for_transfer(self, spark):
+        # Regression test for commit 7eb53f1 (get_unique_stays picks
+        # max(THRU_DT_DAY), not min(CLAIMNO)).
+        # From-side: TWO ipBase claims for the SAME stay (same DSYSRTKY,
+        # PROVIDER, ORGNPINM, ADMSN_DT). The interim claim has the SMALLER
+        # CLAIMNO (50) and the EARLIER THRU_DT (20200112). The final claim
+        # has the LARGER CLAIMNO (9999) and the LATER THRU_DT (20200120).
+        # To-stay admits 20200121 (1 day after the FINAL discharge, 9 days
+        # after the interim).
+        #   Old min(CLAIMNO) rule -> interim row wins -> 9-day gap -> 0 transfers.
+        #   New max(THRU_DT_DAY) rule -> final row wins -> 1-day gap -> 1 transfer.
+        from cms.transfers import get_transfers
+        from_df = self._from_stays(
+            spark,
+            base_rows=[
+                _ip_base_row(1, 50, 20200110, 20200112),
+                _ip_base_row(1, 9999, 20200110, 20200120),
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 50, 20200112),
+                _ip_rev_row(1, 9999, 20200120),
+            ],
+        )
+        to_df = self._to_stays(
+            spark,
+            base_rows=[_ip_base_row(1, 21, 20200121, 20200125)],
+            rev_rows=[_ip_rev_row(1, 21, 20200125)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromCLAIMNO"] == 9999  # the FINAL (max THRU_DT_DAY) row
+        assert r["fromTHRU_DT"] == 20200120
+        assert r["fromTHRU_DT_YEAR"] == 2020
+
+    def test_dyad_aggregation_with_multiple_destinations(self, spark):
+        # 4 patients all leave hospital 100 in 2020: 3 go to hospital 200,
+        # 1 goes to hospital 300. Verifies node/dyad partitioning when a
+        # sending hospital has multiple destinations -- the existing
+        # TestGetTransfersFromSingleProviderStays only covers a single
+        # destination.
+        #   nodeOutVol(100, 2020) = 4 on every row
+        #   dyadTransferVol(100->200) = 3,  dyadProportionTransfersOut = 0.75
+        #   dyadTransferVol(100->300) = 1,  dyadProportionTransfersOut = 0.25
+        #   nodeHhi(100, 2020) = 0.75^2 + 0.25^2 = 0.625
+        from cms.transfers import get_transfers
+        from_df = self._from_stays(
+            spark,
+            base_rows=[
+                _ip_base_row(1, 11, 20200110, 20200115),
+                _ip_base_row(2, 12, 20200210, 20200215),
+                _ip_base_row(3, 13, 20200310, 20200315),
+                _ip_base_row(4, 14, 20200410, 20200415),
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 11, 20200115),
+                _ip_rev_row(2, 12, 20200215),
+                _ip_rev_row(3, 13, 20200315),
+                _ip_rev_row(4, 14, 20200415),
+            ],
+        )
+        to_b = _real_pipeline_stays_for_provider(
+            spark, orgnpinm=200, sysid=8, fips="01003", state_fips="02",
+            base_rows=[
+                _ip_base_row(1, 21, 20200115, 20200120),
+                _ip_base_row(2, 22, 20200215, 20200220),
+                _ip_base_row(3, 23, 20200315, 20200320),
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 21, 20200120),
+                _ip_rev_row(2, 22, 20200220),
+                _ip_rev_row(3, 23, 20200320),
+            ],
+        )
+        to_c = _real_pipeline_stays_for_provider(
+            spark, orgnpinm=300, sysid=9, fips="01005", state_fips="03",
+            base_rows=[_ip_base_row(4, 24, 20200415, 20200420)],
+            rev_rows=[_ip_rev_row(4, 24, 20200420)],
+        )
+        to_df = to_b.unionByName(to_c)
+
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 4
+        for r in result:
+            assert r["nodeOutVol"] == 4
+            assert r["nodeHhi"] == pytest.approx(0.625)
+        by_to = {200: [], 300: []}
+        for r in result:
+            by_to[r["toORGNPINM"]].append(r)
+        assert len(by_to[200]) == 3
+        assert len(by_to[300]) == 1
+        for r in by_to[200]:
+            assert r["dyadTransferVol"] == 3
+            assert r["dyadProportionTransfersOut"] == pytest.approx(0.75)
+            assert r["dyadProportionTransfersIn"] == pytest.approx(1.0)
+        for r in by_to[300]:
+            assert r["dyadTransferVol"] == 1
+            assert r["dyadProportionTransfersOut"] == pytest.approx(0.25)
+            assert r["dyadProportionTransfersIn"] == pytest.approx(1.0)
+
+    def test_propagate_stay_info_max_across_claims_within_stay(self, spark):
+        # propagate_stay_info should max() the ICU flag across all claims of
+        # the same stay. Setup: the SURVIVING (final) claim has REV_CNTR=100
+        # (no icu); the DROPPED interim claim has REV_CNTR=200 (icu range).
+        # Without propagation, the surviving stay would have icu=0; with
+        # propagation it carries icu=1 from the interim sibling. The
+        # transfer to hospital B should see fromicu=1.
+        from cms.transfers import get_transfers
+        from_df = self._from_stays(
+            spark,
+            base_rows=[
+                _ip_base_row(1, 50, 20200110, 20200112),     # interim
+                _ip_base_row(1, 9999, 20200110, 20200120),   # final (survives)
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 50, 20200112, rev_cntr=200),   # ICU on the interim
+                _ip_rev_row(1, 9999, 20200120, rev_cntr=100), # no ICU on the final
+            ],
+        )
+        to_df = self._to_stays(
+            spark,
+            base_rows=[_ip_base_row(1, 21, 20200121, 20200125)],
+            rev_rows=[_ip_rev_row(1, 21, 20200125)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
+        # If propagate_stay_info ran, icu was maxed onto the surviving row.
+        assert r["fromicu"] == 1
+
+
+# ============================================================
+# Chunked end-to-end pipelines: each test class below adds ONE
+# condition-specific base enricher group (~5 enricher calls,
+# including the two date enrichers) on top of get_revenue_info
+# -> get_stays -> get_transfers. Each helper rebuilds from raw
+# ipBase rows so its catalyst plan stays shallow enough not to
+# saturate the optimizer.
+#
+# Helpers that touch the 25-element array columns dgnsCodeAll /
+# prcdrCodeAll (used by add_septicShock / add_tpa / add_evt)
+# pay an extra round-trip through Parquet at the baseDF
+# boundary -- the arrays_overlap / filter expressions on those
+# columns + propagate_stay_info + get_transfers produce a plan
+# catalyst can't process even at large heap, and
+# localCheckpoint(eager=True) is not enough to break the
+# lineage cleanly. The ishStroke chunk uses only scalar
+# PRNCPAL_DGNS_CD / DRG_CD inputs and a single
+# localCheckpoint suffices.
+#
+# Together the four classes cover the clinical enricher chain
+# production uses for stroke / septic-shock transfer analyses.
+# ============================================================
+
+def _ip_base_row_with_codes(dsysrtky, claimno, admsn_dt, thru_dt, *,
+                            prncpal_dgns_cd=None, drg_cd=None,
+                            icd_dgns_cd1=None, icd_prcdr_cd1=None):
+    """ipBase row with the optional code columns the clinical enrichers read.
+    Distinct from _ip_base_row so the simpler revenue-only / multi-claim /
+    dyad / propagate tests above keep their tight row shape."""
+    return {
+        "DSYSRTKY": dsysrtky,
+        "CLAIMNO": claimno,
+        "PROVIDER": "P1",
+        "ADMSN_DT": admsn_dt,
+        "THRU_DT": thru_dt,
+        "PRNCPAL_DGNS_CD": prncpal_dgns_cd,
+        "DRG_CD": drg_cd,
+        "ICD_DGNS_CD1": icd_dgns_cd1,
+        "ICD_PRCDR_CD1": icd_prcdr_cd1,
+    }
+
+
+def _setup_base_and_revenue(spark, *, orgnpinm, base_rows, rev_rows):
+    """Shared head of each chunked pipeline: build baseDF with dates and
+    revenue summary. Returns (baseDF_after_dates, revenue_summary). Caller
+    adds its condition-specific enrichers in between."""
+    from cms.utilities import add_through_date_info
+    from cms.base import add_admission_date_info
+    from cms.revenue import get_revenue_info
+
+    base_rows = [dict(r, ORGNPINM=orgnpinm) for r in base_rows]
+    baseDF = _make_real_claim_df(spark, "ipBase", base_rows)
+    baseDF = add_through_date_info(baseDF)
+    baseDF = add_admission_date_info(baseDF, "ip")
+    revDF = _make_real_claim_df(spark, "ipRevenue", rev_rows)
+    summary = get_revenue_info(revDF, inClaim=True)
+    return baseDF, summary
+
+
+def _tag_provider_attrs(staysDF, sysid, fips, state_fips):
+    """Attach the provider attributes that get_transfers' dyad chain reads
+    (dyadVi -> providerSysId, dyadAcrossCounties -> providerFIPS,
+    dyadAcrossStates -> providerStateFIPS)."""
+    return (staysDF
+            .withColumn("providerSysId", F.lit(sysid).cast("int"))
+            .withColumn("providerFIPS", F.lit(fips).cast("string"))
+            .withColumn("providerStateFIPS", F.lit(state_fips).cast("string")))
+
+
+# ============================================================
+# Septic shock chunk: dates + dgnsCodeAll + add_septicShock
+# -> get_stays -> add_provider_septic_shock_info -> get_transfers
+# ============================================================
+
+def _run_septic_shock_stays_for_provider(spark, *, orgnpinm, sysid, fips, state_fips,
+                                         base_rows, rev_rows):
+    from cms.base import add_dgnsCodeAll, add_septicShock
+    from cms.stays import get_stays, add_provider_septic_shock_info
+
+    baseDF, summary = _setup_base_and_revenue(
+        spark, orgnpinm=orgnpinm, base_rows=base_rows, rev_rows=rev_rows)
+    baseDF = add_dgnsCodeAll(baseDF)
+    baseDF = add_septicShock(baseDF)
+    # dgnsCodeAll's 25-element-array + arrays_overlap expression saturates
+    # catalyst when combined with propagate_stay_info + get_transfers. Write
+    # baseDF to Parquet and read it back: this is the most reliable way to
+    # cut catalyst lineage cleanly. localCheckpoint(eager=True) is not
+    # enough -- the optimizer still walks the array expression somehow.
+    import tempfile, shutil, os as _os
+    tmpdir = tempfile.mkdtemp(prefix="septic_base_")
+    parquet_path = _os.path.join(tmpdir, "base.parquet")
+    baseDF.drop("dgnsCodeAll").write.mode("overwrite").parquet(parquet_path)
+    baseDF = spark.read.parquet(parquet_path)
+
+    staysDF = get_stays(baseDF, summary, claimType="ip")
+    staysDF = add_provider_septic_shock_info(staysDF)
+    return _tag_provider_attrs(staysDF, sysid, fips, state_fips)
+
+
+class TestSepticShockPipeline:
+    """End-to-end: ICD_DGNS_CD1='R6521' on a base claim flows through
+    add_dgnsCodeAll -> add_septicShock -> propagate_stay_info ->
+    add_provider_septic_shock_info -> get_transfers."""
+
+    FROM_NPI = 100
+    TO_NPI = 200
+
+    def _from(self, spark, base_rows, rev_rows):
+        return _run_septic_shock_stays_for_provider(
+            spark, orgnpinm=self.FROM_NPI, sysid=7,
+            fips="01001", state_fips="01",
+            base_rows=base_rows, rev_rows=rev_rows)
+
+    def _to(self, spark, base_rows, rev_rows):
+        return _run_septic_shock_stays_for_provider(
+            spark, orgnpinm=self.TO_NPI, sysid=8,
+            fips="01003", state_fips="02",
+            base_rows=base_rows, rev_rows=rev_rows)
+
+    def test_septic_shock_flag_propagates_to_transfer(self, spark):
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 11, 20200110, 20200115,
+                                               icd_dgns_cd1="R6521")],
+            rev_rows=[_ip_rev_row(1, 11, 20200115)],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
+            rev_rows=[_ip_rev_row(1, 21, 20200120)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromsepticShock"] == 1
+        assert r["tosepticShock"] == 0
+        assert r["fromproviderSepticShockVol"] == 1
+        assert r["toproviderSepticShockVol"] == 0
+
+    def test_provider_volume_aggregates_across_patients_in_year(self, spark):
+        # 3 patients at hospital 100 in 2020: patients 1 & 2 are R6521 (septic
+        # shock), patient 3 is not. Each transfers to hospital 200. After
+        # provider_septic_shock_info windows the count over (ORGNPINM,
+        # THRU_DT_YEAR), every from-row should see providerSepticShockVol == 2.
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[
+                _ip_base_row_with_codes(1, 11, 20200110, 20200115,
+                                        icd_dgns_cd1="R6521"),
+                _ip_base_row_with_codes(2, 12, 20200210, 20200215,
+                                        icd_dgns_cd1="R6521"),
+                _ip_base_row_with_codes(3, 13, 20200310, 20200315,
+                                        icd_dgns_cd1="I10"),
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 11, 20200115),
+                _ip_rev_row(2, 12, 20200215),
+                _ip_rev_row(3, 13, 20200315),
+            ],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[
+                _ip_base_row_with_codes(1, 21, 20200115, 20200120),
+                _ip_base_row_with_codes(2, 22, 20200215, 20200220),
+                _ip_base_row_with_codes(3, 23, 20200315, 20200320),
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 21, 20200120),
+                _ip_rev_row(2, 22, 20200220),
+                _ip_rev_row(3, 23, 20200320),
+            ],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 3
+        for r in result:
+            assert r["fromproviderSepticShockVol"] == 2
+        septic_claims = {r["fromCLAIMNO"] for r in result if r["fromsepticShock"] == 1}
+        assert septic_claims == {11, 12}
+
+    def test_septic_shock_propagates_across_multi_claim_stay(self, spark):
+        # Multi-claim stay at hospital 100 (same DSYSRTKY=1, PROVIDER='P1',
+        # ORGNPINM=100, ADMSN_DT=20200110):
+        #   Interim claim (CLAIMNO=50, THRU_DT=20200112) has ICD_DGNS_CD1='R6521' -> septicShock=1
+        #   Final claim   (CLAIMNO=9999, THRU_DT=20200120) has ICD_DGNS_CD1='I10' -> septicShock=0
+        # get_unique_stays picks the latest THRU_DT_DAY row (CLAIMNO=9999),
+        # but propagate_stay_info maxes septicShock across the stay BEFORE
+        # the dedup -- so the surviving row carries the flag from its
+        # interim sibling.
+        # Without propagate_stay_info, fromsepticShock would be 0 and
+        # fromproviderSepticShockVol would be 0.
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[
+                _ip_base_row_with_codes(1, 50, 20200110, 20200112,
+                                        icd_dgns_cd1="R6521"),    # interim, septic shock
+                _ip_base_row_with_codes(1, 9999, 20200110, 20200120,
+                                        icd_dgns_cd1="I10"),       # final, no septic shock
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 50, 20200112),
+                _ip_rev_row(1, 9999, 20200120),
+            ],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
+            rev_rows=[_ip_rev_row(1, 21, 20200125)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        # Final row survived the dedup (max THRU_DT_DAY).
+        assert r["fromCLAIMNO"] == 9999
+        # propagate_stay_info maxed septicShock onto the surviving row.
+        assert r["fromsepticShock"] == 1
+        # And add_providerSepticShockVol's window sum (= 1 surviving stay
+        # with septicShock=1) reflects the propagation.
+        assert r["fromproviderSepticShockVol"] == 1
+
+
+# ============================================================
+# Ischemic-stroke chunk: dates + add_ishStroke(inpatient=True)
+# + add_anyStroke -> get_stays -> add_providerStrokeVol -> get_transfers
+# ============================================================
+
+def _run_ish_stroke_stays_for_provider(spark, *, orgnpinm, sysid, fips, state_fips,
+                                       base_rows, rev_rows):
+    from cms.base import add_ishStroke, add_anyStroke
+    from cms.stays import get_stays, add_providerStrokeVol
+
+    baseDF, summary = _setup_base_and_revenue(
+        spark, orgnpinm=orgnpinm, base_rows=base_rows, rev_rows=rev_rows)
+    # add_ishStroke(inpatient=True) reads PRNCPAL_DGNS_CD and DRG_CD; adds
+    # ishStrokeDgns + ishStrokeDrg + ishStroke (3 withColumns).
+    baseDF = add_ishStroke(baseDF, inpatient=True)
+    # add_anyStroke ORs whichever stroke flags are already present; with only
+    # ishStroke set, anyStroke == ishStroke.
+    baseDF = add_anyStroke(baseDF)
+    baseDF = baseDF.localCheckpoint(eager=True)
+
+    staysDF = get_stays(baseDF, summary, claimType="ip")
+    staysDF = add_providerStrokeVol(staysDF, stroke="anyStroke")
+    return _tag_provider_attrs(staysDF, sysid, fips, state_fips)
+
+
+class TestIshStrokePipeline:
+    """End-to-end: PRNCPAL_DGNS_CD='I63...' OR DRG_CD in {61,62,63} flows
+    through add_ishStroke -> add_anyStroke -> propagate_stay_info ->
+    add_providerStrokeVol -> get_transfers. Both detection paths
+    (diagnosis-driven and DRG-driven) are exercised."""
+
+    FROM_NPI = 100
+    TO_NPI = 200
+
+    def _from(self, spark, base_rows, rev_rows):
+        return _run_ish_stroke_stays_for_provider(
+            spark, orgnpinm=self.FROM_NPI, sysid=7,
+            fips="01001", state_fips="01",
+            base_rows=base_rows, rev_rows=rev_rows)
+
+    def _to(self, spark, base_rows, rev_rows):
+        return _run_ish_stroke_stays_for_provider(
+            spark, orgnpinm=self.TO_NPI, sysid=8,
+            fips="01003", state_fips="02",
+            base_rows=base_rows, rev_rows=rev_rows)
+
+    def test_ish_stroke_via_principal_diagnosis(self, spark):
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 11, 20200110, 20200115,
+                                               prncpal_dgns_cd="I63")],
+            rev_rows=[_ip_rev_row(1, 11, 20200115)],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
+            rev_rows=[_ip_rev_row(1, 21, 20200120)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromishStrokeDgns"] == 1
+        assert r["fromishStroke"] == 1
+        assert r["fromanyStroke"] == 1
+        assert r["fromproviderStrokeVol"] == 1
+        assert r["toishStroke"] == 0
+        assert r["toproviderStrokeVol"] == 0
+
+    def test_ish_stroke_via_drg_code(self, spark):
+        # DRG_CD 61 sets ishStrokeDrg=1 even with no PRNCPAL_DGNS_CD;
+        # add_ishStroke(inpatient=True) ORs the two predicates.
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 11, 20200110, 20200115,
+                                               drg_cd=61)],
+            rev_rows=[_ip_rev_row(1, 11, 20200115)],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
+            rev_rows=[_ip_rev_row(1, 21, 20200120)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromishStrokeDgns"] == 0
+        assert r["fromishStrokeDrg"] == 1
+        assert r["fromishStroke"] == 1
+        assert r["fromanyStroke"] == 1
+        assert r["fromproviderStrokeVol"] == 1
+
+    def test_ish_stroke_propagates_across_multi_claim_stay(self, spark):
+        # Multi-claim stay at hospital 100 (same DSYSRTKY=1, ADMSN_DT=20200110):
+        #   Interim (CLAIMNO=50, THRU_DT=20200112): PRNCPAL_DGNS_CD='I63'  -> ishStroke=1, anyStroke=1
+        #   Final   (CLAIMNO=9999, THRU_DT=20200120): no stroke code        -> ishStroke=0, anyStroke=0
+        # propagate_stay_info now uses schema-diff (any enricher-added
+        # numeric column that's not in the raw ipBase schema), so
+        # ishStrokeDgns / ishStroke / anyStroke ALL get maxed onto the
+        # surviving final row -- not just the columns from the old
+        # hardcoded allowlist. providerStrokeVol's window sum reflects the
+        # propagated anyStroke.
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[
+                _ip_base_row_with_codes(1, 50, 20200110, 20200112,
+                                        prncpal_dgns_cd="I63"),
+                _ip_base_row_with_codes(1, 9999, 20200110, 20200120),
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 50, 20200112),
+                _ip_rev_row(1, 9999, 20200120),
+            ],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
+            rev_rows=[_ip_rev_row(1, 21, 20200125)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
+        # propagate_stay_info maxed each of these onto the surviving row.
+        assert r["fromishStrokeDgns"] == 1
+        assert r["fromishStroke"] == 1
+        assert r["fromanyStroke"] == 1
+        assert r["fromproviderStrokeVol"] == 1
+
+
+# ============================================================
+# tPA chunk: dates + add_dgnsCodeAll + add_prcdrCodeAll +
+# add_tpa(inpatient=True) -> get_stays ->
+# add_provider_stroke_treatment_info(inpatient=False) -> get_transfers
+#
+# inpatient=False on provider_stroke_treatment_info skips the
+# evt mean/vol additions (those need an evt column we don't add
+# in this chunk) and gives us only providerTpaMean / providerTpaVol.
+# ============================================================
+
+def _run_tpa_stays_for_provider(spark, *, orgnpinm, sysid, fips, state_fips,
+                                base_rows, rev_rows):
+    from cms.base import add_dgnsCodeAll, add_prcdrCodeAll, add_tpa
+    from cms.stays import get_stays, add_provider_stroke_treatment_info
+
+    baseDF, summary = _setup_base_and_revenue(
+        spark, orgnpinm=orgnpinm, base_rows=base_rows, rev_rows=rev_rows)
+    baseDF = add_dgnsCodeAll(baseDF)
+    baseDF = add_prcdrCodeAll(baseDF)
+    # add_tpa(inpatient=True) internally adds tpaPrcdr, tpaDgns, tpaDrg, tpa.
+    baseDF = add_tpa(baseDF, inpatient=True)
+    # The 25-element array cols (dgnsCodeAll, prcdrCodeAll) + their filter/
+    # arrays_overlap expressions through propagate_stay_info + get_transfers
+    # saturate catalyst even at large heap. Parquet round-trip cleanly cuts
+    # lineage; localCheckpoint alone is not enough.
+    import tempfile, os as _os
+    tmpdir = tempfile.mkdtemp(prefix="tpa_base_")
+    parquet_path = _os.path.join(tmpdir, "base.parquet")
+    baseDF.drop("dgnsCodeAll", "prcdrCodeAll").write.mode("overwrite").parquet(parquet_path)
+    baseDF = spark.read.parquet(parquet_path)
+
+    staysDF = get_stays(baseDF, summary, claimType="ip")
+    staysDF = add_provider_stroke_treatment_info(staysDF, inpatient=False)
+    return _tag_provider_attrs(staysDF, sysid, fips, state_fips)
+
+
+class TestTpaPipeline:
+    """End-to-end: the three detection paths into add_tpa flow through to
+    fromtpa and fromproviderTpaVol on the transfer:
+      - ICD_PRCDR_CD = '3E03317'           (tpaPrcdr)
+      - ICD_DGNS_CD = 'Z9282'              (tpaDgns)
+      - DRG_CD in {61, 62, 63}             (tpaDrg)"""
+
+    FROM_NPI = 100
+    TO_NPI = 200
+
+    def _from(self, spark, base_rows, rev_rows):
+        return _run_tpa_stays_for_provider(
+            spark, orgnpinm=self.FROM_NPI, sysid=7,
+            fips="01001", state_fips="01",
+            base_rows=base_rows, rev_rows=rev_rows)
+
+    def _to(self, spark, base_rows, rev_rows):
+        return _run_tpa_stays_for_provider(
+            spark, orgnpinm=self.TO_NPI, sysid=8,
+            fips="01003", state_fips="02",
+            base_rows=base_rows, rev_rows=rev_rows)
+
+    def test_tpa_via_procedure_code(self, spark):
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 11, 20200110, 20200115,
+                                               icd_prcdr_cd1="3E03317")],
+            rev_rows=[_ip_rev_row(1, 11, 20200115)],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
+            rev_rows=[_ip_rev_row(1, 21, 20200120)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromtpaPrcdr"] == 1
+        assert r["fromtpa"] == 1
+        assert r["fromproviderTpaVol"] == 1
+        assert r["totpa"] == 0
+        assert r["toproviderTpaVol"] == 0
+
+    def test_tpa_via_drg_code(self, spark):
+        # DRG 62 alone triggers tpaDrg=1 (and thus tpa=1) per add_tpaDrg's
+        # tpaDrgCodes=[61,62,63] branch.
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 11, 20200110, 20200115,
+                                               drg_cd=62)],
+            rev_rows=[_ip_rev_row(1, 11, 20200115)],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
+            rev_rows=[_ip_rev_row(1, 21, 20200120)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromtpaPrcdr"] == 0
+        assert r["fromtpaDrg"] == 1
+        assert r["fromtpa"] == 1
+        assert r["fromproviderTpaVol"] == 1
+
+    def test_tpa_propagates_across_multi_claim_stay(self, spark):
+        # Multi-claim stay at hospital 100 (same DSYSRTKY=1, ADMSN_DT=20200110):
+        #   Interim (CLAIMNO=50, THRU_DT=20200112): ICD_PRCDR_CD1='3E03317' -> tpa=1
+        #   Final   (CLAIMNO=9999, THRU_DT=20200120): no tpa codes           -> tpa=0
+        # propagate_stay_info maxes tpa across the stay before dedup; the
+        # surviving final row inherits the flag. providerTpaVol = sum(tpa)
+        # over (ORGNPINM, year) = 1 because the surviving stay has tpa=1.
+        # Without propagate, fromtpa=0 and fromproviderTpaVol=0.
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[
+                _ip_base_row_with_codes(1, 50, 20200110, 20200112,
+                                        icd_prcdr_cd1="3E03317"),
+                _ip_base_row_with_codes(1, 9999, 20200110, 20200120),
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 50, 20200112),
+                _ip_rev_row(1, 9999, 20200120),
+            ],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
+            rev_rows=[_ip_rev_row(1, 21, 20200125)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
+        # propagate_stay_info maxed tpa onto the surviving row.
+        assert r["fromtpaPrcdr"] == 1
+        assert r["fromtpa"] == 1
+        assert r["fromproviderTpaVol"] == 1
+
+
+# ============================================================
+# EVT chunk: dates + add_prcdrCodeAll + add_ishStrokeDgns +
+# add_evt -> get_stays -> get_transfers
+#
+# add_evt -> add_evtDrg -> add_ccvPrcdr (needs prcdrCodeAll)
+# AND add_evtDrg also reads ishStrokeDgns, which add_evt does NOT
+# build itself -- so the helper calls add_ishStrokeDgns first.
+# Providers don't get a dedicated add_providerEvtVol in stays.py;
+# add_provider_stroke_treatment_info bundles evt with tpa. To
+# keep this chunk independent of tpa we compute providerEvtVol
+# inline with a window sum (the same shape stays.py uses).
+# ============================================================
+
+def _run_evt_stays_for_provider(spark, *, orgnpinm, sysid, fips, state_fips,
+                                base_rows, rev_rows):
+    from pyspark.sql.window import Window
+    from cms.base import add_prcdrCodeAll, add_ishStrokeDgns, add_evt
+    from cms.stays import get_stays
+
+    baseDF, summary = _setup_base_and_revenue(
+        spark, orgnpinm=orgnpinm, base_rows=base_rows, rev_rows=rev_rows)
+    baseDF = add_prcdrCodeAll(baseDF)
+    baseDF = add_ishStrokeDgns(baseDF)
+    # add_evt internally adds ccvPrcdr, evtDrg, evtPrcdr, evt.
+    baseDF = add_evt(baseDF)
+    # prcdrCodeAll's 25-element-array + arrays_overlap expressions through
+    # propagate_stay_info + get_transfers saturate catalyst. Parquet
+    # round-trip cleanly cuts lineage; localCheckpoint alone is not enough.
+    import tempfile, os as _os
+    tmpdir = tempfile.mkdtemp(prefix="evt_base_")
+    parquet_path = _os.path.join(tmpdir, "base.parquet")
+    baseDF.drop("prcdrCodeAll").write.mode("overwrite").parquet(parquet_path)
+    baseDF = spark.read.parquet(parquet_path)
+
+    staysDF = get_stays(baseDF, summary, claimType="ip")
+    # No add_providerEvtVol exists in stays.py independently of tpa, so add
+    # the window sum directly -- same partition shape as add_provider_*Vol.
+    eachProvider = Window.partitionBy(["ORGNPINM", "THRU_DT_YEAR"])
+    staysDF = staysDF.withColumn(
+        "providerEvtVol", F.sum(F.col("evt")).over(eachProvider))
+    return _tag_provider_attrs(staysDF, sysid, fips, state_fips)
+
+
+class TestEvtPipeline:
+    """End-to-end: the two detection paths into add_evt flow through to
+    fromevt and fromproviderEvtVol on the transfer:
+      - ICD_PRCDR_CD in the EVT thrombectomy code set ('03CG3ZZ' etc.) -> evtPrcdr
+      - DRG_CD in {23,24} with PRNCPAL_DGNS_CD ~ I63 and no ccvPrcdr -> evtDrg"""
+
+    FROM_NPI = 100
+    TO_NPI = 200
+
+    def _from(self, spark, base_rows, rev_rows):
+        return _run_evt_stays_for_provider(
+            spark, orgnpinm=self.FROM_NPI, sysid=7,
+            fips="01001", state_fips="01",
+            base_rows=base_rows, rev_rows=rev_rows)
+
+    def _to(self, spark, base_rows, rev_rows):
+        return _run_evt_stays_for_provider(
+            spark, orgnpinm=self.TO_NPI, sysid=8,
+            fips="01003", state_fips="02",
+            base_rows=base_rows, rev_rows=rev_rows)
+
+    def test_evt_via_procedure_code(self, spark):
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 11, 20200110, 20200115,
+                                               icd_prcdr_cd1="03CG3ZZ")],
+            rev_rows=[_ip_rev_row(1, 11, 20200115)],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
+            rev_rows=[_ip_rev_row(1, 21, 20200120)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromevtPrcdr"] == 1
+        assert r["fromevt"] == 1
+        assert r["fromproviderEvtVol"] == 1
+        assert r["toevt"] == 0
+        assert r["toproviderEvtVol"] == 0
+
+    def test_evt_via_drg_with_ischemic_stroke(self, spark):
+        # DRG 23 + ishStrokeDgns=1 (PRNCPAL_DGNS_CD='I63') + no ccvPrcdr -> evtDrg=1.
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 11, 20200110, 20200115,
+                                               prncpal_dgns_cd="I63",
+                                               drg_cd=23)],
+            rev_rows=[_ip_rev_row(1, 11, 20200115)],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
+            rev_rows=[_ip_rev_row(1, 21, 20200120)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromevtDrg"] == 1
+        assert r["fromevtPrcdr"] == 0
+        assert r["fromevt"] == 1
+        assert r["fromproviderEvtVol"] == 1
+
+    def test_evt_propagates_across_multi_claim_stay(self, spark):
+        # Multi-claim stay at hospital 100 (same DSYSRTKY=1, ADMSN_DT=20200110):
+        #   Interim (CLAIMNO=50, THRU_DT=20200112): ICD_PRCDR_CD1='03CG3ZZ' -> evt=1
+        #   Final   (CLAIMNO=9999, THRU_DT=20200120): no evt codes           -> evt=0
+        # propagate_stay_info maxes evt (and evtPrcdr) across the stay
+        # before dedup; the surviving final row inherits the flag.
+        # providerEvtVol = sum(evt) over (ORGNPINM, year) = 1.
+        # Without propagate, fromevt=0 and fromproviderEvtVol=0.
+        from cms.transfers import get_transfers
+        from_df = self._from(
+            spark,
+            base_rows=[
+                _ip_base_row_with_codes(1, 50, 20200110, 20200112,
+                                        icd_prcdr_cd1="03CG3ZZ"),
+                _ip_base_row_with_codes(1, 9999, 20200110, 20200120),
+            ],
+            rev_rows=[
+                _ip_rev_row(1, 50, 20200112),
+                _ip_rev_row(1, 9999, 20200120),
+            ],
+        )
+        to_df = self._to(
+            spark,
+            base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
+            rev_rows=[_ip_rev_row(1, 21, 20200125)],
+        )
+        result = get_transfers(from_df, to_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
+        # propagate_stay_info maxed evt onto the surviving row.
+        assert r["fromevtPrcdr"] == 1
+        assert r["fromevt"] == 1
+        assert r["fromproviderEvtVol"] == 1

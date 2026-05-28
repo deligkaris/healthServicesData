@@ -56,27 +56,77 @@ def add_provider_revenue_info(staysDF):
                       .withColumn("providerMriVol", F.sum( F.col("mri") ).over(eachProvider)))
     return staysDF
 
-def propagate_stay_info(claimsDF, claimType="op"):
-    '''Assumes claimType either op or ip.
+# Date components added by add_admission_date_info / add_through_date_info /
+# add_discharge_date_info / add_death_date_info. They are enricher-added
+# numerics that would otherwise satisfy schema-diff, but they MUST NOT be
+# propagated across a stay because:
+#   * THRU_DT_DAY is the orderBy key for get_unique_stays' dedup. Maxing it
+#     collapses the desc(THRU_DT_DAY) clause to a tie, which falls through to
+#     asc(CLAIMNO) and picks the interim claim instead of the final discharge
+#     -- the exact bug commit 7eb53f1 fixed.
+#   * The other date components are identity-bearing per-row data, not flags;
+#     max() across the stay would corrupt the surviving row's date metadata.
+_DEDUP_BREAKING_DATE_COLUMNS = frozenset({
+    "ADMSN_DT_DAY", "ADMSN_DT_YEAR", "ADMSN_DT_MONTH",
+    "THRU_DT_DAY", "THRU_DT_YEAR", "THRU_DT_MONTH",
+    "DSCHRGDT_DAY", "DSCHRGDT_YEAR",
+    "DEATH_DT_DAY",
+})
+
+
+def get_columns_to_propagate(fields, claimType="op", exclude=()):
+    '''Returns the names of the columns in `fields` that are safe to max()
+    across a stay -- the enricher-added numeric columns minus the date
+    components used by the get_unique_stays dedup.
+
+    "Enricher-added" means the column is NOT in the raw
+    cms.schemas.schemas[claimType+"Base"] schema, so add_ishStroke /
+    add_septicShock / add_anyStroke / revenue summary columns
+    (ed/ct/mri/icu) / etc. are all included by construction. Raw CMS fields
+    (CLAIMNO, PRNCPAL_DGNS_CD, REV_CNTR, ...) are filtered out because the
+    surviving row should keep its own identity.
+
+    Restricting to numeric types avoids erroring on array enricher outputs
+    (dgnsCodeAll, prcdrCodeAll, ...).
+
+    Date-derived columns (THRU_DT_DAY, ADMSN_DT_DAY, ...) are always skipped
+    -- see _DEDUP_BREAKING_DATE_COLUMNS for the full set and why.
+
+    `fields`: iterable of StructField objects (e.g. claimsDF.schema.fields).
+    Passing the schema fields rather than the DataFrame keeps this helper
+    pure / independently testable -- and it only needs the names and types.
+    `exclude`: optional iterable of additional column names to skip. Use for
+    the rare enricher-added numeric where max() is not the right
+    aggregation (e.g. a sum-style metric).'''
+    from pyspark.sql.types import (
+        IntegerType, LongType, ShortType, ByteType, DoubleType, FloatType)
+    from cms.schemas import schemas
+    raw_cols = set(schemas[claimType + "Base"].fieldNames())
+    excluded = _DEDUP_BREAKING_DATE_COLUMNS | set(exclude)
+    numeric = (IntegerType, LongType, ShortType, ByteType, DoubleType, FloatType)
+    return [f.name for f in fields
+            if f.name not in raw_cols
+            and f.name not in excluded
+            and isinstance(f.dataType, numeric)]
+
+
+def propagate_stay_info(claimsDF, claimType="op", exclude=()):
+    '''For each enricher-added numeric column (see get_columns_to_propagate),
+    replace every row's value with max() over the stay's window so that all
+    claims belonging to the same stay carry the union of flags before dedup.
+
+    Assumes claimType either op or ip.
     This function has not been tested for use with snf, hha, or hosp claims.'''
     #some claims may have same dsysrtky, provider, npi, admission date, and one of the 2 or more claims will have a null discharge date,
     #perhaps because when the claim was created they did not know the discharge date
     eachIpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "ADMSN_DT_DAY") # "DSCHRGDT_DAY")
     eachOpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "THRU_DT_DAY")
     eachStay = eachIpStay if claimType=="ip" else eachOpStay
-    #most columns are 0/1 but nihss is not
-    #however, when more than 1 claims are the same stay, they have the same nihss, for 2016 and 17 at least, so this works for nihss too
-    columnsToPropagate = ["ishStrokeDgns", "ishStrokeDrg", "ishStroke", "tpaPrcdr", "tpaDgns", "tpaDrg", "tpa", "ccvPrcdr", "evtDrg",
-                        "evtPrcdr", "evt", "icu", "ed", "mri", "ct", "nihss", "nihssGroup", "diedInVisit", "dischargeHomeWithin2Days",
-                        "septicShock", "majorDiagnosticOrTherapeuticOrProcedures", "rrt", "imv", "transferToIn", "transferFromDifferentFacility"]
-    print("Note: columns aggregated over all claims that comprise a single stay/visit are...", end="")
-    colsDone = list()
+    columnsToPropagate = get_columns_to_propagate(claimsDF.schema.fields, claimType=claimType, exclude=exclude)
     for col in columnsToPropagate:
-        if col in claimsDF.columns: #use in order to apply all claim types
-            claimsDF = claimsDF.withColumn(col, F.max(F.col(col)).over(eachStay))
-            colsDone += [col]
-    colsDoneString = ",".join(colsDone)
-    print(colsDoneString+"...check your dataframe's schema to see if any columns should have been propagated and were not...")
+        claimsDF = claimsDF.withColumn(col, F.max(F.col(col)).over(eachStay))
+    print("Note: columns aggregated over all claims that comprise a single stay/visit are..."
+          + ",".join(columnsToPropagate) + "...")
     return claimsDF
 
 def get_unique_stays(claimsDF, claimType="op"):
