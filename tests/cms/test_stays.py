@@ -923,23 +923,88 @@ class TestPropagateStayInfo:
 
 class TestGetUniqueStays:
 
-    def test_returns_min_claimno_per_stay(self, spark):
-        # Two claims in the same ip stay -> the one with the smallest CLAIMNO survives.
+    def test_keeps_latest_thru_row_per_stay(self, spark):
+        # Two claims in the same ip stay -> the one with the latest THRU_DT survives
+        # (it represents the final billed portion of the stay). The smaller CLAIMNO
+        # belongs to the earlier interim bill and is dropped.
+        from cms.stays import get_unique_stays
+        rows = [
+            _stay_row(5, dsysrtky=1, orgnpinm=100, admsn_dt=20200115,
+                      thru_dt=20200120, prcdr=_TPA_PRCDR_CODE,
+                      dgns=_ISH_STROKE_DGNS_CODE),
+            _stay_row(10, dsysrtky=1, orgnpinm=100, admsn_dt=20200115,
+                       thru_dt=20200125, dgns=_ISH_STROKE_DGNS_CODE),
+        ]
+        df = _run_ip_stay_pipeline(spark, rows)
+        out = get_unique_stays(df, claimType="ip").collect()
+        assert len(out) == 1
+        assert out[0]["CLAIMNO"] == 10  # latest THRU_DT, not min(CLAIMNO)
+        assert out[0]["THRU_DT"] == 20200125
+        # Information was propagated before the dedup, so the surviving row
+        # carries the tpa=1 from the dropped sibling claim.
+        assert out[0]["tpa"] == 1
+
+    def test_interim_billed_ip_stay_keeps_latest_discharge_across_years(self, spark):
+        # Interim institutional billing: every interim claim repeats the original
+        # ADMSN_DT and advances THRU_DT. CLAIMNO resets every year, so the 2021
+        # final bill can carry a smaller CLAIMNO than the 2017 first bill.
+        # Old rule (min CLAIMNO) would pick whichever claim happened to have the
+        # smallest raw CLAIMNO across years; new rule picks the row with the
+        # latest THRU_DT_DAY regardless of CLAIMNO, so the stay's surviving
+        # discharge is genuinely the final discharge.
+        from cms.stays import get_unique_stays
+        rows = [
+            # 2017 first interim bill: large CLAIMNO from late in 2017's sequence.
+            _stay_row(9999, dsysrtky=1, orgnpinm=100, admsn_dt=20170315,
+                      thru_dt=20170415, dgns="I10"),
+            # 2021 final bill: small CLAIMNO from early in 2021's sequence.
+            _stay_row(50, dsysrtky=1, orgnpinm=100, admsn_dt=20170315,
+                      thru_dt=20210315, dgns="I10"),
+        ]
+        df = _run_ip_stay_pipeline(spark, rows)
+        out = get_unique_stays(df, claimType="ip").collect()
+        assert len(out) == 1
+        # Latest THRU wins -- CLAIMNO=50 here -- so the old min(CLAIMNO) rule
+        # would coincidentally agree on this row but for the wrong reason.
+        # The discriminating assertions are on the dates: the surviving row
+        # carries the 2021 final discharge, not the 2017 first one.
+        assert out[0]["CLAIMNO"] == 50
+        assert out[0]["THRU_DT"] == 20210315
+        assert out[0]["THRU_DT_YEAR"] == 2021
+
+    def test_max_thru_row_kept_even_when_its_claimno_is_larger(self, spark):
+        # Discriminating test: under the old min(CLAIMNO) rule the 2017 row would
+        # win (smaller CLAIMNO), under the new max(THRU_DT_DAY) rule the 2021
+        # row wins. The two rules give different survivors here.
+        from cms.stays import get_unique_stays
+        rows = [
+            _stay_row(50, dsysrtky=1, orgnpinm=100, admsn_dt=20170315,
+                      thru_dt=20170415, dgns="I10"),
+            _stay_row(9999, dsysrtky=1, orgnpinm=100, admsn_dt=20170315,
+                      thru_dt=20210315, dgns="I10"),
+        ]
+        df = _run_ip_stay_pipeline(spark, rows)
+        out = get_unique_stays(df, claimType="ip").collect()
+        assert len(out) == 1
+        assert out[0]["CLAIMNO"] == 9999
+        assert out[0]["THRU_DT_YEAR"] == 2021
+
+    def test_tiebreak_uses_min_claimno_when_thru_dt_day_ties(self, spark):
+        # When two claims in a stay share THRU_DT_DAY (e.g. OP claims, where THRU
+        # is the partition key), the desc(THRU_DT_DAY) clause produces a tie and
+        # the asc(CLAIMNO) tiebreaker picks the smaller CLAIMNO. Both tied rows
+        # share THRU_DT_YEAR so the choice is safe across years.
         from cms.stays import get_unique_stays
         rows = [
             _stay_row(10, dsysrtky=1, orgnpinm=100, admsn_dt=20200115,
-                      thru_dt=20200120, prcdr=_TPA_PRCDR_CODE,
-                      dgns=_ISH_STROKE_DGNS_CODE),
+                      thru_dt=20200120, dgns="I10"),
             _stay_row(5, dsysrtky=1, orgnpinm=100, admsn_dt=20200115,
-                      thru_dt=20200125, dgns=_ISH_STROKE_DGNS_CODE),
+                      thru_dt=20200120, dgns="I10"),
         ]
         df = _run_ip_stay_pipeline(spark, rows)
         out = get_unique_stays(df, claimType="ip").collect()
         assert len(out) == 1
         assert out[0]["CLAIMNO"] == 5
-        # Information was propagated before the dedup, so the surviving row
-        # carries the tpa=1 from the dropped sibling claim.
-        assert out[0]["tpa"] == 1
 
     def test_distinct_stays_all_preserved(self, spark):
         from cms.stays import get_unique_stays
@@ -963,7 +1028,7 @@ class TestGetUniqueStays:
         ]
         df = _run_ip_stay_pipeline(spark, rows)
         result_df = get_unique_stays(df, claimType="ip")
-        assert "minClaimnoForStay" not in result_df.columns
+        assert "stayRowNumber" not in result_df.columns
 
 
 # ============================================================
@@ -977,8 +1042,10 @@ class TestGetStays:
         from cms.revenue import get_revenue_info
         from cms.stays import get_stays
         # Two op claims for the same beneficiary/provider on the same THRU_DT
-        # are treated as the same op stay; the one with the smaller CLAIMNO is
-        # kept after the propagate + dedup inside get_stays.
+        # are treated as the same op stay. For op stays THRU_DT_DAY is the
+        # partition key so the desc(THRU_DT_DAY) clause ties; the asc(CLAIMNO)
+        # tiebreaker keeps the smaller CLAIMNO after the propagate + dedup
+        # inside get_stays.
         base_rows = [
             _base(10, 100, 20200115, dsysrtky=1),
             _base(5,  100, 20200115, dsysrtky=1),

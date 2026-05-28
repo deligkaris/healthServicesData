@@ -82,17 +82,32 @@ def propagate_stay_info(claimsDF, claimType="op"):
 def get_unique_stays(claimsDF, claimType="op"):
     '''A facility stay might be broken in more than one claim.
     This function propagates information from all claims that are probably part of the same facility stay
-    and returns a single row that represents more accurately the facility stay.'''
+    and returns a single row that represents more accurately the facility stay.
+
+    The representative row is the claim with the latest THRU_DT_DAY within the stay (i.e. the final
+    billed portion of the stay), with CLAIMNO as a deterministic tiebreaker among rows that already
+    share THRU_DT_DAY. Selecting by max(THRU_DT_DAY) preserves the true final discharge of the stay
+    and avoids the prior bug where min(CLAIMNO) -- a per-year sequence that resets every year -- could
+    pick a claim from a different year than the rest of the stay (e.g. interim-billed IP stays where
+    the 2021 final bill has a smaller CLAIMNO than the 2017 first bill). The tiebreaker is safe because
+    tied rows share THRU_DT_DAY and therefore THRU_DT_YEAR.
+
+    For IP stays (partitioned by ADMSN_DT_DAY) the rule picks the interim claim with the latest
+    discharge. For OP stays (partitioned by THRU_DT_DAY) all rows in a partition already share the
+    discharge day, so the rule falls through to the CLAIMNO tiebreaker -- safe because they also
+    share THRU_DT_YEAR.'''
     claimsDF = propagate_stay_info(claimsDF, claimType=claimType)
     #some claims may have same dsysrtky, provider, npi, admission date, and one of the 2 or more claims will have a null discharge date,
     #perhaps because when the claim was created they did not know the discharge date
     eachIpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "ADMSN_DT_DAY") #, "DSCHRGDT_DAY")
     eachOpStay = Window.partitionBy("DSYSRTKY","PROVIDER", "ORGNPINM", "THRU_DT_DAY")
     eachStay = eachIpStay if claimType=="ip" else eachOpStay
-    #since claim numbers reset every year, there is a small probability that two claims will have the same number, I am ok with this
-    staysDF = (claimsDF.withColumn("minClaimnoForStay", F.min(F.col("CLAIMNO")).over(eachStay) )
-                        .filter( F.col("minClaimnoForStay") == F.col("CLAIMNO") )
-                        .drop("minClaimnoForStay"))
+    #latest THRU first so the surviving row's discharge is the true final discharge of the stay;
+    #asc(CLAIMNO) breaks ties only among rows that share THRU_DT_DAY (and therefore the same year)
+    eachStayOrdered = eachStay.orderBy(F.desc("THRU_DT_DAY"), F.asc("CLAIMNO"))
+    staysDF = (claimsDF.withColumn("stayRowNumber", F.row_number().over(eachStayOrdered))
+                        .filter(F.col("stayRowNumber") == 1)
+                        .drop("stayRowNumber"))
     return staysDF
 
 def get_stays(baseDF, summaryDF, claimType="op", opBase=None, opRevenue=None): 
