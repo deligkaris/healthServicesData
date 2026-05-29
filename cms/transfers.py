@@ -95,19 +95,23 @@ def add_node_volume_info(transfersDF):
     return transfersDF
 
 def add_prior_hospitalization_info(transfersDF, ipBaseDF):
-    '''Adds columns about prior hospitalizations for each transfer patient'''
-    transfersDF = (baseF.add_prior_hospitalization_info(
-                           transfersDF.withColumnRenamed("toDSYSRTKY", "DSYSRTKY")
-                                      .withColumnRenamed("toADMSN_DT_DAY", "ADMSN_DT_DAY")
-                                      .withColumnRenamed("toADMSN_DT_MONTH", "ADMSN_DT_MONTH")
-                                      .withColumnRenamed("toCLAIMNO", "CLAIMNO")
-                                      .withColumnRenamed("toffsFirstMonth", "ffsFirstMonth"), 
-                           ipBaseDF)
-                       .withColumnRenamed("DSYSRTKY", "toDSYSRTKY")
-                       .withColumnRenamed("ADMSN_DT_DAY", "toADMSN_DT_DAY")
-                       .withColumnRenamed("ADMSN_DT_MONTH", "toADMSN_DT_MONTH")
-                       .withColumnRenamed("CLAIMNO", "toCLAIMNO")
-                       .withColumnRenamed("ffsFirstMonth", "toffsFirstMonth"))
+    '''Adds columns about prior hospitalizations for each transfer patient.
+    baseF.add_prior_hospitalization_info reads its keys by canonical (un-prefixed) name, so we rename only
+    the specific to-side columns it consults, then restore them after the call. Output columns it adds
+    (hospitalizationsIn12Months, hospitalizedIn12Months, hospitalizationsIn6Months, hospitalizedIn6Months)
+    describe the receiving stay and are kept un-prefixed.'''
+    toToCanonical = {
+        "toDSYSRTKY":        "DSYSRTKY",
+        "toCLAIMNO":         "CLAIMNO",
+        "toADMSN_DT_DAY":    "ADMSN_DT_DAY",
+        "toADMSN_DT_MONTH":  "ADMSN_DT_MONTH",
+        "toffsFirstMonth":   "ffsFirstMonth",
+    }
+    for src, dst in toToCanonical.items():
+        transfersDF = transfersDF.withColumnRenamed(src, dst)
+    transfersDF = baseF.add_prior_hospitalization_info(transfersDF, ipBaseDF)
+    for src, dst in toToCanonical.items():
+        transfersDF = transfersDF.withColumnRenamed(dst, src)
     return transfersDF
 
 def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF):

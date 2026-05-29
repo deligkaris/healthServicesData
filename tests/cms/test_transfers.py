@@ -2056,6 +2056,42 @@ class TestAddPriorHospitalizationInfoTransfers:
         assert r["hospitalizationsIn12Months"] is None
         assert r["hospitalizationsIn6Months"] is None
 
+    def test_extra_to_columns_round_trip(self, spark):
+        # baseF.add_prior_hospitalization_info reads only the five documented to-prefixed
+        # columns. Additional to* columns (toORGNPINM, toevt here) must pass through with
+        # original names and values, not be touched by the rename map.
+        from cms.transfers import add_prior_hospitalization_info
+        transfers_schema = StructType([
+            StructField("toDSYSRTKY", IntegerType(), True),
+            StructField("toADMSN_DT_DAY", IntegerType(), True),
+            StructField("toADMSN_DT_MONTH", IntegerType(), True),
+            StructField("toCLAIMNO", IntegerType(), True),
+            StructField("toffsFirstMonth", IntegerType(), True),
+            StructField("toORGNPINM", IntegerType(), True),
+            StructField("toevt", IntegerType(), True),
+        ])
+        transfers_rows = [{
+            "toDSYSRTKY": 1, "toADMSN_DT_DAY": 1000,
+            "toADMSN_DT_MONTH": 50, "toCLAIMNO": 1,
+            "toffsFirstMonth": 1,
+            "toORGNPINM": 9001, "toevt": 1,
+        }]
+        transfers_df = spark.createDataFrame(transfers_rows, schema=transfers_schema)
+        ip_schema = StructType([
+            StructField("DSYSRTKY", IntegerType(), True),
+            StructField("THRU_DT_DAY", IntegerType(), True),
+        ])
+        ip_df = spark.createDataFrame([{"DSYSRTKY": 1, "THRU_DT_DAY": 900}], schema=ip_schema)
+        result = add_prior_hospitalization_info(transfers_df, ip_df).collect()
+        assert len(result) == 1
+        r = result[0]
+        for c in ("toDSYSRTKY", "toADMSN_DT_DAY", "toADMSN_DT_MONTH", "toCLAIMNO",
+                  "toffsFirstMonth", "toORGNPINM", "toevt"):
+            assert c in r.asDict()
+        assert r["toORGNPINM"] == 9001
+        assert r["toevt"] == 1
+        assert r["hospitalizationsIn12Months"] == 1
+
 
 # ============================================================
 # Test for the transfers-level add_days_at_home_info, which
