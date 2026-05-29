@@ -86,9 +86,11 @@ def add_firstTransfer(transfersDF):
 
 def add_node_volume_info(transfersDF):
     '''Given transfers, calculate the number of transfers that go out from a given from provider and the
-    number of transfers that go in to a given to provider.'''
+    number of transfers that go in to a given to provider.
+    Both partitions key on fromTHRU_DT_YEAR (the transfer's originating year) so that node- and dyad-level
+    aggregations share a single year basis -- see add_dyad.'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
-    eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
     transfersDF = (transfersDF.withColumn("nodeOutVol", F.count( F.col("fromCLAIMNO") ).over(eachFromProvider))
                               .withColumn("nodeInVol", F.count( F.col("toCLAIMNO") ).over(eachToProvider)))
     return transfersDF
@@ -222,9 +224,10 @@ def add_nodeHhi(transfersDF):
     return transfersDF
 
 def add_node_stroke_treatment_info(transfersDF):
-    '''Stroke treatment refers to evt, tpa columns, adds stroke treatment infor volume and mean for both from and to nodes.'''
+    '''Stroke treatment refers to evt, tpa columns, adds stroke treatment infor volume and mean for both from and to nodes.
+    The to-side window keys on fromTHRU_DT_YEAR for year-basis consistency with the dyad (see add_dyad).'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
-    eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
     transfersDF = (transfersDF.withColumn("nodeFromEvtVol", F.sum( F.col("toevt") ).over(eachFromProvider))
                               .withColumn("nodeFromTpaVol", F.sum( F.col("transfertpa") ).over(eachFromProvider))
                               .withColumn("nodeFromEvtMean", F.mean( F.col("toevt")).over(eachFromProvider))
@@ -236,9 +239,10 @@ def add_node_stroke_treatment_info(transfersDF):
     return transfersDF
  
 def add_node_revenue_info(transfersDF):
-    '''Revenue info refers to the ed, ct, mri columns, adds revenue info volume and mean for both from and to nodes.'''
+    '''Revenue info refers to the ed, ct, mri columns, adds revenue info volume and mean for both from and to nodes.
+    The to-side window keys on fromTHRU_DT_YEAR for year-basis consistency with the dyad (see add_dyad).'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
-    eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
     transfersDF = (transfersDF.withColumn("nodeFromEdVol", F.sum( F.col("fromed") ).over(eachFromProvider))
                               .withColumn("nodeFromEdMean", F.mean( F.col("fromed") ).over(eachFromProvider))
                               .withColumn("nodeFromCtVol", F.sum( F.col("fromct") ).over(eachFromProvider))
@@ -258,7 +262,7 @@ def add_node_from_to_info(transfersDF):
     For example, each FROM node has transfers to potentially more than one TO node, so this function adds the set of all TO nodes where each FROM node transfers to (set of NPI numbers).
     The columns related to size are the sizes of the corresponding set, eg, based on the example above, the size of the set with all TO NPI numbers.'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
-    eachToProvider = Window.partitionBy(["toORGNPINM","toTHRU_DT_YEAR"])
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
     transfersDF = (transfersDF.withColumn("nodeFromSetOfToNodes", F.collect_set( F.col("toORGNPINM")).over(eachFromProvider))
                               .withColumn("nodeFromSizeOfToNodes", F.size( F.col("nodeFromSetOfToNodes") ))
                               .withColumn("nodeToSetOfFromNodes", F.collect_set( F.col("fromORGNPINM")).over(eachToProvider))
@@ -281,7 +285,7 @@ def add_dyad_info(transfersDF):
     transfersDF = add_dyadAcrossCounties(transfersDF)
     transfersDF = add_dyadAcrossStates(transfersDF)
     transfersDF = staysF.add_column_prior(transfersDF, column="dyadProportionTransfersOut", who="fromORGNPINM", when="fromTHRU_DT_YEAR") 
-    transfersDF = staysF.add_column_prior(transfersDF, column="dyadProportionTransfersIn", who="toORGNPINM", when="toTHRU_DT_YEAR") 
+    transfersDF = staysF.add_column_prior(transfersDF, column="dyadProportionTransfersIn", who="toORGNPINM", when="fromTHRU_DT_YEAR")
     return transfersDF
 
 def add_node_info(transfersDF):

@@ -193,6 +193,32 @@ class TestDyadProportionTransfersInPipeline:
         for v in values:
             assert 0.0 <= v <= 1.0
 
+    def test_proportion_consistent_when_to_year_differs_from_from_year(self, spark):
+        # Regression: nodeInVol keys on fromTHRU_DT_YEAR so the proportion is constant
+        # within a dyad even when the to-stay discharges in a different calendar year.
+        # Three A->B transfers, all with fromTHRU_DT_YEAR=2020 but spanning toTHRU_DT_YEARs
+        # 2020, 2021, 2022 -- all three rows should see the same dyadProportionTransfersIn.
+        from cms.transfers import (
+            add_node_volume_info,
+            add_dyad,
+            add_dyadTransferVol,
+            add_dyadProportionTransfersIn,
+        )
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 200, 2020, 2021, "a2", "b2"),
+            (100, 200, 2020, 2022, "a3", "b3"),
+        ]
+        df = make_raw_transfers_df(spark, rows)
+        df = add_node_volume_info(df)
+        df = add_dyad(df)
+        df = add_dyadTransferVol(df)
+        df = add_dyadProportionTransfersIn(df)
+        values = {r["fromCLAIMNO"]: r["dyadProportionTransfersIn"] for r in df.collect()}
+        assert values["a1"] == pytest.approx(1.0)
+        assert values["a2"] == pytest.approx(1.0)
+        assert values["a3"] == pytest.approx(1.0)
+
 
 # ============================================================
 # Helper to build minimal DataFrames with the inputs that
@@ -1278,7 +1304,7 @@ class TestAddDyadAcrossStates:
 
 # ============================================================
 # Tests for add_node_stroke_treatment_info — window aggregations
-# over (fromORGNPINM, fromTHRU_DT_YEAR) and (toORGNPINM, toTHRU_DT_YEAR).
+# over (fromORGNPINM, fromTHRU_DT_YEAR) and (toORGNPINM, fromTHRU_DT_YEAR).
 # ============================================================
 
 def _node_stroke_schema():
