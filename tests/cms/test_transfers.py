@@ -2114,6 +2114,111 @@ class TestAddDaysAtHomeInfoTransfers:
         assert row["homeDays90"] == 90
         assert row["homeDays365"] == 365
 
+    def test_end_to_end_eight_columns_sufficient_with_extras_round_tripping(self, spark):
+        # Stronger end-to-end check that:
+        #   1. baseF.add_days_at_home_info reads only the eight documented to-prefixed
+        #      columns (DSYSRTKY, CLAIMNO, ADMSN_DT_DAY, THRU_DT_DAY, DEATH_DT_DAY,
+        #      STUS_CD, 90DaysAfterAdmissionDateDead, 365DaysAfterAdmissionDateDead).
+        #      If it consulted anything else, the AnalysisException would surface here.
+        #   2. The losAtallMinusHha* (excludes HHA) vs losAtall* (includes HHA)
+        #      distinction propagates correctly: HHA stays affect homeDaysIndependent*
+        #      but not homeDays*.
+        #   3. Arbitrary additional to-prefixed columns round-trip with their original
+        #      names and values intact.
+        from cms.transfers import add_days_at_home_info
+
+        transfers_schema = StructType([
+            StructField("toDSYSRTKY", IntegerType(), True),
+            StructField("toCLAIMNO", IntegerType(), True),
+            StructField("toADMSN_DT_DAY", IntegerType(), True),
+            StructField("toTHRU_DT_DAY", IntegerType(), True),
+            StructField("toDEATH_DT_DAY", IntegerType(), True),
+            StructField("toSTUS_CD", IntegerType(), True),
+            StructField("to90DaysAfterAdmissionDateDead", IntegerType(), True),
+            StructField("to365DaysAfterAdmissionDateDead", IntegerType(), True),
+            # Extra to* columns baseF does NOT read; must round-trip unchanged.
+            StructField("toORGNPINM", IntegerType(), True),
+            StructField("toevt", IntegerType(), True),
+        ])
+        transfers_rows = [
+            # Patient 1: alive, no prior stays anywhere.
+            {"toDSYSRTKY": 1, "toCLAIMNO": 11,
+             "toADMSN_DT_DAY": 1000, "toTHRU_DT_DAY": 1005,
+             "toDEATH_DT_DAY": None, "toSTUS_CD": 1,
+             "to90DaysAfterAdmissionDateDead": 0,
+             "to365DaysAfterAdmissionDateDead": 0,
+             "toORGNPINM": 9001, "toevt": 1},
+            # Patient 2: alive, 5-day SNF stay starting day 1010 (after to-discharge 1005).
+            # SNF is in allMinusHha, so it shrinks both homeDays* and homeDaysIndependent*.
+            {"toDSYSRTKY": 2, "toCLAIMNO": 22,
+             "toADMSN_DT_DAY": 1000, "toTHRU_DT_DAY": 1005,
+             "toDEATH_DT_DAY": None, "toSTUS_CD": 1,
+             "to90DaysAfterAdmissionDateDead": 0,
+             "to365DaysAfterAdmissionDateDead": 0,
+             "toORGNPINM": 9002, "toevt": 0},
+            # Patient 3: alive, 7-day HHA stay starting day 1010. HHA is excluded
+            # from allMinusHha but included in all, so it shrinks homeDaysIndependent*
+            # but not homeDays*.
+            {"toDSYSRTKY": 3, "toCLAIMNO": 33,
+             "toADMSN_DT_DAY": 1000, "toTHRU_DT_DAY": 1005,
+             "toDEATH_DT_DAY": None, "toSTUS_CD": 1,
+             "to90DaysAfterAdmissionDateDead": 0,
+             "to365DaysAfterAdmissionDateDead": 0,
+             "toORGNPINM": 9003, "toevt": 1},
+        ]
+        transfers_df = spark.createDataFrame(transfers_rows, schema=transfers_schema)
+
+        small_schema = StructType([
+            StructField("DSYSRTKY", IntegerType(), True),
+            StructField("ADMSN_DT_DAY", IntegerType(), True),
+            StructField("THRU_DT_DAY", IntegerType(), True),
+        ])
+        snf_df = spark.createDataFrame(
+            [{"DSYSRTKY": 2, "ADMSN_DT_DAY": 1010, "THRU_DT_DAY": 1014}],
+            schema=small_schema)
+        hha_df = spark.createDataFrame(
+            [{"DSYSRTKY": 3, "ADMSN_DT_DAY": 1010, "THRU_DT_DAY": 1016}],
+            schema=small_schema)
+        empty = spark.createDataFrame([], schema=small_schema)
+        result = add_days_at_home_info(transfers_df, snf_df, hha_df, empty, empty)
+
+        for c in ("toDSYSRTKY", "toCLAIMNO", "toADMSN_DT_DAY", "toTHRU_DT_DAY",
+                  "toDEATH_DT_DAY", "toSTUS_CD",
+                  "to90DaysAfterAdmissionDateDead",
+                  "to365DaysAfterAdmissionDateDead",
+                  "toORGNPINM", "toevt"):
+            assert c in result.columns, f"missing input column {c}"
+        for c in ("homeDays90", "homeDays365",
+                  "homeDays90Group", "homeDays365Group",
+                  "homeDaysIndependent90", "homeDaysIndependent365",
+                  "homeDaysIndependent90Group", "homeDaysIndependent365Group"):
+            assert c in result.columns, f"missing output column {c}"
+
+        rows = {r["toDSYSRTKY"]: r for r in result.collect()}
+
+        # Patient 1: no prior stays. losAt* = 0.
+        assert rows[1]["homeDays90"] == 90
+        assert rows[1]["homeDays365"] == 365
+        assert rows[1]["homeDaysIndependent90"] == 90
+        assert rows[1]["homeDaysIndependent365"] == 365
+
+        # Patient 2: SNF (5 days). losAtallMinusHha90/365 = losAtall90/365 = 5.
+        assert rows[2]["homeDays90"] == 85
+        assert rows[2]["homeDays365"] == 360
+        assert rows[2]["homeDaysIndependent90"] == 85
+        assert rows[2]["homeDaysIndependent365"] == 360
+
+        # Patient 3: HHA (7 days). losAtallMinusHha90/365 = 0; losAtall90/365 = 7.
+        assert rows[3]["homeDays90"] == 90
+        assert rows[3]["homeDays365"] == 365
+        assert rows[3]["homeDaysIndependent90"] == 83
+        assert rows[3]["homeDaysIndependent365"] == 358
+
+        # Extra to* columns round-trip with original values.
+        assert rows[1]["toORGNPINM"] == 9001 and rows[1]["toevt"] == 1
+        assert rows[2]["toORGNPINM"] == 9002 and rows[2]["toevt"] == 0
+        assert rows[3]["toORGNPINM"] == 9003 and rows[3]["toevt"] == 1
+
 
 # ============================================================
 # End-to-end pipeline: raw ipBase + ipRevenue rows through the

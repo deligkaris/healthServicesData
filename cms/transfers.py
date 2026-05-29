@@ -1,4 +1,3 @@
-import re
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import cms.base as baseF
@@ -112,19 +111,25 @@ def add_prior_hospitalization_info(transfersDF, ipBaseDF):
     return transfersDF
 
 def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF):
-    '''For the transfers dataframe, this function adds columns about the number of days the patients stayed home'''
-    columnsInitial = transfersDF.columns
-    columnsTemp = [re.sub("^to","",c) for c in columnsInitial] #need to rename transfers df because days_at_home needs standard column names
-    transfersDF = transfersDF.toDF(*columnsTemp)
+    '''For the transfers dataframe, this function adds columns about the number of days the patients stayed home.
+    baseF.add_days_at_home_info reads its date/status columns by canonical (un-prefixed) name, so we rename only
+    the specific to-side columns it consults, then restore them after the call. Output columns it adds
+    (homeDays90, homeDays365, etc.) describe the receiving stay and are kept un-prefixed.'''
+    toToCanonical = {
+        "toDSYSRTKY":                       "DSYSRTKY",
+        "toCLAIMNO":                        "CLAIMNO",
+        "toADMSN_DT_DAY":                   "ADMSN_DT_DAY",
+        "toTHRU_DT_DAY":                    "THRU_DT_DAY",
+        "toDEATH_DT_DAY":                   "DEATH_DT_DAY",
+        "toSTUS_CD":                        "STUS_CD",
+        "to90DaysAfterAdmissionDateDead":   "90DaysAfterAdmissionDateDead",
+        "to365DaysAfterAdmissionDateDead":  "365DaysAfterAdmissionDateDead",
+    }
+    for src, dst in toToCanonical.items():
+        transfersDF = transfersDF.withColumnRenamed(src, dst)
     transfersDF = baseF.add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF)
-    revertColumnRenaming = dict(zip(columnsTemp,columnsInitial)) #and now change the column names back to their initial ones
-    columnsAll = transfersDF.columns
-    columnsFinal = columnsAll
-    for i in range(len(columnsAll)):
-        c = columnsAll[i]
-        if c in columnsTemp:
-            columnsFinal[i] = revertColumnRenaming[c]     
-    transfersDF = transfersDF.toDF(*columnsFinal)
+    for src, dst in toToCanonical.items():
+        transfersDF = transfersDF.withColumnRenamed(dst, src)
     return transfersDF
 
 def add_dyad(transfersDF):
