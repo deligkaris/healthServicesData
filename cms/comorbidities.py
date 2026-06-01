@@ -147,48 +147,20 @@ def get_conditions_from_dgnsDF(dgnsDF,conditionsList,codesRegexp,inpatient=True)
     else:
         print("Now processing the outpatient claims...")
 
-    maxCutoff = 0 if inpatient else 1
+    #inpatient: a single matching code triggers the condition -> size(filtered) > 0
+    #outpatient: the same exact code must appear at least twice in the 360-day window ->
+    #            size(filtered) > size(array_distinct(filtered)) (i.e. the filtered list has a duplicate)
+    def _condition_expr(iCondition):
+        filteredCol = F.expr(f'filter(dgnsList, x -> x rlike "{codesRegexp[iCondition]}")')
+        if inpatient:
+            flag = F.size(filteredCol) > 0
+        else:
+            flag = F.size(filteredCol) > F.size(F.array_distinct(filteredCol))
+        return F.when(flag, 1).otherwise(0).alias(iCondition)
 
-    conditionsFromDgns = dgnsDF #start the conditions dataframe using dgnsDF
+    keepCols = [c for c in dgnsDF.columns if c != "dgnsList"]
+    conditionsFromDgns = dgnsDF.select(*keepCols, *[_condition_expr(c) for c in conditionsList])
 
-    #for every condition, search the array of dgns codes and keep only the codes found in comorbidities,
-    #then count their frequencies and keep the max frequency for that condition, if the max is 2 or more,
-    #assign that comorbidity condition to the beneficiary
-    for i, iCondition in enumerate(conditionsList, start=1):
-        #print("Condition: ", iCondition, "...",i,"/",len(conditionsList)) #now this goes fast so no need to print
-    
-        #some column names
-        codeColumn = iCondition+"Codes"
-        codeFrequencyColumn = iCondition+"CodesFrequencies"
-        codeMaxColumn = iCondition+"Max"
-    
-        conditionsFromDgns = (conditionsFromDgns
-                               .withColumn(
-                                   codeColumn, #keeps codes that match the regexp pattern
-                                       F.expr(f'filter(dgnsList, x -> x rlike "{codesRegexp[iCondition]}")'))
-                                       #F.expr(f'filter(dgnsList, x -> x in {testCodes})')
-                               .withColumn(
-                                   codeFrequencyColumn, #counts frequencies of code appearances
-                                       #remove duplicates
-                                       #https://docs.databricks.com/sql/language-manual/functions/array_distinct.html
-                                       #apply lambda function to distinct codes
-                                       #https://docs.databricks.com/sql/language-manual/functions/transform.html
-                                       #for every distinct code, aggregate in the accumulator (acc) variable
-                                       #the number of times it appears, returns an integer
-                                       #https://docs.databricks.com/sql/language-manual/functions/aggregate.html
-                                       F.expr(f"""array_sort(
-                                                    transform(
-                                                        array_distinct({codeColumn}), 
-                                                        x-> aggregate({codeColumn}, 
-                                                        0,(acc,t)->acc+IF(t=x,1,0))))"""))
-                               .withColumn(codeMaxColumn, F.array_max(codeFrequencyColumn)) #keep max of frequencies
-                               .withColumn(iCondition, F.when(F.col(codeMaxColumn)>maxCutoff,1).otherwise(0)) #boolean, has condition or not
-                               .drop(codeColumn,codeFrequencyColumn,codeMaxColumn)) #no longer need these
-                      
-    conditionsFromDgns = conditionsFromDgns.drop("dgnsList") #at the end this is no longer needed
-    conditionsFromDgns.persist()
-    conditionsFromDgns.count()
-    
     return conditionsFromDgns
 
 def get_dayDgnsDF(baseDF):
