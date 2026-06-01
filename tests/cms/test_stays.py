@@ -1374,3 +1374,514 @@ class TestAddOrgnpinmColumnPriorYear:
         assert "providerStrokeVolPrior" in result.columns
         out = {r["THRU_DT_YEAR"]: r["providerStrokeVolPrior"] for r in result.collect()}
         assert out == {2020: None, 2021: 3}
+
+
+# ============================================================
+# End-to-end pipeline helpers for add_source_and_destination_info.
+#
+# The function expects:
+#   - staysDF post-get_unique_stays with DSYSRTKY, PROVIDER, ORGNPINM,
+#     ADMSN_DT_DAY, THRU_DT_DAY.
+#   - cmsDFS dict mapping "ipBase"/"snfBase"/"hhaBase"/"hospBase" to base DFs
+#     with DSYSRTKY, PROVIDER, ORGNPINM, ADMSN_DT_DAY, THRU_DT_DAY, losDays.
+#     cmsDFS["ipBase"] additionally needs rehabilitation and ltcHospital.
+#
+# Upstream chain per base DF:
+#   make_real_claim_df -> add_admission_date_info -> add_through_date_info
+#     -> add_losDays
+#
+# For ipBase we additionally simulate the NPI provider join by left-joining
+# (CLAIMNO, rehabilitationFromTaxonomyPrimary, ltcHospital) and then running
+# the real add_rehabilitation, which OR's the taxonomy flag with the
+# CCN-derived rehabilitationFromCCN. This mirrors the MBSF death-join
+# simulation pattern called out in the project's end-to-end testing
+# convention.
+# ============================================================
+
+# Default non-rehab CCN: substring(3,4) = "0001" which is < 3025.
+_NON_REHAB_CCN = "OH0001"
+# CCN-derived rehab: substring(3,4) = "3050" which is in [3025, 3099].
+_REHAB_CCN = "OH3050"
+
+
+def _ip_src_dest_row(claimno, *, dsysrtky, orgnpinm, admsn_dt, thru_dt,
+                     provider=_NON_REHAB_CCN, rehab_taxonomy=0, ltc=0):
+    """ipBase-shaped row. _rehab_taxonomy/_ltc are stripped before schema
+    load and injected post-load to simulate add_provider_npi_info."""
+    return {
+        "DSYSRTKY": dsysrtky, "CLAIMNO": claimno, "ORGNPINM": orgnpinm,
+        "PROVIDER": provider, "ADMSN_DT": admsn_dt, "THRU_DT": thru_dt,
+        "_rehab_taxonomy": rehab_taxonomy, "_ltc": ltc,
+    }
+
+
+def _snf_src_dest_row(claimno, *, dsysrtky, orgnpinm, admsn_dt, thru_dt,
+                      provider=_NON_REHAB_CCN):
+    return {
+        "DSYSRTKY": dsysrtky, "CLAIMNO": claimno, "ORGNPINM": orgnpinm,
+        "PROVIDER": provider, "ADMSN_DT": admsn_dt, "THRU_DT": thru_dt,
+    }
+
+
+def _hha_src_dest_row(claimno, *, dsysrtky, orgnpinm, hhstrtdt, thru_dt,
+                      provider=_NON_REHAB_CCN):
+    return {
+        "DSYSRTKY": dsysrtky, "CLAIMNO": claimno, "ORGNPINM": orgnpinm,
+        "PROVIDER": provider, "HHSTRTDT": hhstrtdt, "THRU_DT": thru_dt,
+    }
+
+
+def _hosp_src_dest_row(claimno, *, dsysrtky, orgnpinm, hspcstrt, thru_dt,
+                       provider=_NON_REHAB_CCN):
+    return {
+        "DSYSRTKY": dsysrtky, "CLAIMNO": claimno, "ORGNPINM": orgnpinm,
+        "PROVIDER": provider, "HSPCSTRT": hspcstrt, "THRU_DT": thru_dt,
+    }
+
+
+def _prep_ipBase(spark, rows):
+    """Build ipBase upstream chain incl. simulated NPI join. Empty rows yield
+    a schema-valid empty DF for cmsDFS slots that should have no IP claims."""
+    from cms.utilities import add_through_date_info
+    from cms.base import add_admission_date_info, add_losDays, add_rehabilitation
+    schema_rows = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rows]
+    df = make_real_claim_df(spark, "ipBase", schema_rows)
+    df = add_admission_date_info(df, "ip")
+    df = add_through_date_info(df)
+    df = add_losDays(df)
+    if rows:
+        npi_sim = spark.createDataFrame(
+            [(r["CLAIMNO"], r["_rehab_taxonomy"], r["_ltc"]) for r in rows],
+            "CLAIMNO int, rehabilitationFromTaxonomyPrimary int, ltcHospital int")
+        df = df.join(npi_sim, on="CLAIMNO", how="left")
+    else:
+        df = (df.withColumn("rehabilitationFromTaxonomyPrimary", F.lit(0))
+                .withColumn("ltcHospital", F.lit(0)))
+    df = add_rehabilitation(df)
+    return df
+
+
+def _prep_snfBase(spark, rows):
+    from cms.utilities import add_through_date_info
+    from cms.base import add_admission_date_info, add_losDays
+    df = make_real_claim_df(spark, "snfBase", rows)
+    df = add_admission_date_info(df, "snf")
+    df = add_through_date_info(df)
+    df = add_losDays(df)
+    return df
+
+
+def _prep_hhaBase(spark, rows):
+    from cms.utilities import add_through_date_info
+    from cms.base import add_admission_date_info, add_losDays
+    df = make_real_claim_df(spark, "hhaBase", rows)
+    df = add_admission_date_info(df, "hha")
+    df = add_through_date_info(df)
+    df = add_losDays(df)
+    return df
+
+
+def _prep_hospBase(spark, rows):
+    from cms.utilities import add_through_date_info
+    from cms.base import add_admission_date_info, add_losDays
+    df = make_real_claim_df(spark, "hospBase", rows)
+    df = add_admission_date_info(df, "hosp")
+    df = add_through_date_info(df)
+    df = add_losDays(df)
+    return df
+
+
+def _build_cmsDFS(spark, ip_rows=None, snf_rows=None, hha_rows=None, hosp_rows=None):
+    return {
+        "ipBase":   _prep_ipBase(spark,   ip_rows   or []),
+        "snfBase":  _prep_snfBase(spark,  snf_rows  or []),
+        "hhaBase":  _prep_hhaBase(spark,  hha_rows  or []),
+        "hospBase": _prep_hospBase(spark, hosp_rows or []),
+    }
+
+
+def _ip_staysDF_from(spark, ip_rows):
+    """IP-cohort staysDF: prep ipBase + collapse via get_unique_stays."""
+    from cms.stays import get_unique_stays
+    return get_unique_stays(_prep_ipBase(spark, ip_rows), claimType="ip")
+
+
+def _snf_staysDF_from(spark, snf_rows):
+    """SNF-cohort staysDF for the claimType="snf" tests."""
+    from cms.stays import get_unique_stays
+    return get_unique_stays(_prep_snfBase(spark, snf_rows), claimType="snf")
+
+
+# ============================================================
+# End-to-end tests for add_source_and_destination_info
+# ============================================================
+
+class TestAddSourceAndDestinationInfo:
+
+    # ---- A. Output schema ----
+
+    def test_output_columns_added(self, spark):
+        from cms.stays import add_source_and_destination_info
+        ip_rows = [_ip_src_dest_row(1, dsysrtky=1, orgnpinm=100,
+                                    admsn_dt=20200110, thru_dt=20200115)]
+        staysDF = _ip_staysDF_from(spark, ip_rows)
+        cmsDFS = _build_cmsDFS(spark, ip_rows=ip_rows)
+        out = add_source_and_destination_info(staysDF, cmsDFS)
+        for col in ("admissionSource", "thruDestination",
+                    "otherStaysOnAdmission", "otherStaysOnThru"):
+            assert col in out.columns
+        for col in ("DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY", "THRU_DT_DAY"):
+            assert col in out.columns
+
+    # ---- B / C. Home fallback + self-exclusion regression ----
+
+    def test_self_only_returns_home_for_both(self, spark):
+        # Primary regression test for the self-inclusion bug the refactor
+        # fixed. Without the not_self lambda the row's own losDays contains
+        # ADMSN_DT_DAY and THRU_DT_DAY, and both columns would resolve to
+        # "ipOther" instead of "home".
+        from cms.stays import add_source_and_destination_info
+        ip_rows = [_ip_src_dest_row(1, dsysrtky=1, orgnpinm=100,
+                                    admsn_dt=20200110, thru_dt=20200115)]
+        staysDF = _ip_staysDF_from(spark, ip_rows)
+        cmsDFS = _build_cmsDFS(spark, ip_rows=ip_rows)
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert len(out) == 1
+        assert out[0]["admissionSource"] == "home"
+        assert out[0]["thruDestination"] == "home"
+
+    def test_beneficiary_absent_from_cmsDFS_returns_home(self, spark):
+        # Exercises the .isNull() branch of _resolve_setting: the
+        # beneficiary in staysDF has no rows in any cmsDFS entry, so the
+        # left-outer join leaves otherStays null.
+        from cms.stays import add_source_and_destination_info
+        stays_rows = [_ip_src_dest_row(1, dsysrtky=1, orgnpinm=100,
+                                       admsn_dt=20200110, thru_dt=20200115)]
+        staysDF = _ip_staysDF_from(spark, stays_rows)
+        other_rows = [_ip_src_dest_row(99, dsysrtky=999, orgnpinm=100,
+                                       admsn_dt=20200110, thru_dt=20200115)]
+        cmsDFS = _build_cmsDFS(spark, ip_rows=other_rows)
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert len(out) == 1
+        assert out[0]["admissionSource"] == "home"
+        assert out[0]["thruDestination"] == "home"
+
+    def test_split_claim_stay_self_excludes(self, spark):
+        # Two interim IP claims for the same stay (same stay key) get
+        # collapsed into a single stay entry by _per_stay_index, and the
+        # not_self comparison still drops it. Result: "home" because there
+        # are no other-claim entries.
+        from cms.stays import add_source_and_destination_info
+        ip_rows = [
+            _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                             admsn_dt=20200110, thru_dt=20200115),
+            _ip_src_dest_row(11, dsysrtky=1, orgnpinm=100,
+                             admsn_dt=20200110, thru_dt=20200120),
+        ]
+        staysDF = _ip_staysDF_from(spark, ip_rows)
+        cmsDFS = _build_cmsDFS(spark, ip_rows=ip_rows)
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert len(out) == 1
+        assert out[0]["admissionSource"] == "home"
+        assert out[0]["thruDestination"] == "home"
+
+    # ---- D. Source identification (admissionSource) ----
+
+    def test_admission_source_snf(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "snf"
+
+    def test_admission_source_hosp(self, spark):
+        # "hosp" = hospice in this codebase (add_admission_date_info copies
+        # HSPCSTRT to ADMSN_DT when claimType="hosp").
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        hosp = _hosp_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                  hspcstrt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], hosp_rows=[hosp])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "hosp"
+
+    def test_admission_source_hha(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        hha = _hha_src_dest_row(40, dsysrtky=1, orgnpinm=400,
+                                hhstrtdt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], hha_rows=[hha])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "hha"
+
+    def test_admission_source_ipRehab(self, spark):
+        # Prior IP stay with rehabilitation=1 (CCN-derived: PROVIDER starts
+        # with two letters then "3050", landing in [3025, 3099]).
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        rehab = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                 admsn_dt=20200110, thru_dt=20200115,
+                                 provider=_REHAB_CCN)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, rehab])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "ipRehab"
+
+    def test_admission_source_ipLtc(self, spark):
+        # Prior IP stay with ltcHospital=1 (simulated NPI-join flag).
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        ltc = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                               admsn_dt=20200110, thru_dt=20200115, ltc=1)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, ltc])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "ipLtc"
+
+    def test_admission_source_ipOther(self, spark):
+        # Prior IP stay with neither flag, different ORGNPINM so the stay key
+        # doesn't collide with the current stay's.
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        other = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                 admsn_dt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, other])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "ipOther"
+
+    # ---- E. Destination identification (thruDestination) ----
+
+    def test_thru_destination_snf(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200120)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200120, thru_dt=20200125)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "snf"
+
+    def test_thru_destination_hha(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200120)
+        hha = _hha_src_dest_row(40, dsysrtky=1, orgnpinm=400,
+                                hhstrtdt=20200120, thru_dt=20200125)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], hha_rows=[hha])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "hha"
+
+    def test_thru_destination_hosp(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200120)
+        hosp = _hosp_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                  hspcstrt=20200120, thru_dt=20200125)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], hosp_rows=[hosp])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "hosp"
+
+    def test_thru_destination_ipRehab(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200120)
+        rehab = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                 admsn_dt=20200120, thru_dt=20200125,
+                                 provider=_REHAB_CCN)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, rehab])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "ipRehab"
+
+    def test_thru_destination_ipLtc(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200120)
+        ltc = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                               admsn_dt=20200120, thru_dt=20200125, ltc=1)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, ltc])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "ipLtc"
+
+    def test_thru_destination_ipOther(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200120)
+        other = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                 admsn_dt=20200120, thru_dt=20200125)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, other])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "ipOther"
+
+    # ---- F. Priority cascade (adjacent pairs in _SOURCE_DEST_PRIORITY) ----
+
+    def test_priority_hosp_beats_ipRehab(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        hosp = _hosp_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                  hspcstrt=20200110, thru_dt=20200115)
+        rehab = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                 admsn_dt=20200110, thru_dt=20200115,
+                                 provider=_REHAB_CCN)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, rehab], hosp_rows=[hosp])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "hosp"
+
+    def test_priority_ipRehab_beats_snf(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        rehab = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                 admsn_dt=20200110, thru_dt=20200115,
+                                 provider=_REHAB_CCN)
+        snf = _snf_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                admsn_dt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, rehab], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "ipRehab"
+
+    def test_priority_snf_beats_ipLtc(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        snf = _snf_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                admsn_dt=20200110, thru_dt=20200115)
+        ltc = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                               admsn_dt=20200110, thru_dt=20200115, ltc=1)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, ltc], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "snf"
+
+    def test_priority_ipLtc_beats_ipOther(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        ltc = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                               admsn_dt=20200110, thru_dt=20200115, ltc=1)
+        other = _ip_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                 admsn_dt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, ltc, other])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "ipLtc"
+
+    def test_priority_ipOther_beats_hha(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        other = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                 admsn_dt=20200110, thru_dt=20200115)
+        hha = _hha_src_dest_row(40, dsysrtky=1, orgnpinm=400,
+                                hhstrtdt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, other], hha_rows=[hha])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "ipOther"
+
+    # ---- G. IP sub-bucketing edge case (both flags) ----
+
+    def test_both_rehab_and_ltc_flags_resolves_to_ipRehab(self, spark):
+        # An ipBase row with both rehab=1 and ltc=1 contributes to BOTH
+        # ipRehab and ipLtc buckets. Under priority (ipRehab > ipLtc),
+        # ipRehab wins. Pinning this behaviour: if the bucket filters are
+        # made mutually exclusive later, update this test.
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        both = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200110, thru_dt=20200115,
+                                provider=_REHAB_CCN, ltc=1)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, both])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "ipRehab"
+
+    # ---- H. Cross-beneficiary independence ----
+
+    def test_beneficiaries_independent(self, spark):
+        # A's prior SNF must not affect B (no claims) and vice versa.
+        from cms.stays import add_source_and_destination_info
+        a_cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                                 admsn_dt=20200115, thru_dt=20200120)
+        a_snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                  admsn_dt=20200110, thru_dt=20200115)
+        b_cur = _ip_src_dest_row(11, dsysrtky=2, orgnpinm=100,
+                                 admsn_dt=20200201, thru_dt=20200205)
+        staysDF = _ip_staysDF_from(spark, [a_cur, b_cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[a_cur, b_cur], snf_rows=[a_snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        by_dsys = {r["DSYSRTKY"]: r for r in out}
+        assert by_dsys[1]["admissionSource"] == "snf"
+        assert by_dsys[2]["admissionSource"] == "home"
+
+    # ---- I. claimType kwarg ----
+
+    def test_claimType_snf_self_excludes_snf_stay(self, spark):
+        # With claimType="snf", _stay_keys uses THRU_DT_DAY, so the current
+        # SNF stay's struct matches the snf bucket entry and self-exclusion
+        # fires correctly. Result: "home".
+        from cms.stays import add_source_and_destination_info
+        snf_rows = [_snf_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                                      admsn_dt=20200110, thru_dt=20200115)]
+        staysDF = _snf_staysDF_from(spark, snf_rows)
+        cmsDFS = _build_cmsDFS(spark, snf_rows=snf_rows)
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="snf").collect()
+        assert len(out) == 1
+        assert out[0]["admissionSource"] == "home"
+
+    def test_claimType_mismatch_breaks_self_exclusion(self, spark):
+        # Same SNF cohort, but the caller forgets the kwarg and the function
+        # uses claimType="ip" defaults. The stay-key struct mismatch (current
+        # keyed on ADMSN_DT_DAY, snf entry keyed on THRU_DT_DAY) means
+        # not_self does NOT fire on the row's own entry: the SNF stay "finds
+        # itself" via the snf bucket and admissionSource = "snf". Documents
+        # that claimType is load-bearing.
+        from cms.stays import add_source_and_destination_info
+        snf_rows = [_snf_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                                      admsn_dt=20200110, thru_dt=20200115)]
+        staysDF = _snf_staysDF_from(spark, snf_rows)
+        cmsDFS = _build_cmsDFS(spark, snf_rows=snf_rows)
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "snf"
+
+    # ---- J. Stay-level granularity (no double-counting split claims) ----
+
+    def test_split_other_stay_not_double_counted(self, spark):
+        # A beneficiary has 2 interim IP claims for the SAME prior stay plus
+        # 1 IP claim for the CURRENT stay (different ADMSN_DT_DAY + different
+        # ORGNPINM). _per_stay_index should collapse the two interim claims
+        # into a single stay entry, so otherStaysOnAdmission has size 1, not 2.
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        prior_a = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                   admsn_dt=20200110, thru_dt=20200113)
+        prior_b = _ip_src_dest_row(21, dsysrtky=1, orgnpinm=200,
+                                   admsn_dt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur, prior_a, prior_b])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "ipOther"
+        assert len(out[0]["otherStaysOnAdmission"]) == 1

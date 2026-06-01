@@ -1,3 +1,4 @@
+from functools import reduce
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
 import cms.revenue as revenueF
@@ -211,5 +212,124 @@ def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", w
 def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockVol"):
     '''For each hospital and year it addes a column of the variable column for that hospital but from the prior year.'''
     return add_column_prior(staysDF, column=column, who="ORGNPINM", when="THRU_DT_YEAR")
+
+
+def _stay_keys(claimType):
+    '''Stay-identity columns for a given claim type. Matches the partitioning used by
+    propagate_stay_info / get_unique_stays so a "stay" means the same thing across this
+    module. IP stays span multiple interim claims that share ADMSN_DT_DAY; the other
+    claim types are keyed on THRU_DT_DAY.'''
+    if claimType == "ip":
+        return ["DSYSRTKY", "PROVIDER", "ORGNPINM", "ADMSN_DT_DAY"]
+    return ["DSYSRTKY", "PROVIDER", "ORGNPINM", "THRU_DT_DAY"]
+
+
+def _per_stay_index(baseDF, claimType, label):
+    '''Reduces a base claim DF to one row per stay for the source/destination index.
+    Carries (a) the union of losDays across the stay's constituent claims and (b) a
+    stay-identity struct used by add_source_and_destination_info for self-exclusion.
+    Deliberately does NOT call get_unique_stays: the index only needs the days covered
+    and a stable stay key, so groupBy + array_distinct(flatten(...)) is sufficient and
+    skips the propagate_stay_info + row_number pass. Requires losDays on the input
+    (see baseF.add_losDays).
+
+    The 4th stay key (ADMSN_DT_DAY for ip, THRU_DT_DAY otherwise) is aliased to a
+    uniform "stayDay" field inside otherStayKey so the six per-source indices share a
+    struct schema and can be unionByName'd.'''
+    keys = _stay_keys(claimType)
+    return (baseDF.groupBy(*keys)
+                  .agg(F.array_distinct(F.flatten(F.collect_list("losDays"))).alias("losDays"))
+                  .select("DSYSRTKY",
+                          F.struct(F.col(keys[0]).alias("DSYSRTKY"),
+                                   F.col(keys[1]).alias("PROVIDER"),
+                                   F.col(keys[2]).alias("ORGNPINM"),
+                                   F.col(keys[3]).alias("stayDay")).alias("otherStayKey"),
+                          "losDays",
+                          F.lit(label).alias("claimType")))
+
+
+_SOURCE_DEST_PRIORITY = ("hosp", "ipRehab", "snf", "ipLtc", "ipOther", "hha")
+
+
+def _resolve_setting(otherCol):
+    '''Reduces the array of overlapping claim-type labels to a single label using the
+    fixed priority order in _SOURCE_DEST_PRIORITY. Returns "home" when no other stay
+    overlaps the day.'''
+    expr = F.when((F.col(otherCol).isNull()) | (F.size(F.col(otherCol)) == 0), F.lit("home"))
+    for label in _SOURCE_DEST_PRIORITY:
+        expr = expr.when(F.array_contains(F.col(otherCol), label), F.lit(label))
+    return expr
+
+
+def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip"):
+    '''Adds admissionSource and thruDestination to staysDF by checking, per stay,
+    whether the beneficiary has any OTHER stay whose days cover ADMSN_DT_DAY (source)
+    or THRU_DT_DAY (destination).
+
+    The per-beneficiary index is built from cmsDFS["ipBase"] (split into ipRehab /
+    ipLtc / ipOther by the rehabilitation and ltcHospital flags), cmsDFS["snfBase"],
+    cmsDFS["hhaBase"], and cmsDFS["hospBase"] (where "hosp" is hospice). Each source
+    is collapsed to one row per stay via _per_stay_index, so each entry carries its
+    own stay identity. The current stay is then excluded by comparing otherStayKey
+    against the current row's stay-key struct -- without this, every stay would
+    trivially "overlap itself" and admissionSource/thruDestination could never be
+    "home" for the row's own claim type.
+
+    Resolution priority when multiple settings overlap a day (see
+    _SOURCE_DEST_PRIORITY):
+        hosp > ipRehab > snf > ipLtc > ipOther > hha
+    falling back to "home" when nothing overlaps.
+
+    Assumes:
+      * staysDF is at stay granularity (post get_unique_stays) and has DSYSRTKY,
+        PROVIDER, ORGNPINM, ADMSN_DT_DAY, THRU_DT_DAY.
+      * Every source DF in cmsDFS has losDays (baseF.add_losDays).
+      * cmsDFS["ipBase"] has the rehabilitation and ltcHospital flags.
+      * claimType selects the stay key used to identify staysDF rows (and therefore
+        the self-exclusion key). Defaults to "ip".
+
+    Limitation: day-level overlap is symmetric -- a prior stay that ends on the
+    current admission day and a concurrent stay that starts on it are not
+    distinguishable here.'''
+    ip = cmsDFS["ipBase"]
+    sources = [
+        _per_stay_index(ip.filter(F.col("rehabilitation") == 1), "ip", "ipRehab"),
+        _per_stay_index(ip.filter(F.col("ltcHospital") == 1),    "ip", "ipLtc"),
+        _per_stay_index(ip.filter((F.col("rehabilitation") == 0) &
+                                  (F.col("ltcHospital") == 0)),  "ip", "ipOther"),
+        _per_stay_index(cmsDFS["snfBase"],  "snf",  "snf"),
+        _per_stay_index(cmsDFS["hhaBase"],  "hha",  "hha"),
+        _per_stay_index(cmsDFS["hospBase"], "hosp", "hosp"),
+    ]
+
+    allDF = (reduce(lambda x, y: x.unionByName(y), sources)
+             .groupBy("DSYSRTKY")
+             .agg(F.collect_list(F.struct("otherStayKey", "losDays", "claimType"))
+                   .alias("otherStays")))
+
+    keys = _stay_keys(claimType)
+    current_stay_key = F.struct(F.col(keys[0]).alias("DSYSRTKY"),
+                                F.col(keys[1]).alias("PROVIDER"),
+                                F.col(keys[2]).alias("ORGNPINM"),
+                                F.col(keys[3]).alias("stayDay"))
+    not_self = lambda x: x.otherStayKey != current_stay_key
+
+    staysDF = (staysDF
+               .join(allDF, on="DSYSRTKY", how="left_outer")
+               .withColumn("otherStaysOnAdmission",
+                   F.array_distinct(
+                       F.filter(F.col("otherStays"),
+                                lambda x: not_self(x) &
+                                          F.array_contains(x.losDays, F.col("ADMSN_DT_DAY")))
+                        .getField("claimType")))
+               .withColumn("admissionSource", _resolve_setting("otherStaysOnAdmission"))
+               .withColumn("otherStaysOnThru",
+                   F.array_distinct(
+                       F.filter(F.col("otherStays"),
+                                lambda x: not_self(x) &
+                                          F.array_contains(x.losDays, F.col("THRU_DT_DAY")))
+                        .getField("claimType")))
+               .withColumn("thruDestination", _resolve_setting("otherStaysOnThru")))
+    return staysDF
 
 
