@@ -1,5 +1,4 @@
 import pyspark.sql.functions as F
-from pyspark.sql.window import Window
 
 def get_codes(method="Glasheen2019"):
     '''Returns a dictionary with conditions and their codes based on Glasheen2019 or Quan2005
@@ -211,12 +210,18 @@ def get_dayDgnsDF(baseDF):
 
     return baseDF
 
-def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
+def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, claimType="ip", method="Glasheen2019"):
     '''opDayDgnsDF: dataframe created from outpatient base, includes DSYSRTKY and a STRUCT with (thruDay, dgnsCode) from all non null ICD10 codes
        ipDayDgnsDF: similar to above from inpatient base
-       baseDF: dataframe with DSYSRTKY and THRU_DT_DAY and hospitalizationsIn12Months, will use this df to built the comorbidities
+       baseDF: dataframe with DSYSRTKY and THRU_DT_DAY and hospitalizationsIn12Months, will use this df to built the comorbidities.
+               Only these three columns are read; any other columns are dropped and the result is deduplicated upfront,
+               so callers may pass dyad-derived projections (e.g. one row per from-to pair) without bloating the work.
                The hospitalizationsIn12Months variable will be used to determine when, by looking at Null values, when we do not have enough
                information to determine comorbidities (due to enrollment to Medicare too closely to the event date)
+       claimType: "ip" or "op". When "ip", the IP principal dgns falling on the stay's THRU_DT_DAY is excluded from
+               comorbidities (it is the reason for THIS hospitalization, not a comorbidity of it). When "op" (or any
+               non-ip value), no principal exclusion is applied -- an IP discharge happening to share THRU_DT_DAY with
+               the index OP visit is a real comorbidity for that visit.
        note: method Quan2005 IS NOT fully implemented'''
 
     codesDict = get_codes(method)
@@ -225,17 +230,29 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
 
     codesRegexp = get_codes_regexp(codesDict)
 
+    #conditions are a pure function of (DSYSRTKY, THRU_DT_DAY, hospitalizationsIn12Months), so collapse baseDF
+    #to one row per triple before fanning out against the dgns arrays. This dedups callers that pass dyad-derived
+    #projections (e.g. one row per from-to pair) without affecting the result, since two rows with the same triple
+    #would compute identical flags anyway.
+    baseDF = baseDF.select("DSYSRTKY", "THRU_DT_DAY", "hospitalizationsIn12Months").distinct()
+
     ipDgnsDF = (ipDayDgnsDF.join(baseDF, #for inpatient claims
                                  on = ["DSYSRTKY"],
                                  how = "inner") #will duplicate rows from ipDayDgnsDF for all rows of the same DSYSRTKY (with probably different through dates)
                            .withColumn("dayDgnsStruct", #keep dgns codes within the last year
-                                       F.filter( F.col("dayDgnsStruct"), 
-                                       lambda x: (F.col("THRU_DT_DAY") - x.getItem("thruDay") >= 0) & (F.col("THRU_DT_DAY") - x.getItem("thruDay") <= 360)))
-                           .withColumn("dayDgnsStruct", #do not utilize the first DGNS code from the day of the inpatient hospitalization, that is not a comorbidity
-                                       F.filter( F.col("dayDgnsStruct"), 
+                                       F.filter( F.col("dayDgnsStruct"),
+                                       lambda x: (F.col("THRU_DT_DAY") - x.getItem("thruDay") >= 0) & (F.col("THRU_DT_DAY") - x.getItem("thruDay") <= 360))))
+
+    if claimType == "ip":
+        #only meaningful when the staysDF is itself IP: the matching IP claim's principal on THRU_DT_DAY is the
+        #reason for THIS hospitalization, not a comorbidity. For non-IP stays an incidental same-day IP principal is
+        #a real comorbidity for the index event and must NOT be filtered out.
+        ipDgnsDF = ipDgnsDF.withColumn("dayDgnsStruct",
+                                       F.filter( F.col("dayDgnsStruct"),
                                        lambda x: (F.col("THRU_DT_DAY") != x.getItem("thruDay")) | (x.getItem("principal") != 1)))
-                           .withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode")) #keep the dgns codes only (no through dates)
-                           .drop("dayDgnsStruct"))                                          
+
+    ipDgnsDF = (ipDgnsDF.withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode")) #keep the dgns codes only (no through dates)
+                        .drop("dayDgnsStruct"))
 
     opDgnsDF = (opDayDgnsDF.join(baseDF, #similarly for outpatient claims
                                  on = ["DSYSRTKY"],
@@ -251,18 +268,17 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
 
     conditions = conditionsOutpatient.union(conditionsInpatient) # combine comorbidities from all inpatient and outpatient claims
 
-    eachDsysrtkyDay = Window.partitionBy(["DSYSRTKY", "THRU_DT_DAY"]) #every DSYSRTKY and THROUGH_DT_DAY will have potentially different conditions
-    for iCondition in conditionsList:
-        conditions = conditions.withColumn(iCondition, #overwrite each condition column
-                                F.max(F.col(iCondition)).over(eachDsysrtkyDay)) #keep the max for each beneficiary and through date
+    #collapse the inpatient/outpatient duplicates created by the union; max acts as OR across the two pipelines.
+    #hospitalizationsIn12Months is in the grouping key so stays that share (DSYSRTKY, THRU_DT_DAY) but differ in
+    #the prior-12-month count stay separate.
+    conditions = (conditions
+                  .groupBy("DSYSRTKY", "THRU_DT_DAY", "hospitalizationsIn12Months")
+                  .agg(*[F.max(c).alias(c) for c in conditionsList]))
 
     # AIDS = HIV + infection, see Glasheen2019, so a beneficiary has AIDS if both
     # HIV and infectionOrCancerDueToAids columns are true
     conditions = (conditions.withColumn("aids", F.col("hiv")*F.col("infectionOrCancerDueToAids"))
-                            .drop(F.col("infectionOrCancerDueToAids")) #no longer needed
-                            #because windows broadcast the values to both rows for each beneficiary (the one from outpatient and the one from
-                            #inpatient condition dataframes), keep only one for each beneficiary
-                            .distinct())
+                            .drop("infectionOrCancerDueToAids")) #no longer needed
 
     #this applies the hierarchy categories as described in the SI of the Glasheen2019 paper, the milder condition should not contribute to the 
     #comorbidity score if the more severe condition applies
@@ -280,7 +296,8 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, method="Glasheen2019"):
         conditions = conditions.withColumn(iCondition, #overwrite each condition column
                                            F.when( F.col("hospitalizationsIn12Months").isNull(), F.lit(None)).otherwise(F.col(iCondition)))
     
-    conditions = conditions.drop("hospitalizationsIn12Months") #no longer needed and I want to return comorbidity-only-needed columns
+    #hospitalizationsIn12Months is retained so callers can join back on the triple (DSYSRTKY, THRU_DT_DAY,
+    #hospitalizationsIn12Months); needed when two distinct stays share the first two but differ in the third.
     conditions = get_comorbidityIndex(conditions, method=method) #now calculate the comorbidity index
 
     conditions.persist() #now that I am done, store it in memory

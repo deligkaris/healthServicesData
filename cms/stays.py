@@ -3,6 +3,7 @@ from pyspark.sql.window import Window
 import pyspark.sql.functions as F
 import cms.revenue as revenueF
 import cms.claims as claimsF
+import cms.comorbidities as comorbiditiesF
 
 def add_providerStrokeVol(staysDF, stroke="anyStroke"):
     '''Calculates the stroke volume, number of rows, for each hospital and year'''
@@ -333,3 +334,27 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip"):
     return staysDF
 
 
+def add_comorbidity_info(staysDF, ipBase, opBase, claimType="ip", method="Glasheen2019"):
+    '''Adds the comorbidity condition flags (myocardialInfraction, congestiveHeartFailure, ...),
+    aids, and comorbidityIndex to staysDF.
+
+    Requires staysDF to have DSYSRTKY, THRU_DT_DAY, and hospitalizationsIn12Months. The third
+    is added by baseF.add_prior_hospitalization_info (or transfersF.add_prior_hospitalization_info
+    for dyad tables) and must be present on staysDF before calling.
+
+    The day-level dgns indexes are built inline from ipBase/opBase via comorbiditiesF.get_dayDgnsDF.
+    If add_comorbidity_info is called multiple times in the same script, prefer building the
+    indexes once and calling comorbiditiesF.get_conditions directly to avoid duplicated work.
+
+    claimType ("ip" or "op"): passed through to comorbiditiesF.get_conditions. "ip" excludes the
+    IP principal dgns falling on the stay's THRU_DT_DAY (the admission reason isn't a comorbidity
+    of itself). For "op", no principal exclusion is applied, so an incidental same-day IP discharge
+    counts as a real comorbidity for the index OP visit.'''
+    opDayDgnsDF = comorbiditiesF.get_dayDgnsDF(opBase)
+    ipDayDgnsDF = comorbiditiesF.get_dayDgnsDF(ipBase)
+    conditions = comorbiditiesF.get_conditions(staysDF, opDayDgnsDF, ipDayDgnsDF,
+                                               claimType=claimType, method=method)
+    staysDF = staysDF.join(conditions,
+                           on=["DSYSRTKY", "THRU_DT_DAY", "hospitalizationsIn12Months"],
+                           how="left_outer")
+    return staysDF
