@@ -136,6 +136,26 @@ def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseD
         transfersDF = transfersDF.withColumnRenamed(dst, src)
     return transfersDF
 
+def add_comorbidity_info(transfersDF, ipBase, opBase, claimType="ip", method="Glasheen2019"):
+    '''Adds comorbidity condition flags + comorbityIndex describing the TO (receiving)
+    stay of each transfer. staysF.add_comorbidity_info reads its keys by canonical
+    (un-prefixed) name, so we rename only the specific to-side columns it consults,
+    then restore them after the call. hospitalizationsIn12Months is already un-prefixed
+    on transfersDF (see add_prior_hospitalization_info) and the comorbidity output
+    columns are likewise kept un-prefixed since they describe the receiving stay.
+    Requires add_prior_hospitalization_info to have run first.'''
+    toToCanonical = {
+        "toDSYSRTKY":    "DSYSRTKY",
+        "toTHRU_DT_DAY": "THRU_DT_DAY",
+    }
+    for src, dst in toToCanonical.items():
+        transfersDF = transfersDF.withColumnRenamed(src, dst)
+    transfersDF = staysF.add_comorbidity_info(transfersDF, ipBase, opBase,
+                                              claimType=claimType, method=method)
+    for src, dst in toToCanonical.items():
+        transfersDF = transfersDF.withColumnRenamed(dst, src)
+    return transfersDF
+
 def add_dyad(transfersDF):
     '''Dyad is defined by the two NPI numbers and the year'''
     transfersDF = transfersDF.withColumn("dyad", F.array( F.col("fromORGNPINM"),F.col("toORGNPINM"), F.col("fromTHRU_DT_YEAR")))
