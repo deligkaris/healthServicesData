@@ -1894,43 +1894,33 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
 def add_prior_hospitalization_info(baseDF, ipBaseDF):
     '''Calculates the number of inpatient claims in the 12 and 6 months prior to the admission date of the baseDF.
     It uses the inpatient claim through date and compares it to the baseDF admission date.
-    If there is not enough FFS coverage for a beneficiary, then the value is Null.'''
-    eachBaseClaim = Window.partitionBy(["DSYSRTKY", "ADMSN_DT_DAY","CLAIMNO"])
+    If there is not enough FFS coverage for a beneficiary, then the value is Null.
 
+    The 6-month lookback window [1,182] is a strict subset of the 12-month window [1,365], so
+    both counts are derived from a single ipBaseDF<->baseDF inner join filtered to the widest
+    window, a single groupBy aggregation (count for 12 months, conditional sum for 6 months),
+    and a single left_outer join back onto baseDF -- halving the join/shuffle work versus
+    computing each lookback independently.'''
     ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_DAY").alias("ipTHRU_DT_DAY"))
 
-    baseDF = (baseDF.join(
-                       ipBaseDF.join(baseDF.select("DSYSRTKY","ADMSN_DT_DAY","CLAIMNO"),
-                                     on="DSYSRTKY",
-                                     how="inner")
-                               .filter(F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY") <= 365)
-                               .filter(F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY") >= 1)
-                               .withColumn("hospitalizationsIn12Months", F.count(F.col("DSYSRTKY")).over(eachBaseClaim))
-                               .select(["DSYSRTKY", "ADMSN_DT_DAY","CLAIMNO","hospitalizationsIn12Months"])
-                               .distinct(),
-                               #.withColumn("hospitalizationsIn12Months", F.size(F.collect_list(F.col("ipCLAIMNO")).over(eachOpClaim))) #same results
+    priorHospitalizations = (ipBaseDF.join(baseDF.select("DSYSRTKY","ADMSN_DT_DAY","CLAIMNO"),
+                                           on="DSYSRTKY",
+                                           how="inner")
+                                     .withColumn("daysSinceDischarge", F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY"))
+                                     .filter((F.col("daysSinceDischarge") >= 1) & (F.col("daysSinceDischarge") <= 365))
+                                     .groupBy("DSYSRTKY", "ADMSN_DT_DAY", "CLAIMNO")
+                                     .agg(F.count(F.lit(1)).alias("hospitalizationsIn12Months"),
+                                          F.sum((F.col("daysSinceDischarge") <= 182).cast('int')).alias("hospitalizationsIn6Months")))
+
+    baseDF = (baseDF.join(priorHospitalizations,
                           on=["DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY"],
                           how="left_outer")
-                    .fillna(0, subset="hospitalizationsIn12Months")
+                    .fillna(0, subset=["hospitalizationsIn12Months", "hospitalizationsIn6Months"])
                     .withColumn("hospitalizationsIn12Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") < 12, F.lit(None) )
                                                                .otherwise( F.col("hospitalizationsIn12Months") ))
-                    .withColumn("hospitalizedIn12Months", (F.col("hospitalizationsIn12Months")>0).cast('int')))
-
-    baseDF = (baseDF.join(
-                       ipBaseDF.join(baseDF.select("DSYSRTKY","ADMSN_DT_DAY","CLAIMNO"),
-                                     on="DSYSRTKY",
-                                     how="inner")
-                               .filter(F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY") <= 182)
-                               .filter(F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY") >= 1)
-                               .withColumn("hospitalizationsIn6Months", F.count(F.col("DSYSRTKY")).over(eachBaseClaim))
-                               .select(["DSYSRTKY", "ADMSN_DT_DAY","CLAIMNO","hospitalizationsIn6Months"])
-                               .distinct(),
-                               #.withColumn("hospitalizationsIn12Months", F.size(F.collect_list(F.col("ipCLAIMNO")).over(eachOpClaim))) #same results
-                          on=["DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY"],
-                          how="left_outer")
-                    .fillna(0, subset="hospitalizationsIn6Months")
                     .withColumn("hospitalizationsIn6Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") < 6, F.lit(None) )
-                                                               .otherwise( F.col("hospitalizationsIn6Months") ))
+                                                              .otherwise( F.col("hospitalizationsIn6Months") ))
+                    .withColumn("hospitalizedIn12Months", (F.col("hospitalizationsIn12Months")>0).cast('int'))
                     .withColumn("hospitalizedIn6Months", (F.col("hospitalizationsIn6Months")>0).cast('int')))
     return baseDF
 

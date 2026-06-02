@@ -1866,3 +1866,259 @@ class TestMortalityFlagConsistency:
         df = add_365DaysAfterThroughDateDead(df)
         for r in df.collect():
             assert r["90DaysAfterThroughDateDead"] <= r["365DaysAfterThroughDateDead"]
+
+
+# ============================================================
+# End-to-end tests for add_prior_hospitalization_info
+#
+# add_prior_hospitalization_info(baseDF, ipBaseDF) consumes derived columns:
+#   baseDF   -> DSYSRTKY, CLAIMNO, ADMSN_DT_DAY, ADMSN_DT_MONTH, ffsFirstMonth
+#   ipBaseDF -> DSYSRTKY, THRU_DT_DAY
+# These tests build both DataFrames from the real cms.schemas ipBase schema and run
+# the actual date-enrichment pipeline that produces those columns
+# (base.add_admission_date_info for the index stays, utilities.add_through_date_info
+# for the prior-history stays), simulating only the MBSF-supplied ffsFirstMonth via a
+# join -- the same end-to-end approach used by the add_30DaysAfterAdmissionDateDead
+# tests above.
+# ============================================================
+
+def _real_month_number(date_int):
+    """Absolute month number add_admission_date_info would produce for a YYYYMMDD int
+    (monthsInYearsPrior[year] + month-of-year). Mirrors _real_day_number for months so
+    ffsFirstMonth values can be set relative to a claim's real ADMSN_DT_MONTH."""
+    from utilities import monthsInYearsPriorDict
+    s = str(date_int)
+    year, month = int(s[:4]), int(s[4:6])
+    return monthsInYearsPriorDict[year] + month
+
+
+def _ffs_first_month(admsn_dt, coverage_months):
+    """ffsFirstMonth value giving exactly `coverage_months` of FFS coverage before admsn_dt,
+    i.e. ADMSN_DT_MONTH - ffsFirstMonth == coverage_months."""
+    return _real_month_number(admsn_dt) - coverage_months
+
+
+_PRIOR_HOSP_FFS_SCHEMA = StructType([
+    StructField("DSYSRTKY", IntegerType(), True),
+    StructField("ffsFirstMonth", IntegerType(), True),
+])
+
+
+def _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs):
+    """Build the (baseDF, ipBaseDF) pair add_prior_hospitalization_info expects, end-to-end.
+
+    index_claims: list of dicts {DSYSRTKY, CLAIMNO, ADMSN_DT, ffsFirstMonth} -- the index
+        (receiving) stays. Built from the real ipBase schema, run through
+        add_admission_date_info (producing ADMSN_DT_DAY/ADMSN_DT_MONTH), then joined to a
+        simulated MBSF frame supplying ffsFirstMonth. ffsFirstMonth is a per-beneficiary
+        value (real MBSF gives one first-FFS-month per DSYSRTKY), so claims sharing a
+        DSYSRTKY must agree on it; the simulated frame is deduped to one row per beneficiary.
+    prior_throughs: list of dicts {DSYSRTKY, THRU_DT} -- one row per prior inpatient stay.
+        Built from the real ipBase schema, run through add_through_date_info (producing
+        THRU_DT_DAY).
+    """
+    from cms.base import add_admission_date_info
+    from cms.utilities import add_through_date_info
+
+    base_rows = [{"DSYSRTKY": c["DSYSRTKY"], "CLAIMNO": c["CLAIMNO"], "ADMSN_DT": c["ADMSN_DT"]}
+                 for c in index_claims]
+    baseDF = make_real_claim_df(spark, "ipBase", base_rows)
+    baseDF = add_admission_date_info(baseDF, "ip")
+
+    # One ffsFirstMonth per beneficiary; conflicting values for the same DSYSRTKY are a
+    # test-authoring error (real MBSF supplies a single first-FFS-month per beneficiary).
+    ffs_by_bene = {}
+    for c in index_claims:
+        prev = ffs_by_bene.setdefault(c["DSYSRTKY"], c["ffsFirstMonth"])
+        assert prev == c["ffsFirstMonth"], \
+            f"conflicting ffsFirstMonth for DSYSRTKY {c['DSYSRTKY']}"
+    ffs_rows = [{"DSYSRTKY": k, "ffsFirstMonth": v} for k, v in ffs_by_bene.items()]
+    ffsDF = spark.createDataFrame(ffs_rows, schema=_PRIOR_HOSP_FFS_SCHEMA)
+    baseDF = baseDF.join(ffsDF, on="DSYSRTKY", how="left_outer")
+
+    ip_rows = [{"DSYSRTKY": p["DSYSRTKY"], "THRU_DT": p["THRU_DT"]} for p in prior_throughs]
+    ipBaseDF = make_real_claim_df(spark, "ipBase", ip_rows)
+    ipBaseDF = add_through_date_info(ipBaseDF)
+
+    return baseDF, ipBaseDF
+
+
+class TestAddPriorHospitalizationInfoEndToEnd:
+
+    def test_counts_window_boundaries_real_pipeline(self, spark):
+        # One beneficiary, index admission 2021-06-01, plenty of FFS coverage.
+        # Prior ip THRU dates chosen at exact day-difference boundaries:
+        #   2021-06-01 (diff 0)   -> excluded (must be >= 1 day before admission)
+        #   2021-05-02 (diff 30)  -> 6mo + 12mo
+        #   2021-02-21 (diff 100) -> 6mo + 12mo
+        #   2020-12-01 (diff 182) -> 6mo + 12mo  (6-month upper boundary, inclusive)
+        #   2020-11-30 (diff 183) -> 12mo only
+        #   2020-06-01 (diff 365) -> 12mo only   (12-month upper boundary, inclusive)
+        #   2020-05-31 (diff 366) -> excluded
+        # Expected: hospitalizationsIn12Months == 5, hospitalizationsIn6Months == 3.
+        from cms.base import add_prior_hospitalization_info
+        admsn = 20210601
+        index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": admsn,
+                         "ffsFirstMonth": _ffs_first_month(admsn, 24)}]
+        prior_throughs = [
+            {"DSYSRTKY": 1, "THRU_DT": 20210601},  # diff 0   -> excluded
+            {"DSYSRTKY": 1, "THRU_DT": 20210502},  # diff 30  -> 6 + 12
+            {"DSYSRTKY": 1, "THRU_DT": 20210221},  # diff 100 -> 6 + 12
+            {"DSYSRTKY": 1, "THRU_DT": 20201201},  # diff 182 -> 6 + 12
+            {"DSYSRTKY": 1, "THRU_DT": 20201130},  # diff 183 -> 12 only
+            {"DSYSRTKY": 1, "THRU_DT": 20200601},  # diff 365 -> 12 only
+            {"DSYSRTKY": 1, "THRU_DT": 20200531},  # diff 366 -> excluded
+        ]
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs)
+        r = add_prior_hospitalization_info(baseDF, ipBaseDF).collect()[0]
+        assert r["hospitalizationsIn12Months"] == 5
+        assert r["hospitalizationsIn6Months"] == 3
+        assert r["hospitalizedIn12Months"] == 1
+        assert r["hospitalizedIn6Months"] == 1
+
+    def test_no_prior_hospitalizations_returns_zero(self, spark):
+        # Beneficiary with full coverage but no qualifying prior ip stay: counts are 0
+        # (left_outer miss -> fillna(0)), flags are 0 -- not null.
+        from cms.base import add_prior_hospitalization_info
+        admsn = 20210601
+        index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": admsn,
+                         "ffsFirstMonth": _ffs_first_month(admsn, 24)}]
+        # Only an ip stay AFTER the admission (diff < 1) -> never qualifies.
+        prior_throughs = [{"DSYSRTKY": 1, "THRU_DT": 20210701}]
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs)
+        r = add_prior_hospitalization_info(baseDF, ipBaseDF).collect()[0]
+        assert r["hospitalizationsIn12Months"] == 0
+        assert r["hospitalizationsIn6Months"] == 0
+        assert r["hospitalizedIn12Months"] == 0
+        assert r["hospitalizedIn6Months"] == 0
+
+    def test_coverage_below_6_months_nulls_both_windows(self, spark):
+        # ADMSN_DT_MONTH - ffsFirstMonth == 3 (< 6 and < 12): both lookbacks are null
+        # even though a qualifying prior stay exists.
+        from cms.base import add_prior_hospitalization_info
+        admsn = 20210601
+        index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": admsn,
+                         "ffsFirstMonth": _ffs_first_month(admsn, 3)}]
+        prior_throughs = [{"DSYSRTKY": 1, "THRU_DT": 20210221}]  # diff 100, would be 1/1
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs)
+        r = add_prior_hospitalization_info(baseDF, ipBaseDF).collect()[0]
+        assert r["hospitalizationsIn12Months"] is None
+        assert r["hospitalizationsIn6Months"] is None
+        assert r["hospitalizedIn12Months"] is None
+        assert r["hospitalizedIn6Months"] is None
+
+    def test_coverage_between_6_and_12_months_nulls_only_12_month(self, spark):
+        # ADMSN_DT_MONTH - ffsFirstMonth == 8 (>= 6 but < 12): the 6-month window is kept
+        # while the 12-month window is nulled. This exercises the per-window FFS logic
+        # independently (the two windows now share one aggregation but keep separate nulling).
+        from cms.base import add_prior_hospitalization_info
+        admsn = 20210601
+        index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": admsn,
+                         "ffsFirstMonth": _ffs_first_month(admsn, 8)}]
+        prior_throughs = [{"DSYSRTKY": 1, "THRU_DT": 20210221}]  # diff 100 -> within 6mo
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs)
+        r = add_prior_hospitalization_info(baseDF, ipBaseDF).collect()[0]
+        assert r["hospitalizationsIn12Months"] is None
+        assert r["hospitalizedIn12Months"] is None
+        assert r["hospitalizationsIn6Months"] == 1
+        assert r["hospitalizedIn6Months"] == 1
+
+    def test_ffs_coverage_exact_boundaries(self, spark):
+        # Coverage exactly 12 months (not < 12) -> 12mo kept; coverage exactly 6 months
+        # (not < 6, but < 12) -> 6mo kept, 12mo nulled. Both have one prior stay at diff 100.
+        from cms.base import add_prior_hospitalization_info
+        admsn = 20210601
+        index_claims = [
+            {"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": admsn,
+             "ffsFirstMonth": _ffs_first_month(admsn, 12)},  # exactly 12 months
+            {"DSYSRTKY": 2, "CLAIMNO": 102, "ADMSN_DT": admsn,
+             "ffsFirstMonth": _ffs_first_month(admsn, 6)},   # exactly 6 months
+        ]
+        prior_throughs = [
+            {"DSYSRTKY": 1, "THRU_DT": 20210221},  # diff 100
+            {"DSYSRTKY": 2, "THRU_DT": 20210221},  # diff 100
+        ]
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs)
+        by_claim = {r["CLAIMNO"]: r for r in
+                    add_prior_hospitalization_info(baseDF, ipBaseDF).collect()}
+        # exactly-12-months beneficiary: both windows kept
+        assert by_claim[101]["hospitalizationsIn12Months"] == 1
+        assert by_claim[101]["hospitalizationsIn6Months"] == 1
+        # exactly-6-months beneficiary: 12mo nulled, 6mo kept
+        assert by_claim[102]["hospitalizationsIn12Months"] is None
+        assert by_claim[102]["hospitalizationsIn6Months"] == 1
+
+    def test_multiple_beneficiaries_counted_independently(self, spark):
+        # Three beneficiaries in one run; each beneficiary's prior stays must not leak into
+        # another's count (partition by DSYSRTKY/ADMSN_DT_DAY/CLAIMNO).
+        from cms.base import add_prior_hospitalization_info
+        admsn = 20210601
+        ffs = _ffs_first_month(admsn, 24)
+        index_claims = [
+            {"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": admsn, "ffsFirstMonth": ffs},
+            {"DSYSRTKY": 2, "CLAIMNO": 102, "ADMSN_DT": admsn, "ffsFirstMonth": ffs},
+            {"DSYSRTKY": 3, "CLAIMNO": 103, "ADMSN_DT": admsn, "ffsFirstMonth": ffs},
+        ]
+        prior_throughs = [
+            {"DSYSRTKY": 1, "THRU_DT": 20210502},  # diff 30  -> 6 + 12
+            {"DSYSRTKY": 1, "THRU_DT": 20201201},  # diff 182 -> 6 + 12
+            {"DSYSRTKY": 1, "THRU_DT": 20201130},  # diff 183 -> 12 only
+            {"DSYSRTKY": 2, "THRU_DT": 20200601},  # diff 365 -> 12 only
+            # beneficiary 3 has no prior stays
+        ]
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs)
+        by_claim = {r["CLAIMNO"]: r for r in
+                    add_prior_hospitalization_info(baseDF, ipBaseDF).collect()}
+        assert by_claim[101]["hospitalizationsIn12Months"] == 3
+        assert by_claim[101]["hospitalizationsIn6Months"] == 2
+        assert by_claim[102]["hospitalizationsIn12Months"] == 1
+        assert by_claim[102]["hospitalizationsIn6Months"] == 0
+        assert by_claim[102]["hospitalizedIn6Months"] == 0
+        assert by_claim[103]["hospitalizationsIn12Months"] == 0
+        assert by_claim[103]["hospitalizationsIn6Months"] == 0
+
+    def test_same_beneficiary_index_claims_partitioned_by_admission(self, spark):
+        # One beneficiary with two index stays at different admission dates. Each index claim
+        # must count only stays in its OWN look-back window, from the shared prior-stay pool.
+        from cms.base import add_prior_hospitalization_info
+        # ffsFirstMonth is per beneficiary: anchor it 24 months before the EARLIER admission
+        # so both index stays have >= 12 months of coverage (the later stay gets even more).
+        shared_ffs = _ffs_first_month(20200601, 24)
+        index_claims = [
+            {"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": 20210601, "ffsFirstMonth": shared_ffs},
+            {"DSYSRTKY": 1, "CLAIMNO": 111, "ADMSN_DT": 20200601, "ffsFirstMonth": shared_ffs},
+        ]
+        prior_throughs = [
+            # diff 30 before 2021-06-01; ~382 days before 2020-06-01 admission would be
+            # negative (after it) -> only counts for claim 101.
+            {"DSYSRTKY": 1, "THRU_DT": 20210502},
+            # diff 17 before 2020-06-01; ~382 days before 2021-06-01 (outside 365)
+            # -> only counts for claim 111.
+            {"DSYSRTKY": 1, "THRU_DT": 20200515},
+        ]
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs)
+        by_claim = {r["CLAIMNO"]: r for r in
+                    add_prior_hospitalization_info(baseDF, ipBaseDF).collect()}
+        assert by_claim[101]["hospitalizationsIn12Months"] == 1
+        assert by_claim[101]["hospitalizationsIn6Months"] == 1
+        assert by_claim[111]["hospitalizationsIn12Months"] == 1
+        assert by_claim[111]["hospitalizationsIn6Months"] == 1
+
+    def test_output_columns_added_and_originals_preserved(self, spark):
+        # The four documented output columns are added and every original ipBase field
+        # (plus the pipeline-derived columns) survives the two joins.
+        from cms.base import add_prior_hospitalization_info
+        from cms.schemas import schemas
+        admsn = 20210601
+        index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": admsn,
+                         "ffsFirstMonth": _ffs_first_month(admsn, 24)}]
+        prior_throughs = [{"DSYSRTKY": 1, "THRU_DT": 20210221}]
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs)
+        result_df = add_prior_hospitalization_info(baseDF, ipBaseDF)
+        for c in ("hospitalizationsIn12Months", "hospitalizedIn12Months",
+                  "hospitalizationsIn6Months", "hospitalizedIn6Months"):
+            assert c in result_df.columns
+        for f in (f.name for f in schemas["ipBase"].fields):
+            assert f in result_df.columns, f"original column {f} dropped"
+        # No row duplication introduced by the join-back.
+        assert result_df.count() == 1

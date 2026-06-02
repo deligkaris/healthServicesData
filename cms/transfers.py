@@ -3,6 +3,13 @@ from pyspark.sql.window import Window
 import cms.base as baseF
 import cms.stays as staysF
 
+def _rename_columns(df, mapping):
+    '''Single-projection rename: aliases each column named in mapping to its target and passes the
+    rest through unchanged, preserving column order. Preferred over a chained-withColumnRenamed loop
+    because each withColumnRenamed adds its own Project node, bloating the logical plan that Catalyst
+    walks on every optimizer pass; this is one Project node regardless of how many columns are renamed.'''
+    return df.select([F.col(c).alias(mapping.get(c, c)) for c in df.columns])
+
 def get_closest_to_claim(transfersDF):
     '''Transfers include a from stay and a to stay...this function finds the to stay that is the closest in time to the from stay.'''
     eachFromClaim=Window.partitionBy("fromTHRU_DT_DAY", "fromCLAIMNO")
@@ -107,11 +114,9 @@ def add_prior_hospitalization_info(transfersDF, ipBaseDF):
         "toADMSN_DT_MONTH":  "ADMSN_DT_MONTH",
         "toffsFirstMonth":   "ffsFirstMonth",
     }
-    for src, dst in toToCanonical.items():
-        transfersDF = transfersDF.withColumnRenamed(src, dst)
+    transfersDF = _rename_columns(transfersDF, toToCanonical)
     transfersDF = baseF.add_prior_hospitalization_info(transfersDF, ipBaseDF)
-    for src, dst in toToCanonical.items():
-        transfersDF = transfersDF.withColumnRenamed(dst, src)
+    transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
     return transfersDF
 
 def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF):
@@ -129,11 +134,9 @@ def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseD
         "to90DaysAfterAdmissionDateDead":   "90DaysAfterAdmissionDateDead",
         "to365DaysAfterAdmissionDateDead":  "365DaysAfterAdmissionDateDead",
     }
-    for src, dst in toToCanonical.items():
-        transfersDF = transfersDF.withColumnRenamed(src, dst)
+    transfersDF = _rename_columns(transfersDF, toToCanonical)
     transfersDF = baseF.add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF)
-    for src, dst in toToCanonical.items():
-        transfersDF = transfersDF.withColumnRenamed(dst, src)
+    transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
     return transfersDF
 
 def add_comorbidity_info(transfersDF, ipBase, opBase, claimType="ip", method="Glasheen2019"):
@@ -148,12 +151,10 @@ def add_comorbidity_info(transfersDF, ipBase, opBase, claimType="ip", method="Gl
         "toDSYSRTKY":    "DSYSRTKY",
         "toTHRU_DT_DAY": "THRU_DT_DAY",
     }
-    for src, dst in toToCanonical.items():
-        transfersDF = transfersDF.withColumnRenamed(src, dst)
+    transfersDF = _rename_columns(transfersDF, toToCanonical)
     transfersDF = staysF.add_comorbidity_info(transfersDF, ipBase, opBase,
                                               claimType=claimType, method=method)
-    for src, dst in toToCanonical.items():
-        transfersDF = transfersDF.withColumnRenamed(dst, src)
+    transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
     return transfersDF
 
 def add_dyad(transfersDF):
