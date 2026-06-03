@@ -242,7 +242,7 @@ def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkari
     return data
 
 def prep_procedureClassesDF(df):
-    df = df.withColumn("ICD-10-PCS-CODE", F.regexp_replace(F.col("ICD-10-PCS-CODE"), "'", '"'))
+    df = df.withColumn("ICD-10-PCS-CODE", F.regexp_replace(F.col("ICD-10-PCS-CODE"), "'", ""))
     return df
 
 def prep_adiDF(adiDF):
