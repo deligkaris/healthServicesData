@@ -276,9 +276,8 @@ def add_parkinsons(baseDF):
 def add_dbsPrcdr(baseDF): # dbs: deep brain stimulation
     '''this function tries to find dbs in procedure codes only, and those are found in inpatient claims'''
     dbsPrcdrCodes = ("00H00MZ", "00H03MZ")
-    baseDF = (baseDF.withColumn("dbsPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {dbsPrcdrCodes})")))
     #if dbs prcdr codes are found, then dbs was performed
-    baseDF = baseDF.withColumn("dbsPrcdr", F.when( F.size(F.col("dbsPrcdrCodes"))>0,     1).otherwise(0))
+    baseDF = baseDF.withColumn("dbsPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {dbsPrcdrCodes})") )>0, 1).otherwise(0))
     return baseDF
 
 def add_dbsCpt(baseDF):
@@ -933,17 +932,14 @@ def add_ccvPrcdr(baseDF):
     vPrcdrCodes = ("Z982", "009600Z", "009630Z", "009640Z", "001607B", "00160JB", "00160KB", "001637B", "00163JB", "00163KB", "001647B",
                    "00164JB", "00164KB", "009130Z", "00913ZZ", "009140Z", "00914ZZ", "009230Z", "00923ZZ", "009240Z", "00924ZZ", "009430Z",
                    "00943ZZ", "009440Z", "00944ZZ", "009530Z", "009540Z", "00954ZZ", "00963ZZ", "00994ZZ")  
-    baseDF = (baseDF.withColumn("ccPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {ccPrcdrCodes})"))
-                    .withColumn("vPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {vPrcdrCodes})"))
-                    .withColumn("ccvPrcdr", F.when( (F.size(F.col("ccPrcdrCodes"))>0) | (F.size(F.col("vPrcdrCodes"))>0), 1).otherwise(0))
-                    .drop("ccPrcdrCodes", "vPrcdrCodes"))
+    baseDF = baseDF.withColumn("ccvPrcdr",
+                               F.when( (F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {ccPrcdrCodes})") )>0)
+                                       | (F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {vPrcdrCodes})") )>0), 1).otherwise(0))
     return baseDF
 
 def add_evtPrcdr(baseDF):
     evtPrcdrCodes=("03CG3ZZ","03CH3ZZ","03CJ3ZZ","03CK3ZZ","03CL3ZZ","03CM3ZZ","03CN3ZZ","03CP3ZZ","03CQ3ZZ")
-    baseDF = (baseDF.withColumn("evtPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {evtPrcdrCodes})"))
-                    .withColumn("evtPrcdr", F.when( F.size(F.col("evtPrcdrCodes"))>0,     1).otherwise(0))
-                    .drop("evtPrcdrCodes"))
+    baseDF = baseDF.withColumn("evtPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {evtPrcdrCodes})") )>0, 1).otherwise(0))
     #a different approach, not sure if this is slower/faster
     #evtPrcdrCodes=["03CG3ZZ","03CH3ZZ","03CJ3ZZ","03CK3ZZ","03CL3ZZ","03CM3ZZ","03CN3ZZ","03CP3ZZ","03CQ3ZZ"]
     #evtPrcdrCondition = '(' + '|'.join('(F.col(' + f'"ICD_PRCDR_CD{x}"' + ').isin(evtPrcdrCodes))' for x in range(1,26)) +')'
@@ -976,10 +972,8 @@ def add_tpaDrg(baseDF):
     return baseDF
 
 def add_tpaPrcdr(baseDF):
-    tpaPrcdrCodes = ("3E03317", "3E03317")                         
-    baseDF = (baseDF.withColumn("tpaPrcdrCodes", F.expr( f"filter(prcdrCodeAll, x -> x in {tpaPrcdrCodes})"))
-                    .withColumn("tpaPrcdr", F.when( F.size(F.col("tpaPrcdrCodes"))>0,     1).otherwise(0))
-                    .drop("tpaPrcdrCodes"))
+    tpaPrcdrCodes = ("3E03317", "3E03317")
+    baseDF = baseDF.withColumn("tpaPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {tpaPrcdrCodes})") )>0, 1).otherwise(0))
     return baseDF
 
 def add_tpaDgns(baseDF):
@@ -2030,7 +2024,17 @@ def drop_unused_columns(baseDF):
                 "PTB_DED", "PTB_COIN", "PRVDRPMT", "BENEPMT", "RFR_PHYSN_NPI", "RFR_PHYSN_SPCLTY_CD", 
                 "CLM_OP_TRANS_TYPE_CD", "CLM_OP_ESRD_MTHD_CD", "prcdrCodeAll", "dgnsCodeAll",
                 "rehabilitation", "rehabilitationFromTaxonomyAll", "rehabilitationFromTaxonomyPrimary", "rehabilitationFromCCN",
-                       "pediatricHospital", "psychiatricHospital", "ltcHospital"])
+                       "pediatricHospital", "psychiatricHospital", "ltcHospital",
+                #intermediate Dgns/Prcdr/Drg flag columns, no longer needed once their corresponding condition flag has been computed
+                #(drop() ignores any that a given pipeline did not create)
+                "ishStrokeDgns", "ishStrokeDrg", "septicShockDgns", "shockDgns",
+                "acuteRespiratoryFailureDgns", "acuteRespiratoryFailurePrcdr",
+                "acuteNeurologicalFailureDgns", "acuteNeurologicalFailurePrcdr",
+                "coagulopathyDgns", "acuteHepaticInjuryFailureDgns",
+                "acuteRenalInjuryFailureDgns", "acuteRenalInjuryFailurePrcdr", "acidosisDgns",
+                "imvPrcdr", "ecmoPrcdr", "rrtPrcdr", "endoscopyPrcdr", "intubationPrcdr",
+                "tracheostomyPrcdr", "pegPrcdr", "pegDgns", "dbsPrcdr", "ccvPrcdr",
+                "evtPrcdr", "evtDrg", "tpaPrcdr", "tpaDgns", "tpaDrg"])
     return baseDF.drop(*dropColumns)
 
 def get_clean_through_dates(baseDF):
