@@ -286,7 +286,7 @@ def add_dbsCpt(baseDF):
     eachClaim = Window.partitionBy("CLAIMNO")
     #find dbs cpt codes in claims
     baseDF = (baseDF.withColumn("hcpcsCodeAll", F.collect_set(F.col("HCPCS_CD")).over(eachClaim))
-                    .withColumn("dbsCptCodes", F.expr(f"filter(hcpcsCodeAll, x - > x in {dbsCptCodes})")))
+                    .withColumn("dbsCptCodes", F.expr(f"filter(hcpcsCodeAll, x -> x in {dbsCptCodes})")))
 
     #if dbs cpt codes are found, then dbsCpt was performed
     baseDF = baseDF.withColumn("dbsCpt", F.when( F.size(F.col("dbsCptCodes"))>0,     1).otherwise(0))
@@ -2034,7 +2034,10 @@ def drop_unused_columns(baseDF):
                 "acuteRenalInjuryFailureDgns", "acuteRenalInjuryFailurePrcdr", "acidosisDgns",
                 "imvPrcdr", "ecmoPrcdr", "rrtPrcdr", "endoscopyPrcdr", "intubationPrcdr",
                 "tracheostomyPrcdr", "pegPrcdr", "pegDgns", "dbsPrcdr", "ccvPrcdr",
-                "evtPrcdr", "evtDrg", "tpaPrcdr", "tpaDgns", "tpaDrg"])
+                "evtPrcdr", "evtDrg", "tpaPrcdr", "tpaDgns", "tpaDrg",
+                #intermediate array columns, no longer needed once the flags/aggregations derived from them have been computed
+                "poaCodeAll", "dgnsPoaCodeAll", "hcpcsCodeAll", "dbsCptCodes",
+                "dgnsList", "parkinsonsList", "losDays"])
     return baseDF.drop(*dropColumns)
 
 def get_clean_through_dates(baseDF):
