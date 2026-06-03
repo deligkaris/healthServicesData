@@ -207,7 +207,8 @@ def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", w
               .withColumn(column+"Prior", F.lag(column,1).over(eachWho))
               .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior")).otherwise(F.lit(None)))
               #lag fires only on the row-1 of each (who,when) group; broadcast the prior value to every row in the group
-              .withColumn(column+"Prior", F.max(F.col(column+"Prior")).over(eachWhoWhen)))
+              .withColumn(column+"Prior", F.max(F.col(column+"Prior")).over(eachWhoWhen))
+              .drop("prior")) #scratch column used only to validate the lag is exactly 1 year
     return staysDF
      
 def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockVol"):
