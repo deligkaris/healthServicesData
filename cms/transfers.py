@@ -308,7 +308,9 @@ def add_column_prior(transfersDF, column, who, when):
     (eg nodeHhi), and who=["fromORGNPINM","toORGNPINM"] -- the year-less dyad pair -- for
     dyad-level columns (eg dyadProportionTransfersOut/In) so the prior value comes from the
     same dyad a year earlier rather than an arbitrary partner. when=fromTHRU_DT_YEAR is the
-    transfer's originating year.'''
+    transfer's originating year.
+    A null in the prior column means unobserved (the dyad/node's first year or a year gap),
+    not zero -- do not coalesce it to 0 downstream.'''
     return utilitiesF.add_column_prior(transfersDF, column=column, who=who, when=when)
 
 def add_node_hhi_info(transfersDF):

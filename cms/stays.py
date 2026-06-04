@@ -200,7 +200,9 @@ def add_first_stay_info(staysDF):
 def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", when="THRU_DT_YEAR"):
     '''Adds the column's value from the prior year at the provider (stays) grain.
     Thin wrapper over utilitiesF.add_column_prior with provider-level defaults
-    (who=ORGNPINM, when=THRU_DT_YEAR); the shared logic lives in utilities.py.'''
+    (who=ORGNPINM, when=THRU_DT_YEAR); the shared logic lives in utilities.py.
+    A null in the prior column means unobserved (first year or a year gap), not zero --
+    do not coalesce it to 0 downstream.'''
     return utilitiesF.add_column_prior(staysDF, column=column, who=who, when=when)
      
 def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockVol"):

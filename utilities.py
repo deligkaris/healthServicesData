@@ -40,7 +40,10 @@ def add_column_prior(df, column, who, when):
     wrong row's. For some `who` the prior year would be 2 years prior because spark uses
     whatever row is lagging/behind the current one, so in that case the prior quantity is set
     to null. Domain modules wrap this with their own defaults (see cms.stays.add_column_prior
-    and cms.transfers.add_column_prior).'''
+    and cms.transfers.add_column_prior).
+    A null in column+"Prior" means the prior-year value is UNOBSERVED (the group's first year,
+    or a >1-year gap), not zero. Do not coalesce it to 0 downstream -- that would fabricate a
+    real prior value where none exists.'''
     whoCols = who if isinstance(who, list) else [who]
     eachWho = Window.partitionBy(whoCols).orderBy(when)
     eachWhoWhen = Window.partitionBy(whoCols + [when])
