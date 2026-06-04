@@ -438,6 +438,25 @@ def _run_hhi_pipeline(spark, rows):
     return df
 
 
+def _run_hhi_info_pipeline(spark, rows):
+    """Like _run_hhi_pipeline but runs add_node_hhi_info (add_nodeHhi + the
+    prior-year lag) so both nodeHhi and nodeHhiPrior are present."""
+    from cms.transfers import (
+        add_node_volume_info,
+        add_dyad,
+        add_dyadTransferVol,
+        add_dyadProportionTransfersOut,
+        add_node_hhi_info,
+    )
+    df = make_raw_transfers_df(spark, rows)
+    df = add_node_volume_info(df)
+    df = add_dyad(df)
+    df = add_dyadTransferVol(df)
+    df = add_dyadProportionTransfersOut(df)
+    df = add_node_hhi_info(df)
+    return df
+
+
 def _hhi_for(df, from_npi, year):
     """Return the unique nodeHhi for (from_npi, year). Asserts that all rows
     for this (node, year) carry the same HHI value."""
@@ -1495,6 +1514,201 @@ class TestAddNodeHhiInfo:
         assert out[2020] is None
         assert out[2021] == pytest.approx(1.0)
 
+    def test_prior_carries_distinct_value_not_current(self, spark):
+        # 2020: A -> B, A -> C (one each) -> HHI = 0.5
+        # 2021: all of A's transfers go to B          -> HHI = 1.0
+        # The prior for 2021 must be 0.5 (the 2020 value), NOT 1.0 (the current
+        # year). The all-1.0 fixture in test_prior_year_value_propagated cannot
+        # distinguish these two; this one can.
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 300, 2020, 2020, "a2", "c1"),
+            (100, 200, 2021, 2021, "a3", "b2"),
+            (100, 200, 2021, 2021, "a4", "b3"),
+        ]
+        df = _run_hhi_info_pipeline(spark, rows)
+        out = {r["fromTHRU_DT_YEAR"]: r["nodeHhiPrior"] for r in df.collect()}
+        assert out[2020] is None
+        assert out[2021] == pytest.approx(0.5)
+
+    def test_year_gap_yields_null_prior(self, spark):
+        # A is present in 2020 and 2022 only (no 2021). add_column_prior keeps the
+        # lagged value only when the year delta is exactly 1, so 2022's prior must
+        # be None -- NOT 2020's HHI -- because the gap is 2 years.
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 300, 2020, 2020, "a2", "c1"),  # 2020 HHI = 0.5
+            (100, 200, 2022, 2022, "a3", "b2"),  # 2022 HHI = 1.0, prior must be None
+        ]
+        df = _run_hhi_info_pipeline(spark, rows)
+        out = {r["fromTHRU_DT_YEAR"]: r["nodeHhiPrior"] for r in df.collect()}
+        assert out[2020] is None
+        assert out[2022] is None
+
+    def test_prior_is_isolated_per_node(self, spark):
+        # Two sending nodes with different trajectories share one DataFrame.
+        # Each node's prior must come from its own history, not the other node's.
+        #   A: 2020 HHI=0.5 (B,C), 2021 HHI=1.0 (all B)   -> prior[2021]=0.5
+        #   D: 2020 HHI=1.0 (all E), 2021 HHI=0.5 (E,F)   -> prior[2021]=1.0
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 300, 2020, 2020, "a2", "c1"),
+            (100, 200, 2021, 2021, "a3", "b2"),
+            (100, 200, 2021, 2021, "a4", "b3"),
+            (400, 500, 2020, 2020, "d1", "e1"),
+            (400, 500, 2020, 2020, "d2", "e2"),
+            (400, 500, 2021, 2021, "d3", "e3"),
+            (400, 600, 2021, 2021, "d4", "f1"),
+        ]
+        df = _run_hhi_info_pipeline(spark, rows)
+        rows_out = df.collect()
+        a_prior = {r["fromTHRU_DT_YEAR"]: r["nodeHhiPrior"]
+                   for r in rows_out if r["fromORGNPINM"] == 100}
+        d_prior = {r["fromTHRU_DT_YEAR"]: r["nodeHhiPrior"]
+                   for r in rows_out if r["fromORGNPINM"] == 400}
+        assert a_prior[2021] == pytest.approx(0.5)
+        assert d_prior[2021] == pytest.approx(1.0)
+
+    def test_prior_broadcast_uniform_across_rows_in_node_year(self, spark):
+        # When a node-year has several transfer rows, add_column_prior broadcasts
+        # the prior value to every row via max() over (who, when). Assert all 2021
+        # rows for A carry the same nodeHhiPrior.
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 300, 2020, 2020, "a2", "c1"),  # 2020 HHI = 0.5
+            (100, 200, 2021, 2021, "a3", "b2"),
+            (100, 200, 2021, 2021, "a4", "b3"),
+            (100, 300, 2021, 2021, "a5", "c2"),  # multiple 2021 rows
+        ]
+        df = _run_hhi_info_pipeline(spark, rows)
+        priors_2021 = {r["nodeHhiPrior"]
+                       for r in df.collect() if r["fromTHRU_DT_YEAR"] == 2021}
+        assert len(priors_2021) == 1
+        assert next(iter(priors_2021)) == pytest.approx(0.5)
+
+
+# ============================================================
+# Invariant / property tests for the HHI math. These do not check a
+# single hard-coded value but the mathematical properties that make
+# nodeHhi a genuine Herfindahl-Hirschman index.
+# ============================================================
+
+def _distinct_props_for(df, from_npi, year):
+    """Return the set of distinct dyadProportionTransfersOut values for a
+    (from_npi, year). Each destination dyad has one proportion, repeated on
+    every transfer row of that dyad, so dedup recovers the per-destination shares."""
+    rows = df.filter((df.fromORGNPINM == from_npi)
+                     & (df.fromTHRU_DT_YEAR == year)).collect()
+    # key by toORGNPINM to get one share per destination
+    by_dest = {}
+    for r in rows:
+        by_dest[r["toORGNPINM"]] = r["dyadProportionTransfersOut"]
+    return by_dest
+
+
+class TestNodeHhiInvariants:
+
+    def test_proportions_sum_to_one(self, spark):
+        # The shares of transfers across destinations must sum to 1.0 for each
+        # sending node-year -- this is what guarantees nodeHhi is a true HHI and
+        # validates nodeOutVol as the correct denominator.
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 200, 2020, 2020, "a2", "b2"),
+            (100, 200, 2020, 2020, "a3", "b3"),
+            (100, 300, 2020, 2020, "a4", "c1"),
+            (100, 400, 2020, 2020, "a5", "d1"),
+        ]
+        df = _run_hhi_pipeline(spark, rows)
+        shares = _distinct_props_for(df, 100, 2020)
+        assert sum(shares.values()) == pytest.approx(1.0)
+
+    @pytest.mark.parametrize("rows,n_dest", [
+        # single destination
+        ([(100, 200, 2020, 2020, "a1", "b1")], 1),
+        # two even
+        ([(100, 200, 2020, 2020, "a1", "b1"),
+          (100, 300, 2020, 2020, "a2", "c1")], 2),
+        # three skewed
+        ([(100, 200, 2020, 2020, "a1", "b1"),
+          (100, 200, 2020, 2020, "a2", "b2"),
+          (100, 300, 2020, 2020, "a3", "c1"),
+          (100, 400, 2020, 2020, "a4", "d1")], 3),
+        # four even
+        ([(100, 200, 2020, 2020, "a1", "b1"),
+          (100, 300, 2020, 2020, "a2", "c1"),
+          (100, 400, 2020, 2020, "a3", "d1"),
+          (100, 500, 2020, 2020, "a4", "e1")], 4),
+    ])
+    def test_hhi_within_one_over_n_and_one(self, spark, rows, n_dest):
+        # For any distribution over N distinct destinations: 1/N <= HHI <= 1.
+        df = _run_hhi_pipeline(spark, rows)
+        hhi = _hhi_for(df, 100, 2020)
+        assert (1.0 / n_dest) - 1e-9 <= hhi <= 1.0 + 1e-9
+
+    def test_more_concentrated_has_higher_hhi(self, spark):
+        # Same number of destinations (2) for both nodes, but A is evenly split
+        # (HHI=0.5) and D is skewed 3:1 (HHI=0.625). More concentration -> higher HHI.
+        rows = [
+            # node A: 1 + 1 (even)
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 300, 2020, 2020, "a2", "c1"),
+            # node D: 3 + 1 (skewed)
+            (400, 200, 2020, 2020, "d1", "b2"),
+            (400, 200, 2020, 2020, "d2", "b3"),
+            (400, 200, 2020, 2020, "d3", "b4"),
+            (400, 300, 2020, 2020, "d4", "c2"),
+        ]
+        df = _run_hhi_pipeline(spark, rows)
+        even = _hhi_for(df, 100, 2020)
+        skewed = _hhi_for(df, 400, 2020)
+        assert even == pytest.approx(0.5)
+        assert skewed == pytest.approx(0.625)
+        assert skewed > even
+
+
+# ============================================================
+# Numerical robustness and determinism of the HHI computation.
+# ============================================================
+
+class TestNodeHhiNumerical:
+
+    def test_repeating_fraction_seven_destinations(self, spark):
+        # 7 destinations, one transfer each -> each share = 1/7 (a non-terminating
+        # binary fraction). HHI = 7 * (1/7)^2 = 1/7. Confirms no exact-equality
+        # fragility around repeating fractions.
+        rows = [(100, 200 + i, 2020, 2020, f"a{i}", f"b{i}") for i in range(7)]
+        df = _run_hhi_pipeline(spark, rows)
+        assert _hhi_for(df, 100, 2020) == pytest.approx(1.0 / 7.0)
+
+    def test_large_n_concentration_matches_closed_form(self, spark):
+        # 50 transfers to B and 1 to C -> nodeOutVol = 51.
+        # shares 50/51 and 1/51 -> HHI = (50/51)^2 + (1/51)^2, and <= 1.0.
+        rows = ([(100, 200, 2020, 2020, f"a{i}", f"b{i}") for i in range(50)]
+                + [(100, 300, 2020, 2020, "a50", "c1")])
+        df = _run_hhi_pipeline(spark, rows)
+        expected = (50.0 / 51.0) ** 2 + (1.0 / 51.0) ** 2
+        hhi = _hhi_for(df, 100, 2020)
+        assert hhi == pytest.approx(expected)
+        assert hhi <= 1.0
+
+    def test_dedup_is_order_independent(self, spark):
+        # 4 transfers A->B + 1 A->C in 2020. The dyad-dedup window tie-breaks
+        # arbitrarily among identical-year rows; because all rows in a dyad carry
+        # the same proportion, HHI must be identical regardless of input row order.
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 200, 2020, 2020, "a2", "b2"),
+            (100, 200, 2020, 2020, "a3", "b3"),
+            (100, 200, 2020, 2020, "a4", "b4"),
+            (100, 300, 2020, 2020, "a5", "c1"),
+        ]
+        hhi_forward = _hhi_for(_run_hhi_pipeline(spark, rows), 100, 2020)
+        hhi_reversed = _hhi_for(_run_hhi_pipeline(spark, list(reversed(rows))), 100, 2020)
+        # 4/5 and 1/5 -> 0.64 + 0.04 = 0.68
+        assert hhi_forward == pytest.approx(0.68)
+        assert hhi_reversed == pytest.approx(hhi_forward)
+
 
 # ============================================================
 # Tests for composition wrappers: add_dyad_info, add_node_info,
@@ -2027,6 +2241,51 @@ class TestGetTransfersFromSingleProviderStays:
         from_df = self._from_df(spark, [])
         to_df = self._to_df(spark, [_stay(1, 21, 20200115, 20200120)])
         assert get_transfers(from_df, to_df).count() == 0
+
+    def test_multi_year_multi_destination_hhi_and_prior_end_to_end(self, spark):
+        # Full real-schema pipeline (raw ipBase -> get_transfers -> add_node_and_dyad_info)
+        # spanning two consecutive years for one sending hospital A, with a
+        # different destination mix each year:
+        #   2020: A -> B (bene 1) and A -> C (bene 2)        -> 2 even dests -> HHI = 0.5
+        #   2021: A -> B (benes 3 and 4)                     -> single dest  -> HHI = 1.0
+        # Therefore nodeHhiPrior[2020] is None (first year) and nodeHhiPrior[2021] = 0.5.
+        from cms.transfers import get_transfers
+        C_NPI = 300
+        from_df = self._from_df(spark, [
+            _stay(1, 11, 20200110, 20200115),  # 2020 -> B
+            _stay(2, 12, 20200210, 20200215),  # 2020 -> C
+            _stay(3, 13, 20210110, 20210115),  # 2021 -> B
+            _stay(4, 14, 20210210, 20210215),  # 2021 -> B
+        ])
+        to_b = self._to_df(spark, [
+            _stay(1, 21, 20200115, 20200120),
+            _stay(3, 23, 20210115, 20210120),
+            _stay(4, 24, 20210215, 20210220),
+        ])
+        to_c = self._to_df(spark, [
+            _stay(2, 22, 20200215, 20200220),
+        ], orgnpinm=C_NPI)
+        to_df = to_b.unionByName(to_c)
+
+        result = get_transfers(from_df, to_df).collect()
+        # one transfer per beneficiary
+        assert len(result) == 4
+
+        hhi_by_year = {}
+        prior_by_year = {}
+        for r in result:
+            assert r["fromORGNPINM"] == self.FROM_NPI
+            hhi_by_year.setdefault(r["fromTHRU_DT_YEAR"], set()).add(r["nodeHhi"])
+            prior_by_year.setdefault(r["fromTHRU_DT_YEAR"], set()).add(r["nodeHhiPrior"])
+
+        # each (node, year) carries a single HHI / prior value
+        assert {v for s in hhi_by_year.values() for v in s} and all(len(s) == 1 for s in hhi_by_year.values())
+        assert all(len(s) == 1 for s in prior_by_year.values())
+
+        assert next(iter(hhi_by_year[2020])) == pytest.approx(0.5)
+        assert next(iter(hhi_by_year[2021])) == pytest.approx(1.0)
+        assert next(iter(prior_by_year[2020])) is None
+        assert next(iter(prior_by_year[2021])) == pytest.approx(0.5)
 
 
 # ============================================================
