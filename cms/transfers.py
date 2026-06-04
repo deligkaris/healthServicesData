@@ -2,6 +2,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import cms.base as baseF
 import cms.stays as staysF
+import utilities as utilitiesF
 
 def _rename_columns(df, mapping):
     '''Single-projection rename: aliases each column named in mapping to its target and passes the
@@ -299,10 +300,21 @@ def add_node_from_to_info(transfersDF):
                               .withColumn("nodeToSizeOfFromNodes", F.size( F.col("nodeToSetOfFromNodes") )))
     return transfersDF
 
+def add_column_prior(transfersDF, column, who, when):
+    '''Adds the column's value from the prior year at the transfers grain.
+    Thin wrapper over utilitiesF.add_column_prior; the shared logic lives in utilities.py.
+    Callers pass who/when explicitly. `who` must match the grain of `column`:
+    who="fromORGNPINM" for provider/node-level columns keyed on the sending provider
+    (eg nodeHhi), and who=["fromORGNPINM","toORGNPINM"] -- the year-less dyad pair -- for
+    dyad-level columns (eg dyadProportionTransfersOut/In) so the prior value comes from the
+    same dyad a year earlier rather than an arbitrary partner. when=fromTHRU_DT_YEAR is the
+    transfer's originating year.'''
+    return utilitiesF.add_column_prior(transfersDF, column=column, who=who, when=when)
+
 def add_node_hhi_info(transfersDF):
     '''Adds the HHI for each provider and year and the one for the year prior.'''
     transfersDF = add_nodeHhi(transfersDF)
-    transfersDF = staysF.add_column_prior(transfersDF, column="nodeHhi", who="fromORGNPINM", when="fromTHRU_DT_YEAR")
+    transfersDF = add_column_prior(transfersDF, column="nodeHhi", who="fromORGNPINM", when="fromTHRU_DT_YEAR")
     return transfersDF
 
 def add_dyad_info(transfersDF):
@@ -314,8 +326,8 @@ def add_dyad_info(transfersDF):
     transfersDF = add_dyadProportionTransfersIn(transfersDF)
     transfersDF = add_dyadAcrossCounties(transfersDF)
     transfersDF = add_dyadAcrossStates(transfersDF)
-    transfersDF = staysF.add_column_prior(transfersDF, column="dyadProportionTransfersOut", who="fromORGNPINM", when="fromTHRU_DT_YEAR") 
-    transfersDF = staysF.add_column_prior(transfersDF, column="dyadProportionTransfersIn", who="toORGNPINM", when="fromTHRU_DT_YEAR")
+    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersOut", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR")
+    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersIn", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR")
     return transfersDF
 
 def add_node_info(transfersDF):

@@ -31,6 +31,28 @@ def get_daysInYearsPrior():
 def get_monthsInYearsPrior():
     return F.create_map([F.lit(x) for x in chain(*monthsInYearsPriorDict.items())])
 
+def add_column_prior(df, column, who, when):
+    '''Adds the column's value from the prior year, keyed by `who` and ordered by `when`.
+    Generic across grains: `who` is the partition identity and `when` is the year column.
+    `who` may be a single column name (a provider, for the stays grain) or a list of column
+    names forming a composite key (the dyad pair fromORGNPINM+toORGNPINM, for the transfers
+    dyad grain) -- the key must match the grain of `column` or the prior value will be the
+    wrong row's. For some `who` the prior year would be 2 years prior because spark uses
+    whatever row is lagging/behind the current one, so in that case the prior quantity is set
+    to null. Domain modules wrap this with their own defaults (see cms.stays.add_column_prior
+    and cms.transfers.add_column_prior).'''
+    whoCols = who if isinstance(who, list) else [who]
+    eachWho = Window.partitionBy(whoCols).orderBy(when)
+    eachWhoWhen = Window.partitionBy(whoCols + [when])
+    df = (df
+          .withColumn("prior", F.lag(when,1).over(eachWho))
+          .withColumn(column+"Prior", F.lag(column,1).over(eachWho))
+          .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior")).otherwise(F.lit(None)))
+          #lag fires only on the row-1 of each (who,when) group; broadcast the prior value to every row in the group
+          .withColumn(column+"Prior", F.max(F.col(column+"Prior")).over(eachWhoWhen))
+          .drop("prior")) #scratch column used only to validate the lag is exactly 1 year
+    return df
+
 #definition of which states (fips codes) belong to which region
 usRegionFipsCodes = {"west":  ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"],
                      "south": ["10", "11", "12", "13", "24", "37", "45", "51", "54", "01", "21", "28", "47", "05", "22", "40", "48"],

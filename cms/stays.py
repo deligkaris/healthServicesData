@@ -4,6 +4,7 @@ import pyspark.sql.functions as F
 import cms.revenue as revenueF
 import cms.claims as claimsF
 import cms.comorbidities as comorbiditiesF
+import utilities as utilitiesF
 
 def add_providerStrokeVol(staysDF, stroke="anyStroke"):
     '''Calculates the stroke volume, number of rows, for each hospital and year'''
@@ -197,19 +198,10 @@ def add_first_stay_info(staysDF):
     return staysDF
                                     
 def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", when="THRU_DT_YEAR"):
-    '''Adds the column's value from the prior year.
-    For some organizations the prior year will be 2 years prior because spark will use whatever row is lagging/behind the current one
-    so in that case I need to manually change the prior year quantity to null.'''
-    eachWho = Window.partitionBy(who).orderBy(when)
-    eachWhoWhen = Window.partitionBy(who, when)
-    staysDF = (staysDF
-              .withColumn("prior", F.lag(when,1).over(eachWho))
-              .withColumn(column+"Prior", F.lag(column,1).over(eachWho))
-              .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior")).otherwise(F.lit(None)))
-              #lag fires only on the row-1 of each (who,when) group; broadcast the prior value to every row in the group
-              .withColumn(column+"Prior", F.max(F.col(column+"Prior")).over(eachWhoWhen))
-              .drop("prior")) #scratch column used only to validate the lag is exactly 1 year
-    return staysDF
+    '''Adds the column's value from the prior year at the provider (stays) grain.
+    Thin wrapper over utilitiesF.add_column_prior with provider-level defaults
+    (who=ORGNPINM, when=THRU_DT_YEAR); the shared logic lives in utilities.py.'''
+    return utilitiesF.add_column_prior(staysDF, column=column, who=who, when=when)
      
 def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockVol"):
     '''For each hospital and year it addes a column of the variable column for that hospital but from the prior year.'''

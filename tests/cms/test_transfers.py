@@ -1535,6 +1535,53 @@ class TestAddDyadInfo:
                   "dyadProportionTransfersOutPrior", "dyadProportionTransfersInPrior"):
             assert c in df.columns
 
+    def test_dyad_prior_is_keyed_on_the_dyad_pair_not_the_sender(self, spark):
+        # Sender 100 sends to two receivers (200, 300) in both 2020 and 2021, with the
+        # mix flipping between years. The prior-year column must carry each *dyad's* own
+        # value a year earlier -- keying on the sender alone (the old bug) would broadcast
+        # one arbitrary partner's value to both dyads and fail this test.
+        from cms.transfers import add_node_volume_info, add_dyad_info
+        schema = StructType([
+            StructField("fromORGNPINM", IntegerType(), True),
+            StructField("toORGNPINM", IntegerType(), True),
+            StructField("fromTHRU_DT_YEAR", IntegerType(), True),
+            StructField("toTHRU_DT_YEAR", IntegerType(), True),
+            StructField("fromCLAIMNO", StringType(), True),
+            StructField("toCLAIMNO", StringType(), True),
+            StructField("fromproviderSysId", IntegerType(), True),
+            StructField("toproviderSysId", IntegerType(), True),
+            StructField("fromproviderFIPS", StringType(), True),
+            StructField("toproviderFIPS", StringType(), True),
+            StructField("fromproviderStateFIPS", StringType(), True),
+            StructField("toproviderStateFIPS", StringType(), True),
+        ])
+        # (year, to, n_claims): 2020 -> 200 gets 3/4, 300 gets 1/4; 2021 flips.
+        spec = [(2020, 200, 3), (2020, 300, 1), (2021, 200, 1), (2021, 300, 3)]
+        rows, k = [], 0
+        for year, to, n in spec:
+            for _ in range(n):
+                k += 1
+                rows.append({"fromORGNPINM": 100, "toORGNPINM": to,
+                             "fromTHRU_DT_YEAR": year, "toTHRU_DT_YEAR": year,
+                             "fromCLAIMNO": f"f{k}", "toCLAIMNO": f"t{k}",
+                             "fromproviderSysId": 7, "toproviderSysId": 7,
+                             "fromproviderFIPS": "01001", "toproviderFIPS": "01001",
+                             "fromproviderStateFIPS": "01", "toproviderStateFIPS": "01"})
+        df = spark.createDataFrame(rows, schema=schema)
+        df = add_node_volume_info(df)
+        df = add_dyad_info(df)
+        out = {(r["toORGNPINM"], r["fromTHRU_DT_YEAR"]):
+               (r["dyadProportionTransfersOut"], r["dyadProportionTransfersOutPrior"])
+               for r in df.collect()}
+        # current-year proportions
+        assert out[(200, 2020)][0] == 0.75 and out[(300, 2020)][0] == 0.25
+        assert out[(200, 2021)][0] == 0.25 and out[(300, 2021)][0] == 0.75
+        # 2020 is each dyad's first year -> no prior
+        assert out[(200, 2020)][1] is None and out[(300, 2020)][1] is None
+        # 2021 prior must equal the *same* dyad's 2020 value, not the partner's
+        assert out[(200, 2021)][1] == 0.75
+        assert out[(300, 2021)][1] == 0.25
+
 
 class TestAddNodeInfo:
 

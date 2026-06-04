@@ -1273,7 +1273,7 @@ class TestAddColumnPrior:
         df = _make_prior_df(spark, [(100, 2020, 5), (100, 2021, 10)])
         result = add_column_prior(df)
         assert "providerSepticShockVolPrior" in result.columns
-        assert "prior" in result.columns  # intermediate column also added
+        assert "prior" not in result.columns  # scratch column is dropped before returning
 
     def test_contiguous_years_return_prior_value(self, spark):
         # 100/2020 has no predecessor -> null; 100/2021 -> 5; 100/2022 -> 10.
