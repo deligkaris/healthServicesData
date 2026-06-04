@@ -435,8 +435,8 @@ def add_acuteRenalInjuryFailureDgns(baseDF):
 def add_acuteRenalInjuryFailurePrcdr(baseDF):
     '''Acute renal injury or failure.
     Note that this is the same as renal replacement therapy based on procedure codes.'''
-    baseDF = baseDF.withColumn("acuteRenalInjuryFailurePrcdr", 
-                               F.exists( "prcdrCodeAll", lambda x: F.regexp_extract( x, r'^5A1D[\d]*',0) !='' ).cast('int'))
+    baseDF = baseDF.withColumn("acuteRenalInjuryFailurePrcdr",
+                               F.coalesce( F.exists( "prcdrCodeAll", lambda x: F.regexp_extract( x, r'^5A1D[\d]*',0) !='' ).cast('int'), F.lit(0)))
     return baseDF
 
 def add_acuteRenalInjuryFailure(baseDF):
@@ -513,7 +513,7 @@ def add_ecmo(baseDF):
 
 def add_rrtPrcdr(baseDF):
     '''Renal replacement therapy'''
-    baseDF = baseDF.withColumn("rrtPrcdr", F.exists( "prcdrCodeAll", lambda x: F.regexp_extract( x, r'^5A1D[\d]*',0) !='' ).cast('int'))
+    baseDF = baseDF.withColumn("rrtPrcdr", F.coalesce( F.exists( "prcdrCodeAll", lambda x: F.regexp_extract( x, r'^5A1D[\d]*',0) !='' ).cast('int'), F.lit(0)))
     return baseDF
 
 def add_rrt(baseDF):
