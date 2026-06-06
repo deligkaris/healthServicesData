@@ -2050,8 +2050,10 @@ def add_diedInVisit(baseDF):
     return baseDF
 
 def add_dischargeHomeWithin2Days(baseDF):
-    '''Adds a binary column with flag indicating if patient was discharged home within 2 days.'''
-    baseDF = baseDF.withColumn("dischargeHomeWithin2Days", F.when( (F.col("STUS_CD")==1) & (F.col("los")<=2), F.lit(1)).otherwise(F.lit(0)))
+    '''Adds a binary column with flag indicating if patient was discharged home within 2 days of admission.
+    Uses los<=3 because los = THRU_DT_DAY - ADMSN_DT_DAY + 1, so a discharge 2 days after admission
+    corresponds to los==3 (los==1 is same-day, los==2 is next-day, los==3 is two days after).'''
+    baseDF = baseDF.withColumn("dischargeHomeWithin2Days", F.when( (F.col("STUS_CD")==1) & (F.col("los")<=3), F.lit(1)).otherwise(F.lit(0)))
     return baseDF
 
 def add_shortTermInpatientOrganization(baseDF):
