@@ -616,10 +616,8 @@ def add_pegPrcdr(baseDF):
     return baseDF
 
 def add_pegDgns(baseDF):
-    '''percutaneous endoscopic gastrostomy
-    see '''
-    pegDgnsCodes = ("Z931", "Z931") #they are the same by design, will come back to this
-    baseDF = baseDF.withColumn("pegDgns", F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {pegDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
+    '''percutaneous endoscopic gastrostomy status (history of PEG); ICD-10 Z93.1'''
+    baseDF = baseDF.withColumn("pegDgns", F.when( F.array_contains(F.col("dgnsCodeAll"), "Z931"), F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_peg(baseDF):
