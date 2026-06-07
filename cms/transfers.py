@@ -346,19 +346,23 @@ def add_node_and_dyad_info(transfersDF):
     transfersDF = add_node_hhi_info(transfersDF)
     return transfersDF
 
+def get_edgeList(transfersDF):
+    '''Returns the distinct directed edges of the transfer network: one row per unique
+    (fromORGNPINM, toORGNPINM) sending/receiving provider pair. Unlike the `dyad` column added by
+    add_dyad -- which is the triple [fromORGNPINM, toORGNPINM, fromTHRU_DT_YEAR] -- this edge list is
+    year-less: a structural who-transfers-to-whom across all years. Does not modify transfersDF;
+    intended to be written out as the edge list for graph analysis.'''
+    return transfersDF.select(F.col("fromORGNPINM"), F.col("toORGNPINM")).distinct()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
+def get_nodeListWithAddress(transfersDF):
+    '''Returns the distinct nodes of the transfer network with their address: one row per unique
+    (ORGNPINM, providerAddress) pair. A provider can appear on the from side, the to side, or both,
+    so both sides are pooled and de-duplicated -- every provider seen in any transfer is represented.
+    Pooling via union (rather than exploding an array of [npi, address] pairs) keeps each column's
+    own type instead of coercing npi and address to a common element type. Does not modify
+    transfersDF; intended to be written out as the node list for graph analysis.'''
+    fromNodes = transfersDF.select(F.col("fromORGNPINM").alias("ORGNPINM"),
+                                   F.col("fromproviderAddress").alias("providerAddress"))
+    toNodes = transfersDF.select(F.col("toORGNPINM").alias("ORGNPINM"),
+                                 F.col("toproviderAddress").alias("providerAddress"))
+    return fromNodes.union(toNodes).distinct()

@@ -3466,3 +3466,156 @@ class TestEvtPipeline:
         assert r["fromevtPrcdr"] == 1
         assert r["fromevt"] == 1
         assert r["fromproviderEvtVol"] == 1
+
+
+# ============================================================
+# Tests for get_edgeList / get_nodeListWithAddress — the graph
+# edge list and node list extracted from a final transfers DF.
+# These operate on a transfers-shaped DF that already carries the
+# from*/to* node and provider-address columns (the post-pipeline
+# grain). Extra columns (year, claim no) are included to verify
+# they are ignored and do not affect distinctness.
+# ============================================================
+
+def _nodes_edges_schema():
+    return StructType([
+        StructField("fromORGNPINM", IntegerType(), True),
+        StructField("toORGNPINM", IntegerType(), True),
+        StructField("fromproviderAddress", StringType(), True),
+        StructField("toproviderAddress", StringType(), True),
+        StructField("fromTHRU_DT_YEAR", IntegerType(), True),
+        StructField("fromCLAIMNO", StringType(), True),
+    ])
+
+
+def make_nodes_edges_df(spark, rows):
+    """rows: list of
+    (fromNPI, toNPI, fromAddress, toAddress, fromYear, fromClaim) tuples."""
+    data = [
+        {"fromORGNPINM": f, "toORGNPINM": t,
+         "fromproviderAddress": fa, "toproviderAddress": ta,
+         "fromTHRU_DT_YEAR": fy, "fromCLAIMNO": fc}
+        for f, t, fa, ta, fy, fc in rows
+    ]
+    return spark.createDataFrame(data, schema=_nodes_edges_schema())
+
+
+class TestGetEdgeList:
+
+    def test_only_from_to_columns_returned(self, spark):
+        from cms.transfers import get_edgeList
+        df = make_nodes_edges_df(spark, [(100, 200, "addrA", "addrB", 2020, "a1")])
+        result = get_edgeList(df)
+        assert result.columns == ["fromORGNPINM", "toORGNPINM"]
+
+    def test_single_edge(self, spark):
+        from cms.transfers import get_edgeList
+        df = make_nodes_edges_df(spark, [(100, 200, "addrA", "addrB", 2020, "a1")])
+        edges = {(r["fromORGNPINM"], r["toORGNPINM"]) for r in get_edgeList(df).collect()}
+        assert edges == {(100, 200)}
+
+    def test_duplicate_transfers_collapse_to_one_edge(self, spark):
+        # Three A->B transfers (distinct claims) -> a single edge.
+        from cms.transfers import get_edgeList
+        df = make_nodes_edges_df(spark, [
+            (100, 200, "addrA", "addrB", 2020, "a1"),
+            (100, 200, "addrA", "addrB", 2020, "a2"),
+            (100, 200, "addrA", "addrB", 2020, "a3"),
+        ])
+        result = get_edgeList(df).collect()
+        assert len(result) == 1
+        assert (result[0]["fromORGNPINM"], result[0]["toORGNPINM"]) == (100, 200)
+
+    def test_direction_aware(self, spark):
+        # A->B and B->A are distinct directed edges, both retained.
+        from cms.transfers import get_edgeList
+        df = make_nodes_edges_df(spark, [
+            (100, 200, "addrA", "addrB", 2020, "a1"),
+            (200, 100, "addrB", "addrA", 2020, "b1"),
+        ])
+        edges = {(r["fromORGNPINM"], r["toORGNPINM"]) for r in get_edgeList(df).collect()}
+        assert edges == {(100, 200), (200, 100)}
+
+    def test_edge_list_is_year_less(self, spark):
+        # Same pair across two years collapses to ONE edge -- unlike the dyad
+        # column (which encodes the year), the edge list is structural only.
+        from cms.transfers import get_edgeList
+        df = make_nodes_edges_df(spark, [
+            (100, 200, "addrA", "addrB", 2020, "a1"),
+            (100, 200, "addrA", "addrB", 2021, "a2"),
+        ])
+        result = get_edgeList(df).collect()
+        assert len(result) == 1
+        assert (result[0]["fromORGNPINM"], result[0]["toORGNPINM"]) == (100, 200)
+
+    def test_multiple_distinct_edges(self, spark):
+        from cms.transfers import get_edgeList
+        df = make_nodes_edges_df(spark, [
+            (100, 200, "addrA", "addrB", 2020, "a1"),
+            (100, 300, "addrA", "addrC", 2020, "a2"),
+            (300, 200, "addrC", "addrB", 2020, "c1"),
+            (300, 200, "addrC", "addrB", 2020, "c2"),  # duplicate of the edge above
+        ])
+        edges = {(r["fromORGNPINM"], r["toORGNPINM"]) for r in get_edgeList(df).collect()}
+        assert edges == {(100, 200), (100, 300), (300, 200)}
+
+
+class TestGetNodeListWithAddress:
+
+    def test_columns_renamed_to_canonical(self, spark):
+        from cms.transfers import get_nodeListWithAddress
+        df = make_nodes_edges_df(spark, [(100, 200, "addrA", "addrB", 2020, "a1")])
+        result = get_nodeListWithAddress(df)
+        assert result.columns == ["ORGNPINM", "providerAddress"]
+
+    def test_pools_from_and_to_sides(self, spark):
+        # A single A->B transfer yields two nodes: A (from side) and B (to side).
+        from cms.transfers import get_nodeListWithAddress
+        df = make_nodes_edges_df(spark, [(100, 200, "addrA", "addrB", 2020, "a1")])
+        nodes = {(r["ORGNPINM"], r["providerAddress"]) for r in get_nodeListWithAddress(df).collect()}
+        assert nodes == {(100, "addrA"), (200, "addrB")}
+
+    def test_to_only_provider_represented(self, spark):
+        # C never appears on the from side, only as a destination -> still a node.
+        from cms.transfers import get_nodeListWithAddress
+        df = make_nodes_edges_df(spark, [
+            (100, 200, "addrA", "addrB", 2020, "a1"),
+            (100, 300, "addrA", "addrC", 2020, "a2"),
+        ])
+        nodes = {(r["ORGNPINM"], r["providerAddress"]) for r in get_nodeListWithAddress(df).collect()}
+        assert nodes == {(100, "addrA"), (200, "addrB"), (300, "addrC")}
+
+    def test_provider_on_both_sides_deduped(self, spark):
+        # B appears as a destination (A->B) and as a source (B->C) with the same
+        # address -> a single node row, not two.
+        from cms.transfers import get_nodeListWithAddress
+        df = make_nodes_edges_df(spark, [
+            (100, 200, "addrA", "addrB", 2020, "a1"),
+            (200, 300, "addrB", "addrC", 2020, "b1"),
+        ])
+        nodes = [(r["ORGNPINM"], r["providerAddress"]) for r in get_nodeListWithAddress(df).collect()]
+        assert sorted(nodes) == [(100, "addrA"), (200, "addrB"), (300, "addrC")]
+        # B appears exactly once despite being on both sides.
+        assert nodes.count((200, "addrB")) == 1
+
+    def test_repeated_transfers_collapse_to_one_node_each(self, spark):
+        from cms.transfers import get_nodeListWithAddress
+        df = make_nodes_edges_df(spark, [
+            (100, 200, "addrA", "addrB", 2020, "a1"),
+            (100, 200, "addrA", "addrB", 2020, "a2"),
+            (100, 200, "addrA", "addrB", 2021, "a3"),
+        ])
+        nodes = {(r["ORGNPINM"], r["providerAddress"]) for r in get_nodeListWithAddress(df).collect()}
+        assert nodes == {(100, "addrA"), (200, "addrB")}
+
+    def test_same_npi_different_address_kept_separate(self, spark):
+        # The node identity is the (NPI, address) pair, so a provider reported at
+        # two addresses yields two rows.
+        from cms.transfers import get_nodeListWithAddress
+        df = make_nodes_edges_df(spark, [
+            (100, 200, "addrA", "addrB", 2020, "a1"),
+            (100, 300, "addrA2", "addrC", 2021, "a2"),
+        ])
+        nodes = {(r["ORGNPINM"], r["providerAddress"]) for r in get_nodeListWithAddress(df).collect()}
+        assert (100, "addrA") in nodes
+        assert (100, "addrA2") in nodes
