@@ -1740,12 +1740,15 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
     #annual survey file layouts includes field explanations and information about data sources
     baseDF = baseDF.join(ahaDF.select(F.col("MCRNUM").alias("PROVIDER"),  
                                       F.col("year").alias("THRU_DT_YEAR"),
-                                      F.col("LAT").alias("providerAhaLat"), 
-                                      F.col("LONG").alias("providerAhaLong"), 
+                                      F.col("LAT").alias("ahaProviderLat"),
+                                      F.col("LONG").alias("ahaProviderLong"),
                                       F.col("ahaCah"),                               #critical access hospital
                                       F.col("STRCHOS").alias("ahaTelestrokeHos"),    #telestroke care hospital
                                       F.col("STRCSYS").alias("ahaTelestrokeSys"),    #telestroke care health system
                                       F.col("STRCVEN").alias("ahaTelestrokeVen"),    #telestroke care joint venture
+                                      F.col("ahaTeleicuHos"),                        #teleICU care hospital
+                                      F.col("ahaTeleicuSys"),                        #teleICU care health system
+                                      F.col("ahaTeleicuVen"),                        #teleICU care joint venture
                                       F.col("ahaBeds"),                              #total facility beds - nursing home beds
                                       F.col("ahaSize"),
                                       F.col("ahaOwner"),

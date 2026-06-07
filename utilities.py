@@ -422,7 +422,14 @@ def prep_ahaDF(ahaDF, filename):
     if ahaYear > 2016:
         ahaDF = (ahaDF.withColumn("STRCHOS", F.col("STRCHOS").cast('int'))
                       .withColumn("STRCSYS", F.col("STRCSYS").cast('int'))
-                      .withColumn("STRCVEN", F.col("STRCVEN").cast('int')))
+                      .withColumn("STRCVEN", F.col("STRCVEN").cast('int'))
+                      .withColumn("EICUHOS", F.col("EICUHOS").cast('int'))
+                      .withColumn("EICUSYS", F.col("EICUSYS").cast('int'))
+                      .withColumn("EICUVEN", F.col("EICUVEN").cast('int'))
+                      #teleICU: hospital, system, or vendor provided; already coded 0=no, 1=yes
+                      .withColumn("ahaTeleicuHos", F.col("EICUHOS"))
+                      .withColumn("ahaTeleicuSys", F.col("EICUSYS"))
+                      .withColumn("ahaTeleicuVen", F.col("EICUVEN")))
 
     return ahaDF
 
