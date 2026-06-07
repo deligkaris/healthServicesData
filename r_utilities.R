@@ -165,7 +165,7 @@ get_data_dictionary <- function() {
     "endoscopy",       "Endoscopy performed (0/1)",
     "majorDiagnosticOrTherapeuticOrProcedures","Any HCUP class 3/4 major OR procedure (0/1)",
     "diedInVisit",     "Died during the stay (STUS_CD=20) (0/1)",
-    "dischargeHomeWithin2Days","Discharged home (STUS_CD=1) with LOS<=2 days (0/1)",
+    "dischargeHomeWithin2Days","Discharged home (STUS_CD=1) within 2 days of admission (LOS<=3) (0/1)",
 
     # ---- provider capability / volume (sepsis-shock cohort) ----
     "providerSepticShockVol","Hospital septic-shock case volume that year",
