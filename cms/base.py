@@ -292,32 +292,41 @@ def add_dbsCpt(baseDF):
     baseDF = baseDF.withColumn("dbsCpt", F.when( F.size(F.col("dbsCptCodes"))>0,     1).otherwise(0))
     return baseDF
 
+def get_shockCondition(arrayCol):
+    '''Returns a boolean Column that is true when arrayCol contains any shock diagnosis code.
+    Any code starting with R57 matches; the remaining codes are exact matches.'''
+    shockDgnsCodes = ("I951", "I952", "I953", "I958", "I959", "R031", "R6521")
+    return F.exists(arrayCol, lambda x: x.isin(*shockDgnsCodes) | x.startswith("R57"))
+
 def add_shockDgns(baseDF):
-    '''Acute organ failure: shock'''
-    shockDgnsCodes = ("R57", "I951", "I952", "I953", "I958", "I959", "R031", "R6521")
+    '''Acute organ failure: shock. Any code starting with R57 matches; the remaining codes are exact matches.'''
     baseDF = baseDF.withColumn("shockDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {shockDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
+                               F.when( get_shockCondition(F.col("dgnsCodeAll")), F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_shock(baseDF):
-    '''Acute organ failure: shock. Returns 1 if any of the diagnostic codes are R57, I951, I952, I953, I958, I959, R031, R6521.
+    '''Acute organ failure: shock. Returns 1 if any of the diagnostic codes start with R57 or are I951, I952, I953, I958, I959, R031, R6521.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = baseDF.withColumn("shock", F.when( F.col("shockDgns")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_shockPoa(baseDF):
     '''Adds a column shockPoa for shock present on admission.'''
-    shockDgnsCodes = ("R57", "I951", "I952", "I953", "I958", "I959", "R031", "R6521")
     baseDF = baseDF.withColumn( "shockPoa",
-                                F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in shockDgnsCodes])), F.lit(1))
+                                F.when( get_shockCondition(F.col("dgnsPoaCodeAll")), F.lit(1))
                                  .otherwise(F.lit(0)))
     return baseDF
 
+def get_acuteRespiratoryFailureCondition(arrayCol):
+    '''Returns a boolean Column that is true when arrayCol contains any acute respiratory failure diagnosis code.
+    Any code starting with J960 or J969 matches; the remaining codes are exact matches.'''
+    arfDgnsCodes = ("J80", "R063", "R092", "R0600", "R0603", "R0609", "R0683", "R0689")
+    return F.exists(arrayCol, lambda x: x.isin(*arfDgnsCodes) | x.startswith("J960") | x.startswith("J969"))
+
 def add_acuteRespiratoryFailureDgns(baseDF):
-    '''Acute respiratory failure'''
-    arfDgnsCodes = ("J80", "J960", "J969", "R063", "R092", "R0600", "R0603", "R0609", "R0683", "R0689")
+    '''Acute respiratory failure. Any code starting with J960 or J969 matches; the remaining codes are exact matches.'''
     baseDF = baseDF.withColumn("acuteRespiratoryFailureDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {arfDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
+                               F.when( get_acuteRespiratoryFailureCondition(F.col("dgnsCodeAll")), F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteRespiratoryFailurePrcdr(baseDF):
@@ -328,7 +337,7 @@ def add_acuteRespiratoryFailurePrcdr(baseDF):
     return baseDF
 
 def add_acuteRespiratoryFailure(baseDF):
-    '''Acute respiratory failure. Returns 1 if any of the diagnostic codes are J80, J960, J969, R063, R092, R0600, R0603, R0609, R0683, R0689 or if any of the procedure codes are 5A1935Z, 5A1945Z, 5A1955Z.
+    '''Acute respiratory failure. Returns 1 if any of the diagnostic codes start with J960 or J969 or are J80, R063, R092, R0600, R0603, R0609, R0683, R0689 or if any of the procedure codes are 5A1935Z, 5A1945Z, 5A1955Z.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteRespiratoryFailureDgns(baseDF)
     baseDF = add_acuteRespiratoryFailurePrcdr(baseDF)
@@ -340,17 +349,21 @@ def add_acuteRespiratoryFailure(baseDF):
 def add_acuteRespiratoryFailurePoa(baseDF):
     '''Acute respiratory failure present on admission.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
-    arfDgnsCodes = ("J80", "J960", "J969", "R063", "R092", "R0600", "R0603", "R0609", "R0683", "R0689")
     baseDF = baseDF.withColumn("acuteRespiratoryFailurePoa",
-                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in arfDgnsCodes])), F.lit(1))
+                               F.when( get_acuteRespiratoryFailureCondition(F.col("dgnsPoaCodeAll")), F.lit(1))
                                  .otherwise(F.lit(0)))
     return baseDF
 
+def get_acuteNeurologicalFailureCondition(arrayCol):
+    '''Returns a boolean Column that is true when arrayCol contains any acute neurological failure diagnosis code.
+    Any code starting with F06 or G934 matches; the remaining codes are exact matches.'''
+    anfDgnsCodes = ("F05", "F53", "G931", "R401", "R402", "I6783")
+    return F.exists(arrayCol, lambda x: x.isin(*anfDgnsCodes) | x.startswith("F06") | x.startswith("G934"))
+
 def add_acuteNeurologicalFailureDgns(baseDF):
-    '''Acute neurological failure'''
-    anfDgnsCodes = ("F05", "F06", "F53", "G931", "G934", "R401", "R402", "I6783")
-    baseDF = baseDF.withColumn("acuteNeurologicalFailureDgns", 
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {anfDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
+    '''Acute neurological failure. Any code starting with F06 or G934 matches; the remaining codes are exact matches.'''
+    baseDF = baseDF.withColumn("acuteNeurologicalFailureDgns",
+                               F.when( get_acuteNeurologicalFailureCondition(F.col("dgnsCodeAll")), F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteNeurologicalFailurePrcdr(baseDF):
@@ -361,7 +374,7 @@ def add_acuteNeurologicalFailurePrcdr(baseDF):
     return baseDF
 
 def add_acuteNeurologicalFailure(baseDF):
-    '''Acute neurological failure. Returns 1 if any of the diagnostic codes are F05, F06, F53, G931, G934, R401, R402, I6783 or if any of the procedure codes are 4A0034Z, 4A00X4Z, 4A0134Z, 4A01X4Z, 4A1034Z, 4A10X4Z.
+    '''Acute neurological failure. Returns 1 if any of the diagnostic codes start with F06 or G934 or are F05, F53, G931, R401, R402, I6783 or if any of the procedure codes are 4A0034Z, 4A00X4Z, 4A0134Z, 4A01X4Z, 4A1034Z, 4A10X4Z.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteNeurologicalFailureDgns(baseDF)
     baseDF = add_acuteNeurologicalFailurePrcdr(baseDF)
@@ -373,9 +386,8 @@ def add_acuteNeurologicalFailure(baseDF):
 def add_acuteNeurologicalFailurePoa(baseDF):
     '''Acute neurological failure present on admission.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
-    anfDgnsCodes = ("F05", "F06", "F53", "G931", "G934", "R401", "R402", "I6783")
     baseDF = baseDF.withColumn("acuteNeurologicalFailurePoa",
-                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in anfDgnsCodes])), F.lit(1))
+                               F.when( get_acuteNeurologicalFailureCondition(F.col("dgnsPoaCodeAll")), F.lit(1))
                                  .otherwise(F.lit(0)))
     return baseDF
 
@@ -402,15 +414,20 @@ def add_coagulopathyPoa(baseDF):
                                  .otherwise(F.lit(0)))
     return baseDF
 
+def get_acuteHepaticInjuryFailureCondition(arrayCol):
+    '''Returns a boolean Column that is true when arrayCol contains any acute hepatic injury or failure diagnosis code.
+    Any code starting with K720 matches; the remaining codes are exact matches.'''
+    ahifDgnsCodes = ("K762", "K763", "K716", "K759", "K7291")
+    return F.exists(arrayCol, lambda x: x.isin(*ahifDgnsCodes) | x.startswith("K720"))
+
 def add_acuteHepaticInjuryFailureDgns(baseDF):
-    '''Acute hepatic injury or failure'''
-    ahifDgnsCodes = ("K720", "K762", "K763", "K716", "K759", "K7291")
+    '''Acute hepatic injury or failure. Any code starting with K720 matches; the remaining codes are exact matches.'''
     baseDF = baseDF.withColumn("acuteHepaticInjuryFailureDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {ahifDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
+                               F.when( get_acuteHepaticInjuryFailureCondition(F.col("dgnsCodeAll")), F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteHepaticInjuryFailure(baseDF):
-    '''Acute hepatic injury or failure. Returns 1 if any of the diagnostic codes are K720, K762, K763, K716, K759, K7291.
+    '''Acute hepatic injury or failure. Returns 1 if any of the diagnostic codes start with K720 or are K762, K763, K716, K759, K7291.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteHepaticInjuryFailureDgns(baseDF)
     baseDF = baseDF.withColumn("acuteHepaticInjuryFailure", F.when( F.col("acuteHepaticInjuryFailureDgns")==1, F.lit(1)).otherwise(F.lit(0)))
@@ -419,28 +436,32 @@ def add_acuteHepaticInjuryFailure(baseDF):
 def add_acuteHepaticInjuryFailurePoa(baseDF):
     '''Acute hepatic injury or failure present on admission.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
-    ahifDgnsCodes = ("K720", "K762", "K763", "K716", "K759", "K7291")
     baseDF = baseDF.withColumn("acuteHepaticInjuryFailurePoa",
-                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in ahifDgnsCodes])), F.lit(1))
+                               F.when( get_acuteHepaticInjuryFailureCondition(F.col("dgnsPoaCodeAll")), F.lit(1))
                                  .otherwise(F.lit(0)))
     return baseDF
 
+def get_acuteRenalInjuryFailureCondition(arrayCol):
+    '''Returns a boolean Column that is true when arrayCol contains any acute renal injury or failure diagnosis code.
+    Any code starting with N17 matches; the remaining codes are exact matches.'''
+    arifDgnsCodes = ("N003",)
+    return F.exists(arrayCol, lambda x: x.isin(*arifDgnsCodes) | x.startswith("N17"))
+
 def add_acuteRenalInjuryFailureDgns(baseDF):
-    '''Acute renal injury or failure'''
-    arifDgnsCodes = ("N17", "N003")
+    '''Acute renal injury or failure. Any code starting with N17 matches; the remaining codes are exact matches.'''
     baseDF = baseDF.withColumn("acuteRenalInjuryFailureDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {arifDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
+                               F.when( get_acuteRenalInjuryFailureCondition(F.col("dgnsCodeAll")), F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acuteRenalInjuryFailurePrcdr(baseDF):
     '''Acute renal injury or failure.
     Note that this is the same as renal replacement therapy based on procedure codes.'''
     baseDF = baseDF.withColumn("acuteRenalInjuryFailurePrcdr",
-                               F.coalesce( F.exists( "prcdrCodeAll", lambda x: F.regexp_extract( x, r'^5A1D[\d]*',0) !='' ).cast('int'), F.lit(0)))
+                               F.coalesce( F.exists( "prcdrCodeAll", lambda x: x.startswith("5A1D") ).cast('int'), F.lit(0)))
     return baseDF
 
 def add_acuteRenalInjuryFailure(baseDF):
-    '''Acute renal injury or failure. Returns 1 if any of the diagnostic codes are N17, N003 or if any of the procedure codes start with 5A1D.
+    '''Acute renal injury or failure. Returns 1 if any of the diagnostic codes start with N17 or are N003 or if any of the procedure codes start with 5A1D.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acuteRenalInjuryFailureDgns(baseDF)
     baseDF = add_acuteRenalInjuryFailurePrcdr(baseDF)
@@ -452,20 +473,24 @@ def add_acuteRenalInjuryFailure(baseDF):
 def add_acuteRenalInjuryFailurePoa(baseDF):
     '''Acute renal injury or failure present on admission.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
-    arifDgnsCodes = ("N17", "N003")
     baseDF = baseDF.withColumn("acuteRenalInjuryFailurePoa",
-                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in arifDgnsCodes])), F.lit(1))
+                               F.when( get_acuteRenalInjuryFailureCondition(F.col("dgnsPoaCodeAll")), F.lit(1))
                                  .otherwise(F.lit(0)))
     return baseDF
 
+def get_acidosisCondition(arrayCol):
+    '''Returns a boolean Column that is true when arrayCol contains any acidosis diagnosis code.
+    Any code starting with E872 matches.'''
+    return F.exists(arrayCol, lambda x: x.startswith("E872"))
+
 def add_acidosisDgns(baseDF):
     baseDF = baseDF.withColumn("acidosisDgns",
-                               F.when( F.array_contains(F.col("dgnsCodeAll"), "E872"), F.lit(1) ).otherwise(F.lit(0)))
+                               F.when( get_acidosisCondition(F.col("dgnsCodeAll")), F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_acidosis(baseDF):
     '''Acidosis.
-    Flags rows that contain the ICD10 diagnostic code E872 in dgnsCodeAll.
+    Flags rows that contain a diagnostic code starting with E872 in dgnsCodeAll.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
     baseDF = add_acidosisDgns(baseDF)
     baseDF = baseDF.withColumn("acidosis", F.when( F.col("acidosisDgns")==1, F.lit(1)).otherwise(F.lit(0)) )
@@ -474,9 +499,8 @@ def add_acidosis(baseDF):
 def add_acidosisPoa(baseDF):
     '''Acidosis present on admission.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
-    aDgnsCodes = ("E872",)
     baseDF = baseDF.withColumn("acidosisPoa",
-                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in aDgnsCodes])), F.lit(1))
+                               F.when( get_acidosisCondition(F.col("dgnsPoaCodeAll")), F.lit(1))
                                  .otherwise(F.lit(0)))
     return baseDF
 
