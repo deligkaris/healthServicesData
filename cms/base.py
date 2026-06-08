@@ -227,10 +227,14 @@ def add_anyStroke(baseDF):
     baseDF = baseDF.withColumn("anyStroke", F.when( eval(anyStrokeCondition), 1).otherwise(0))
     return baseDF
 
-def add_septicShockDgns(baseDF):
+def get_septicShockCondition(arrayCol):
+    '''Returns a boolean Column that is true when arrayCol contains any septic shock diagnosis code.'''
     septicShockDgnsCodes = ("R6521",)
+    return F.exists(arrayCol, lambda x: x.isin(*septicShockDgnsCodes))
+
+def add_septicShockDgns(baseDF):
     baseDF = baseDF.withColumn( "septicShockDgns",
-                                F.when( F.arrays_overlap(F.col("dgnsCodeAll"), F.array([F.lit(c) for c in septicShockDgnsCodes])), F.lit(1))
+                                F.when( get_septicShockCondition(F.col("dgnsCodeAll")), F.lit(1))
                                  .otherwise(F.lit(0)))
     #baseDF = (baseDF.withColumn("septicShockCodes", F.expr( f"filter(dgnsCodeAll, x -> x in {septicShockDgnsCodes})")) 
     #                .withColumn("septicShockDgns", F.when( F.size(F.col("septicShockDgnsCodes"))>0,     1).otherwise(0))
@@ -250,9 +254,8 @@ def add_septicShockPoa(baseDF):
     Reference: https://journals.lww.com/ccmjournal/abstract/2019/04000/variation_in_identifying_sepsis_and_organ.1.aspx
     Reference: https://journals.lww.com/lww-medicalcare/abstract/2014/06000/identifying_patients_with_severe_sepsis_using.18.aspx
     When one of all ICD10 diagnostic codes is R6521 and its associated present on admission flag is true then should return 1, else 0.'''
-    septicShockDgnsCodes = ("R6521",)
-    baseDF = baseDF.withColumn( "septicShockPoa", 
-                                F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in septicShockDgnsCodes])), F.lit(1))
+    baseDF = baseDF.withColumn( "septicShockPoa",
+                                F.when( get_septicShockCondition(F.col("dgnsPoaCodeAll")), F.lit(1))
                                  .otherwise(F.lit(0)))
     return baseDF
 
@@ -391,11 +394,15 @@ def add_acuteNeurologicalFailurePoa(baseDF):
                                  .otherwise(F.lit(0)))
     return baseDF
 
+def get_coagulopathyCondition(arrayCol):
+    '''Returns a boolean Column that is true when arrayCol contains any acute hematological failure diagnosis code.'''
+    ahfDgnsCodes = ("D65", "D688", "D689", "D696", "D473", "D681", "D6959", "D6951")
+    return F.exists(arrayCol, lambda x: x.isin(*ahfDgnsCodes))
+
 def add_coagulopathyDgns(baseDF):
     '''Acute hematological failure'''
-    ahfDgnsCodes = ("D65", "D688", "D689", "D696", "D473", "D681", "D6959", "D6951")
     baseDF = baseDF.withColumn("coagulopathyDgns",
-                               F.when( F.size( F.expr( f"filter(dgnsCodeAll, x -> x in {ahfDgnsCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
+                               F.when( get_coagulopathyCondition(F.col("dgnsCodeAll")), F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_coagulopathy(baseDF):
@@ -408,9 +415,8 @@ def add_coagulopathy(baseDF):
 def add_coagulopathyPoa(baseDF):
     '''Acute hematological failure present on admission.
     Reference: https://doi.org/10.1513/AnnalsATS.202111-1251RL'''
-    ahfDgnsCodes = ("D65", "D688", "D689", "D696", "D473", "D681", "D6959", "D6951")
     baseDF = baseDF.withColumn("coagulopathyPoa",
-                               F.when( F.arrays_overlap(F.col("dgnsPoaCodeAll"), F.array([F.lit(c) for c in ahfDgnsCodes])), F.lit(1))
+                               F.when( get_coagulopathyCondition(F.col("dgnsPoaCodeAll")), F.lit(1))
                                  .otherwise(F.lit(0)))
     return baseDF
 
