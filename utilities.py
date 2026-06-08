@@ -377,16 +377,17 @@ def prep_ahaDF(ahaDF, filename):
                   .withColumn("ahaCOTH", F.when( F.col("ahaCOTH")==2, 0).otherwise(F.col("ahaCOTH")))
                   .withColumn("ahaCah", F.col("MAPP18").cast('int'))         #critical access hospital
                   .withColumn("ahaCah", F.when( F.col("ahaCah")==2, 0).otherwise(F.col("ahaCah")))
-                  .withColumn("ahaBeds", F.col("BDH").cast('int'))           #total facility beds - nursing home beds, ton of missingness, useless
-                  .withColumn("ahaSize", F.when( F.col("ahaBeds").isNull(), F.lit(None))
-                                          .when( F.col("ahaBeds")<100, 0)
-                                          .when( (F.col("ahaBeds")>=100)&(F.col("ahaBeds")<400), 1)
-                                          .when( F.col("ahaBeds")>=400, 2)
+                  .withColumn("ahaTotalMinusNursingBeds", F.col("BDH").cast('int'))           #total facility beds - nursing home beds, ton of missingness, useless
+                  .withColumn("ahaTotalHospitalBeds", F.col("HOSPBD").cast('int')) #total hospital beds
+                  .withColumn("ahaSize", F.when( F.col("ahaTotalMinusNursingBeds").isNull(), F.lit(None))
+                                          .when( F.col("ahaTotalMinusNursingBeds")<100, 0)
+                                          .when( (F.col("ahaTotalMinusNursingBeds")>=100)&(F.col("ahaTotalMinusNursingBeds")<400), 1)
+                                          .when( F.col("ahaTotalMinusNursingBeds")>=400, 2)
                                           .otherwise(F.lit(None)))
                   .withColumn("FTERES", F.col("FTERES").cast('int'))         #full time equivalent residents and interns
                   .withColumn("LAT", F.col("LAT").cast('double'))
                   .withColumn("LONG", F.col("LONG").cast('double'))
-                  .withColumn("ahaResidentToBedRatio", F.col("FTERES")/F.col("ahaBeds"))
+                  .withColumn("ahaResidentToBedRatio", F.col("FTERES")/F.col("ahaTotalMinusNursingBeds"))
                   .withColumn("ahaBedsIcu", F.col("MSICBD")) #number of medical/surgical intensive care beds
                   #NIS definition of teaching hospitals: https://hcup-us.ahrq.gov/db/vars/hosp_teach/nisnote.jsp
                   #the definition was somewhat unclear so I asked for clarification, see email on 7/25/2024:

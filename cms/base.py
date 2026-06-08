@@ -1773,7 +1773,8 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                                       F.col("ahaTeleicuHos"),                        #teleICU care hospital
                                       F.col("ahaTeleicuSys"),                        #teleICU care health system
                                       F.col("ahaTeleicuVen"),                        #teleICU care joint venture
-                                      F.col("ahaBeds"),                              #total facility beds - nursing home beds
+                                      F.col("ahaTotalMinusNursingBeds"),            #total facility beds - nursing home beds
+                                      F.col("ahaTotalHospitalBeds"),                 #total hospital beds
                                       F.col("ahaSize"),
                                       F.col("ahaOwner"),
                                       F.col("ahaCbsaType"),
