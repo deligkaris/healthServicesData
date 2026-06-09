@@ -135,7 +135,7 @@ get_data_dictionary <- function() {
     "mbsfRegion",      "Beneficiary US region (1=NE,2=MW,3=S,4=W)",
     "mbsfMaPenetration","Beneficiary-county MA penetration (proportion)",
     "mbsfMeanContinuousFfsAndRfrncYrForCountyYear","County-year mean proportion with continuous FFS + reference-year coverage",
-    "mbsfMedianHhIncome","County median household income ($, nominal)",
+    "mbsfMedianHhIncome","County median household income (nominal)",
     "mbsfMedianHhIncomeAdjusted","County median household income (inflation-adjusted)",
     "mbsfMedianDistanceEd","County median distance (mi) to nearest ED",
     "mbsfMedianDistanceIcu","County median distance (mi) to nearest ICU",
