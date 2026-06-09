@@ -108,7 +108,8 @@ get_data_dictionary <- function() {
     "ahaTeleicuHos",   "AHA teleICU at hospital level (0/1; NULL pre-2017)",
     "ahaTeleicuSys",   "AHA teleICU at system level (0/1; NULL pre-2017)",
     "ahaTeleicuVen",   "AHA teleICU via joint venture (0/1; NULL pre-2017)",
-    "ahaBeds",         "AHA total facility beds",
+    "ahaTotalMinusNursingBeds","AHA total facility beds minus nursing-home beds (raw field BDH; heavy missingness)",
+    "ahaTotalHospitalBeds","AHA total hospital beds (raw field HOSPBD)",
     "ahaSize",         "AHA bed-size category (0=<100,1=100-399,2=>=400, NULL=missing)",
     "ahaOwner",        "Ownership (0=govt non-fed,1=nonprofit,2=for-profit,3=govt federal)",
     "ahaCbsaType",     "CBSA type (0=metro,1=micro,2=rural)",
@@ -233,6 +234,15 @@ get_data_dictionary <- function() {
     "hiv",             "HIV (0/1; zeroed if aids=1)",
     "metastaticSolidTumor","Metastatic solid tumor (0/1)",
     "aids",            "AIDS (0/1)",
-    "comorbityIndex",  "Glasheen-2019 weighted comorbidity index (numeric) [sic spelling]"
+    "comorbityIndex",  "Glasheen-2019 weighted comorbidity index (numeric) [sic spelling]",
+
+    # ---- Area Deprivation Index (hospital location) ----
+    "ADI_NATRANK",     "Area Deprivation Index national percentile rank (1-100; higher = more deprived)",
+    "ADI_STATERNK",    "Area Deprivation Index state decile rank (1-10; higher = more deprived)",
+
+    # ---- transfer-dyad distance / travel (between the dyad's two hospitals) ----
+    "dyadGeodesicDistanceKm","Great-circle (straight-line) distance between the dyad's hospitals (km)",
+    "dyadDrivingDistanceKm","Road driving distance between the dyad's hospitals (km)",
+    "dyadDrivingTimeMin","Road driving time between the dyad's hospitals (minutes)"
   )
 }
