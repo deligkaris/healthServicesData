@@ -1796,6 +1796,52 @@ class TestAddDyadInfo:
         assert out[(200, 2021)][1] == 0.75
         assert out[(300, 2021)][1] == 0.25
 
+    def test_year_gap_prior_is_zero_not_null(self, spark):
+        # add_dyad_info passes gapFill=0 for the dyad proportions. A dyad row exists
+        # only when the pair had >=1 transfer that year, so a >1-year gap means the
+        # pair had zero transfers -- a true 0 numerator (0/nodeVol). The gap-year
+        # prior must therefore be 0.0, while each dyad's first observed year stays
+        # null and contiguous years still carry the real prior value.
+        #   100->200: present 2020 and 2022 (GAP in 2021)
+        #   100->300: present 2020 and 2021 (contiguous, sender stays active in 2021)
+        from cms.transfers import add_node_volume_info, add_dyad_info
+        schema = StructType([
+            StructField("fromORGNPINM", IntegerType(), True),
+            StructField("toORGNPINM", IntegerType(), True),
+            StructField("fromTHRU_DT_YEAR", IntegerType(), True),
+            StructField("toTHRU_DT_YEAR", IntegerType(), True),
+            StructField("fromCLAIMNO", StringType(), True),
+            StructField("toCLAIMNO", StringType(), True),
+            StructField("fromproviderSysId", IntegerType(), True),
+            StructField("toproviderSysId", IntegerType(), True),
+            StructField("fromproviderFIPS", StringType(), True),
+            StructField("toproviderFIPS", StringType(), True),
+            StructField("fromproviderStateFIPS", StringType(), True),
+            StructField("toproviderStateFIPS", StringType(), True),
+        ])
+        # (year, to): the (100->200) dyad skips 2021; (100->300) covers 2020 and 2021.
+        spec = [(2020, 200), (2020, 300), (2021, 300), (2022, 200)]
+        rows = []
+        for k, (year, to) in enumerate(spec):
+            rows.append({"fromORGNPINM": 100, "toORGNPINM": to,
+                         "fromTHRU_DT_YEAR": year, "toTHRU_DT_YEAR": year,
+                         "fromCLAIMNO": f"f{k}", "toCLAIMNO": f"t{k}",
+                         "fromproviderSysId": 7, "toproviderSysId": 7,
+                         "fromproviderFIPS": "01001", "toproviderFIPS": "01001",
+                         "fromproviderStateFIPS": "01", "toproviderStateFIPS": "01"})
+        df = spark.createDataFrame(rows, schema=schema)
+        df = add_node_volume_info(df)
+        df = add_dyad_info(df)
+        out = {(r["toORGNPINM"], r["fromTHRU_DT_YEAR"]):
+               (r["dyadProportionTransfersOutPrior"], r["dyadProportionTransfersInPrior"])
+               for r in df.collect()}
+        # (100->200): first year 2020 -> null prior; 2022 follows a 1-year gap -> gapFill 0.0
+        assert out[(200, 2020)] == (None, None)
+        assert out[(200, 2022)] == (0.0, 0.0)
+        # (100->300): contiguous, so the real 2020 prior still flows to 2021 (not overwritten by 0)
+        assert out[(300, 2020)] == (None, None)
+        assert out[(300, 2021)][0] is not None and out[(300, 2021)][0] != 0.0
+
 
 class TestAddNodeInfo:
 

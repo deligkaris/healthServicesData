@@ -331,8 +331,13 @@ def add_dyad_info(transfersDF):
     transfersDF = add_dyadProportionTransfersIn(transfersDF)
     transfersDF = add_dyadAcrossCounties(transfersDF)
     transfersDF = add_dyadAcrossStates(transfersDF)
-    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersOut", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR")
-    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersIn", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR")
+    #gapFill=0: a dyad row exists only when A->B had >=1 transfer that year, so a >1-year gap
+    #means the pair had zero transfers -- the proportion's numerator (dyadTransferVol) is 0, i.e.
+    #a true 0/nodeOutVol (and add_dyadProportionTransfers* already codes the empty 0/0 case as 0.).
+    #The dyad's first observed year still stays null. nodeHhi (add_node_hhi_info) keeps the default
+    #None because a gap year there is an undefined distribution, not a zero numerator.
+    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersOut", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR", gapFill=0)
+    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersIn", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR", gapFill=0)
     return transfersDF
 
 def add_node_info(transfersDF):
