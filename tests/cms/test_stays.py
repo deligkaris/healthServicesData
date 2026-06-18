@@ -1435,6 +1435,26 @@ class TestAddOrgnpinmColumnPriorYear:
         out = {r["THRU_DT_YEAR"]: r["providerStrokeVolPrior"] for r in result.collect()}
         assert out == {2020: None, 2021: 3}
 
+    def test_gapfill_zero_on_stroke_vol_gap(self, spark):
+        # providerStrokeVol is a count like providerSepticShockVol: with gapFill=0
+        # a >1-year gap records 0 (provider existed, no stroke claims that year),
+        # the first observed year stays null.
+        from cms.stays import add_orgnpinm_column_prior_year
+        schema = StructType([
+            StructField("ORGNPINM", IntegerType(), True),
+            StructField("THRU_DT_YEAR", IntegerType(), True),
+            StructField("providerStrokeVol", IntegerType(), True),
+        ])
+        df = spark.createDataFrame(
+            [{"ORGNPINM": 100, "THRU_DT_YEAR": 2020, "providerStrokeVol": 3},
+             {"ORGNPINM": 100, "THRU_DT_YEAR": 2022, "providerStrokeVol": 7}],
+            schema=schema,
+        )
+        out = {r["THRU_DT_YEAR"]: r["providerStrokeVolPrior"]
+               for r in add_orgnpinm_column_prior_year(df, column="providerStrokeVol",
+                                                        gapFill=0).collect()}
+        assert out == {2020: None, 2022: 0}
+
     def test_gapfill_zero_threads_through_to_volume_column(self, spark):
         # The wrapper forwards gapFill: a >1-year gap on a volume column records 0,
         # the first observed year stays null.
