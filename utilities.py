@@ -31,7 +31,7 @@ def get_daysInYearsPrior():
 def get_monthsInYearsPrior():
     return F.create_map([F.lit(x) for x in chain(*monthsInYearsPriorDict.items())])
 
-def add_column_prior(df, column, who, when):
+def add_column_prior(df, column, who, when, gapFill=None):
     '''Adds the column's value from the prior year, keyed by `who` and ordered by `when`.
     Generic across grains: `who` is the partition identity and `when` is the year column.
     `who` may be a single column name (a provider, for the stays grain) or a list of column
@@ -39,18 +39,37 @@ def add_column_prior(df, column, who, when):
     dyad grain) -- the key must match the grain of `column` or the prior value will be the
     wrong row's. For some `who` the prior year would be 2 years prior because spark uses
     whatever row is lagging/behind the current one, so in that case the prior quantity is set
-    to null. Domain modules wrap this with their own defaults (see cms.stays.add_column_prior
-    and cms.transfers.add_column_prior).
-    A null in column+"Prior" means the prior-year value is UNOBSERVED (the group's first year,
-    or a >1-year gap), not zero. Do not coalesce it to 0 downstream -- that would fabricate a
-    real prior value where none exists.'''
+    to null (or to `gapFill`, see below). Domain modules wrap this with their own defaults
+    (see cms.stays.add_column_prior and cms.transfers.add_column_prior).
+
+    `gapFill` controls what a >1-year gap contributes. There are two ways the immediately
+    prior year (when-1) can be absent from the data, and they are NOT the same:
+      * `when` is the group's first observed year (no preceding row at all). We cannot tell
+        "existed but had no activity" from "did not exist yet / outside our data window", so
+        column+"Prior" is always null here regardless of gapFill.
+      * `when` follows a >1-year gap (the group bills both before and after the gap, so it
+        provably existed during it). For a COUNT/VOLUME column (e.g. providerSepticShockVol)
+        the missing year genuinely had a value of 0, so pass gapFill=0 to record that. For a
+        PROPORTION or index column (e.g. nodeHhi, dyadProportionTransfers*) the missing year
+        is undefined (0/0), so leave gapFill=None and the gap stays null.
+
+    A null in column+"Prior" means the prior-year value is UNOBSERVED, not zero. Do not
+    coalesce it to 0 downstream -- that would fabricate a real prior value where none exists.
+    Use gapFill=0 here (at the source) instead of coalescing downstream so first-year nulls
+    are preserved while genuine gap-year zeros are recorded.'''
     whoCols = who if isinstance(who, list) else [who]
     eachWho = Window.partitionBy(whoCols).orderBy(when)
     eachWhoWhen = Window.partitionBy(whoCols + [when])
     df = (df
           .withColumn("prior", F.lag(when,1).over(eachWho))
           .withColumn(column+"Prior", F.lag(column,1).over(eachWho))
-          .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior")).otherwise(F.lit(None)))
+          #exactly-1-year-back keeps the lagged value; a >1-year gap (when-prior>1) means the
+          #intervening year(s) had no rows -> gapFill (0 for counts, null for proportions);
+          #everything else -- same-year predecessor (when-prior==0) and the group's first row
+          #(prior is null) -- must stay null so the max() broadcast below ignores it.
+          .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior"))
+                                       .when( F.col(when)-F.col("prior")>1, F.lit(gapFill))
+                                       .otherwise(F.lit(None)))
           #lag fires only on the row-1 of each (who,when) group; broadcast the prior value to every row in the group
           .withColumn(column+"Prior", F.max(F.col(column+"Prior")).over(eachWhoWhen))
           .drop("prior")) #scratch column used only to validate the lag is exactly 1 year

@@ -300,7 +300,7 @@ def add_node_from_to_info(transfersDF):
                               .withColumn("nodeToSizeOfFromNodes", F.size( F.col("nodeToSetOfFromNodes") )))
     return transfersDF
 
-def add_column_prior(transfersDF, column, who, when):
+def add_column_prior(transfersDF, column, who, when, gapFill=None):
     '''Adds the column's value from the prior year at the transfers grain.
     Thin wrapper over utilitiesF.add_column_prior; the shared logic lives in utilities.py.
     Callers pass who/when explicitly. `who` must match the grain of `column`:
@@ -309,9 +309,12 @@ def add_column_prior(transfersDF, column, who, when):
     dyad-level columns (eg dyadProportionTransfersOut/In) so the prior value comes from the
     same dyad a year earlier rather than an arbitrary partner. when=fromTHRU_DT_YEAR is the
     transfer's originating year.
-    A null in the prior column means unobserved (the dyad/node's first year or a year gap),
-    not zero -- do not coalesce it to 0 downstream.'''
-    return utilitiesF.add_column_prior(transfersDF, column=column, who=who, when=when)
+    A null in the prior column means unobserved (the dyad/node's first observed year), not
+    zero -- do not coalesce it to 0 downstream. Pass gapFill=0 only for count/volume columns
+    so a >1-year gap records a true 0 (see add_column_prior); the current callers (nodeHhi,
+    dyadProportionTransfers*) are proportions/indexes where a gap year is undefined, so they
+    keep the default None.'''
+    return utilitiesF.add_column_prior(transfersDF, column=column, who=who, when=when, gapFill=gapFill)
 
 def add_node_hhi_info(transfersDF):
     '''Adds the HHI for each provider and year and the one for the year prior.'''

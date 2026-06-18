@@ -197,17 +197,23 @@ def add_first_stay_info(staysDF):
                                                  .otherwise(0) )) #the value of 0 includes both true 'not first admissions' but also 'impossible to know if first admission'
     return staysDF
                                     
-def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", when="THRU_DT_YEAR"):
+def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", when="THRU_DT_YEAR", gapFill=None):
     '''Adds the column's value from the prior year at the provider (stays) grain.
     Thin wrapper over utilitiesF.add_column_prior with provider-level defaults
     (who=ORGNPINM, when=THRU_DT_YEAR); the shared logic lives in utilities.py.
-    A null in the prior column means unobserved (first year or a year gap), not zero --
-    do not coalesce it to 0 downstream.'''
-    return utilitiesF.add_column_prior(staysDF, column=column, who=who, when=when)
+    A null in the prior column means unobserved -- the provider's first observed year,
+    where we cannot tell "no activity" from "not yet in the data". For a >1-year gap the
+    provider provably existed (it bills on both sides), so the missing year had a real
+    volume of 0: pass gapFill=0 for count columns (providerSepticShockVol, providerStrokeVol)
+    to record that. Leave gapFill=None (the default) for proportion/index columns, where a
+    gap year is undefined rather than zero. Do not coalesce first-year nulls to 0 downstream.'''
+    return utilitiesF.add_column_prior(staysDF, column=column, who=who, when=when, gapFill=gapFill)
      
-def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockVol"):
-    '''For each hospital and year it addes a column of the variable column for that hospital but from the prior year.'''
-    return add_column_prior(staysDF, column=column, who="ORGNPINM", when="THRU_DT_YEAR")
+def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockVol", gapFill=None):
+    '''For each hospital and year it addes a column of the variable column for that hospital but from the prior year.
+    Pass gapFill=0 for count/volume columns so a >1-year gap records a true 0 rather than null
+    (see add_column_prior); leave gapFill=None for proportion/index columns (e.g. provider*Mean).'''
+    return add_column_prior(staysDF, column=column, who="ORGNPINM", when="THRU_DT_YEAR", gapFill=gapFill)
 
 
 def _stay_keys(claimType):

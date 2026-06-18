@@ -1347,6 +1347,66 @@ class TestAddColumnPrior:
         out = {r["fromTHRU_DT_YEAR"]: r["nodeHhiPrior"] for r in result.collect()}
         assert out == {2020: None, 2021: 50}
 
+    def test_gapfill_zero_fills_year_gap_but_not_first_year(self, spark):
+        # 100 reports 2020 and 2022 but not 2021. With gapFill=0 the 2022 prior
+        # becomes 0 (2021 provably had no claims -> 0 volume), while the 2020 row
+        # -- the provider's first observed year -- stays null (unobserved, not 0).
+        from cms.stays import add_column_prior
+        df = _make_prior_df(spark, [(100, 2020, 5), (100, 2022, 15)])
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+               for r in add_column_prior(df, gapFill=0).collect()}
+        assert out == {2020: None, 2022: 0}
+
+    def test_gapfill_none_preserves_null_on_gap(self, spark):
+        # Passing gapFill=None explicitly matches the default: the gap stays null.
+        from cms.stays import add_column_prior
+        df = _make_prior_df(spark, [(100, 2020, 5), (100, 2022, 15)])
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+               for r in add_column_prior(df, gapFill=None).collect()}
+        assert out == {2020: None, 2022: None}
+
+    def test_gapfill_zero_does_not_override_contiguous_real_value(self, spark):
+        # gapFill must only affect >1-year gaps. With contiguous years present,
+        # the real prior value still wins -- even when that real value is 0 and
+        # could be confused with the fill, and even across a later gap.
+        # 100: 2020 -> null (first year), 2021 -> 5, 2022 -> 0 (real 2021->2022
+        # is contiguous, prior=0 because 2021's value is 0), then a gap to 2024
+        # whose prior is the gapFill 0.
+        from cms.stays import add_column_prior
+        df = _make_prior_df(spark, [
+            (100, 2020, 5), (100, 2021, 0), (100, 2022, 9), (100, 2024, 7),
+        ])
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+               for r in add_column_prior(df, gapFill=0).collect()}
+        assert out == {2020: None, 2021: 5, 2022: 0, 2024: 0}
+
+    def test_gapfill_zero_broadcasts_to_all_rows_of_gap_year(self, spark):
+        # When the gap year has multiple rows (the usual stays-grain shape), the
+        # filled 0 must reach every row, not just the lag-firing one.
+        from cms.stays import add_column_prior
+        df = _make_prior_df(spark, [
+            (100, 2020, 5),
+            (100, 2023, 15), (100, 2023, 15), (100, 2023, 15),
+        ])
+        priors_2023 = [r["providerSepticShockVolPrior"]
+                       for r in add_column_prior(df, gapFill=0).collect()
+                       if r["THRU_DT_YEAR"] == 2023]
+        assert priors_2023 == [0, 0, 0]
+
+    def test_gapfill_zero_independent_per_provider(self, spark):
+        # gapFill applies within each provider's own gap; providers don't bleed.
+        from cms.stays import add_column_prior
+        df = _make_prior_df(spark, [
+            (100, 2020, 5), (100, 2022, 15),   # provider 100 has a gap
+            (200, 2020, 50), (200, 2021, 100),  # provider 200 contiguous
+        ])
+        out = {(r["ORGNPINM"], r["THRU_DT_YEAR"]): r["providerSepticShockVolPrior"]
+               for r in add_column_prior(df, gapFill=0).collect()}
+        assert out == {
+            (100, 2020): None, (100, 2022): 0,
+            (200, 2020): None, (200, 2021): 50,
+        }
+
 
 class TestAddOrgnpinmColumnPriorYear:
 
@@ -1374,6 +1434,24 @@ class TestAddOrgnpinmColumnPriorYear:
         assert "providerStrokeVolPrior" in result.columns
         out = {r["THRU_DT_YEAR"]: r["providerStrokeVolPrior"] for r in result.collect()}
         assert out == {2020: None, 2021: 3}
+
+    def test_gapfill_zero_threads_through_to_volume_column(self, spark):
+        # The wrapper forwards gapFill: a >1-year gap on a volume column records 0,
+        # the first observed year stays null.
+        from cms.stays import add_orgnpinm_column_prior_year
+        df = _make_prior_df(spark, [(100, 2020, 5), (100, 2022, 15)])
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+               for r in add_orgnpinm_column_prior_year(df, column="providerSepticShockVol",
+                                                        gapFill=0).collect()}
+        assert out == {2020: None, 2022: 0}
+
+    def test_gapfill_defaults_to_none(self, spark):
+        # Without gapFill the wrapper leaves gap years null (proportion/index-safe default).
+        from cms.stays import add_orgnpinm_column_prior_year
+        df = _make_prior_df(spark, [(100, 2020, 5), (100, 2022, 15)])
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+               for r in add_orgnpinm_column_prior_year(df, column="providerSepticShockVol").collect()}
+        assert out == {2020: None, 2022: None}
 
 
 # ============================================================
