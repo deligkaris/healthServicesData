@@ -483,13 +483,22 @@ class TestShockPipeline:
         assert result["shock"] == 0
 
     def test_similar_but_different_codes_return_0(self, spark):
-        # Codes that are NOT in the shock list but look similar.
-        # R570 / R571 / R5710 — only "R57" exactly matches; the others should NOT.
-        # I950 / I954 — only I951/I952/I953/I958/I959 match.
+        # Codes near the shock list but genuinely not matching: none start with R57
+        # and none are among the exact codes I951/I952/I953/I958/I959/R031/R6521.
+        # I950 / I954 are I95 codes outside the list; R032 is not R031.
         from cms.base import add_shockDgns, add_shock
-        df = make_dgns_code_all_df(spark, [["R570", "R571", "I950", "I954", "R032"]])
+        df = make_dgns_code_all_df(spark, [["I950", "I954", "R032", "R56"]])
         result = add_shock(add_shockDgns(df)).collect()[0]
         assert result["shock"] == 0
+
+    def test_r57_family_codes_return_1(self, spark):
+        # Prefix matching: every R57.x code (cardiogenic R570, hypovolemic R571,
+        # other R578, unspecified R579) is shock, not just the bare "R57".
+        from cms.base import add_shockDgns, add_shock
+        for code in ["R570", "R571", "R578", "R579"]:
+            df = make_dgns_code_all_df(spark, [[code]])
+            result = add_shock(add_shockDgns(df)).collect()[0]
+            assert result["shock"] == 1, code
 
     def test_multiple_rows_mixed(self, spark):
         from cms.base import add_shockDgns, add_shock
@@ -536,11 +545,20 @@ class TestAddShockPoa:
         assert result["shockPoa"] == 0
 
     def test_similar_but_different_codes_return_0(self, spark):
-        # Codes near the shock list but not in it.
+        # Codes near the shock list but genuinely not matching: none start with R57
+        # and none are among the exact codes I951/I952/I953/I958/I959/R031/R6521.
         from cms.base import add_shockPoa
-        df = make_septic_shock_poa_df(spark, [["R570", "R571", "I950", "I954", "R032"]])
+        df = make_septic_shock_poa_df(spark, [["I950", "I954", "R032", "R56"]])
         result = add_shockPoa(df).collect()[0]
         assert result["shockPoa"] == 0
+
+    def test_r57_family_codes_return_1(self, spark):
+        # Prefix matching: every R57.x code is shock present on admission.
+        from cms.base import add_shockPoa
+        for code in ["R570", "R571", "R578", "R579"]:
+            df = make_septic_shock_poa_df(spark, [[code]])
+            result = add_shockPoa(df).collect()[0]
+            assert result["shockPoa"] == 1, code
 
     def test_multiple_rows_mixed(self, spark):
         from cms.base import add_shockPoa
@@ -942,11 +960,18 @@ class TestAddAcidosis:
         assert result["acidosis"] == 0
 
     def test_similar_but_different_codes_return_0(self, spark):
-        # E87 / E871 / E873 / E8720 are NOT E872 exactly.
+        # E87 / E871 / E873 do NOT start with E872, so none match.
         from cms.base import add_acidosis
-        df = make_dgns_code_all_df(spark, [["E87", "E871", "E873", "E8720"]])
+        df = make_dgns_code_all_df(spark, [["E87", "E871", "E873"]])
         result = add_acidosis(df).collect()[0]
         assert result["acidosis"] == 0
+
+    def test_e872_prefixed_code_returns_1(self, spark):
+        # Prefix matching: any code starting with E872 matches (per get_acidosisCondition).
+        from cms.base import add_acidosis
+        df = make_dgns_code_all_df(spark, [["E8720"]])
+        result = add_acidosis(df).collect()[0]
+        assert result["acidosis"] == 1
 
     def test_multiple_rows_mixed(self, spark):
         from cms.base import add_acidosis
