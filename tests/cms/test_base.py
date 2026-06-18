@@ -645,6 +645,17 @@ class TestAddAcuteRespiratoryFailure:
         result = add_acuteRespiratoryFailure(df).collect()[0]
         assert result["acuteRespiratoryFailure"] == 0
 
+    def test_j960_j969_family_codes_return_1(self, spark):
+        # Prefix matching: J960.x / J969.x children (e.g. acute respiratory failure
+        # with hypoxia J9601) match, not just the bare J960 / J969. These codes are
+        # NOT in the exact list, so only startswith catches them -- guards against a
+        # regression to exact-only matching.
+        from cms.base import add_acuteRespiratoryFailure
+        for code in ["J9600", "J9601", "J9602", "J9691"]:
+            df = make_dgns_prcdr_df(spark, [([code], [])])
+            result = add_acuteRespiratoryFailure(df).collect()[0]
+            assert result["acuteRespiratoryFailure"] == 1, code
+
     def test_dgns_and_prcdr_both_match_returns_1(self, spark):
         from cms.base import add_acuteRespiratoryFailure
         df = make_dgns_prcdr_df(spark, [(["J80"], ["5A1955Z"])])
@@ -722,6 +733,15 @@ class TestAddAcuteNeurologicalFailure:
         ])
         result = add_acuteNeurologicalFailure(df).collect()[0]
         assert result["acuteNeurologicalFailure"] == 0
+
+    def test_f06_g934_family_codes_return_1(self, spark):
+        # Prefix matching: F06.x and G93.4x children match, not just the bare
+        # F06 / G934. These are not in the exact list, so only startswith catches them.
+        from cms.base import add_acuteNeurologicalFailure
+        for code in ["F060", "F068", "G9340", "G9349"]:
+            df = make_dgns_prcdr_df(spark, [([code], [])])
+            result = add_acuteNeurologicalFailure(df).collect()[0]
+            assert result["acuteNeurologicalFailure"] == 1, code
 
     def test_dgns_and_prcdr_both_match_returns_1(self, spark):
         from cms.base import add_acuteNeurologicalFailure
@@ -840,6 +860,16 @@ class TestAddAcuteHepaticInjuryFailure:
         result = add_acuteHepaticInjuryFailure(df).collect()[0]
         assert result["acuteHepaticInjuryFailure"] == 0
 
+    def test_k720_family_codes_return_1(self, spark):
+        # Prefix matching: K72.0x children (acute/subacute hepatic failure without
+        # coma K7200, with coma K7201) match, not just the bare K720. Only startswith
+        # catches these -- they are not in the exact list.
+        from cms.base import add_acuteHepaticInjuryFailure
+        for code in ["K7200", "K7201"]:
+            df = make_dgns_code_all_df(spark, [[code]])
+            result = add_acuteHepaticInjuryFailure(df).collect()[0]
+            assert result["acuteHepaticInjuryFailure"] == 1, code
+
     def test_multiple_rows_mixed(self, spark):
         from cms.base import add_acuteHepaticInjuryFailure
         df = make_dgns_code_all_df(spark, [
@@ -908,6 +938,15 @@ class TestAddAcuteRenalInjuryFailure:
         df = make_dgns_prcdr_df(spark, [(["N18", "N19", "N002"], ["5A2D00Z", "5B1D00Z"])])
         result = add_acuteRenalInjuryFailure(df).collect()[0]
         assert result["acuteRenalInjuryFailure"] == 0
+
+    def test_n17_family_codes_return_1(self, spark):
+        # Prefix matching: N17.x children (acute kidney failure subtypes, e.g. ATN
+        # N170) match, not just the bare N17. Only startswith catches these.
+        from cms.base import add_acuteRenalInjuryFailure
+        for code in ["N170", "N171", "N172", "N179"]:
+            df = make_dgns_prcdr_df(spark, [([code], [])])
+            result = add_acuteRenalInjuryFailure(df).collect()[0]
+            assert result["acuteRenalInjuryFailure"] == 1, code
 
     def test_dgns_and_prcdr_both_match_returns_1(self, spark):
         from cms.base import add_acuteRenalInjuryFailure
