@@ -1768,27 +1768,33 @@ def add_denied(baseDF):
 def add_aha_info(baseDF, ahaDF): #american hospital association info
     #dictionary can be found at https://www.ahadata.com/aha-data-resources
     #annual survey file layouts includes field explanations and information about data sources
-    baseDF = baseDF.join(ahaDF.select(F.col("MCRNUM").alias("PROVIDER"),  
-                                      F.col("year").alias("THRU_DT_YEAR"),
-                                      F.col("LAT").alias("ahaProviderLat"),
-                                      F.col("LONG").alias("ahaProviderLong"),
-                                      F.col("ahaCah"),                               #critical access hospital
-                                      F.col("STRCHOS").alias("ahaTelestrokeHos"),    #telestroke care hospital
-                                      F.col("STRCSYS").alias("ahaTelestrokeSys"),    #telestroke care health system
-                                      F.col("STRCVEN").alias("ahaTelestrokeVen"),    #telestroke care joint venture
-                                      F.col("ahaTeleicuHos"),                        #teleICU care hospital
-                                      F.col("ahaTeleicuSys"),                        #teleICU care health system
-                                      F.col("ahaTeleicuVen"),                        #teleICU care joint venture
-                                      F.col("ahaTotalMinusNursingBeds"),            #total facility beds - nursing home beds
-                                      F.col("ahaTotalHospitalBeds"),                 #total hospital beds
-                                      F.col("ahaSize"),
-                                      F.col("ahaOwner"),
-                                      F.col("ahaCbsaType"),
-                                      F.col("ahaNisTeachingHospital"),
-                                      F.col("ahaResidentToBedRatio"),
-                                      F.col("ahaBedsIcu"),
-                                      F.col("ahaSystemMember"),
-                                      F.col("SYSID").alias("ahaSystemMemberId")), #member health system ID
+    #(source column in ahaDF, output alias) pairs -- the telestroke (STRC*) and teleICU (ahaTeleicu*)
+    #columns exist in the AHA source only for years after 2016 (see prep_ahaDF), so when ahaDF includes
+    #2015/2016 rows they are absent; any source column not present is filled with null below rather than
+    #failing the select with a column-not-found error
+    ahaCols = [("MCRNUM","PROVIDER"),
+               ("year","THRU_DT_YEAR"),
+               ("LAT","ahaProviderLat"),
+               ("LONG","ahaProviderLong"),
+               ("ahaCah","ahaCah"),                               #critical access hospital
+               ("STRCHOS","ahaTelestrokeHos"),                    #telestroke care hospital
+               ("STRCSYS","ahaTelestrokeSys"),                    #telestroke care health system
+               ("STRCVEN","ahaTelestrokeVen"),                    #telestroke care joint venture
+               ("ahaTeleicuHos","ahaTeleicuHos"),                 #teleICU care hospital
+               ("ahaTeleicuSys","ahaTeleicuSys"),                 #teleICU care health system
+               ("ahaTeleicuVen","ahaTeleicuVen"),                 #teleICU care joint venture
+               ("ahaTotalMinusNursingBeds","ahaTotalMinusNursingBeds"), #total facility beds - nursing home beds
+               ("ahaTotalHospitalBeds","ahaTotalHospitalBeds"),   #total hospital beds
+               ("ahaSize","ahaSize"),
+               ("ahaOwner","ahaOwner"),
+               ("ahaCbsaType","ahaCbsaType"),
+               ("ahaNisTeachingHospital","ahaNisTeachingHospital"),
+               ("ahaResidentToBedRatio","ahaResidentToBedRatio"),
+               ("ahaBedsIcu","ahaBedsIcu"),
+               ("ahaSystemMember","ahaSystemMember"),
+               ("SYSID","ahaSystemMemberId")]                     #member health system ID
+    selectCols = [(F.col(src) if src in ahaDF.columns else F.lit(None)).alias(alias) for (src,alias) in ahaCols]
+    baseDF = baseDF.join(ahaDF.select(selectCols),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
     return baseDF
