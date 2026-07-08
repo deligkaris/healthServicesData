@@ -216,6 +216,12 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, r
     elif( years_within_cms_data_limits(yearI, yearF)==False ):
         raise ValueError("CMS data not available for the years requested")
     else:
+        #this codebase maps ICD10 codes only (ICD10 started October 2015), so ICD-based columns are
+        #incomplete before 2016: empty for fully-ICD9 years (2012-2014), partial/biased for split-year 2015
+        if (yearI < 2016):
+            print(f"Warning: ICD10-only codebase (ICD10 started October 2015); requested years include "
+                  f"{yearI}<2016, so comorbidities/procedure/diagnosis flags will be incomplete and some "
+                  "2015 annual totals will be off.")
         filenames = get_filenames(pathCMS, yearI, yearF)
         dataframes = read_data(spark, filenames, yearI, yearF)
         if cleanMbsf: #need to clean mbsf prior to using it to add information to base claims in add_preliminary_info
