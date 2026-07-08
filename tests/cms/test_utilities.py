@@ -304,9 +304,12 @@ class TestEnforceSchema:
         assert result.collect()[0]["DSYSRTKY"] == 999
 
     def test_non_castable_raises_error(self, spark):
-        """A string that can't be cast to int raises an error (ANSI mode in Spark 4.x)."""
+        """A non-castable string raises only under ANSI SQL mode (Spark 4.x default). The OSC cluster
+        runs stock Spark 3.5 with ANSI OFF, where the cast returns null instead, so skip unless ANSI is on."""
         from pyspark.sql.types import StructType, StructField, StringType
         from cms.utilities import enforce_schema
+        if spark.conf.get("spark.sql.ansi.enabled", "false") != "true":
+            pytest.skip("ANSI SQL mode off (stock Spark 3.5 default): non-castable cast returns null, does not raise")
         schema = StructType([StructField("DSYSRTKY", StringType(), True)])
         df = spark.createDataFrame([("abc",)], schema=schema)
         result = enforce_schema(df, claimType="op", claimPart="Base")

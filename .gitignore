@@ -1,3 +1,6 @@
 __pycache__
 cms/__pycache__
 .DS_Store
+
+# Claude Code personal project settings (user-specific venv/JAVA_HOME)
+.claude/settings.local.json
