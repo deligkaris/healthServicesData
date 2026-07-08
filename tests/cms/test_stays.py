@@ -204,12 +204,12 @@ class TestAddProviderSepticShockVol:
 
 
 # ============================================================
-# End-to-end pipeline helper for add_provider_capability_info:
+# End-to-end pipeline helper for add_providerAnnualCapability:
 #   real ipBase claims (THRU_DT + ICD_PRCDR_CD1..25)
 #   -> add_through_date_info       (derives THRU_DT_YEAR)
 #   -> add_prcdrCodeAll            (collapses 25 prcdr cols -> array)
 #   -> add_<capability>            (derives the binary flag from procedure codes)
-#   -> add_provider_capability_info(df, col=<flag>)
+#   -> add_providerAnnualCapability(df, col=<flag>)
 # ============================================================
 
 # Procedure codes that trigger each binary capability flag in cms.base.
@@ -225,19 +225,23 @@ def _capability_deriver(flag):
     return {"imv": add_imv, "rrt": add_rrt, "ecmo": add_ecmo}[flag]
 
 
-def _run_capability_pipeline(spark, rows, flag):
+def _run_capability_pipeline(spark, rows, flag, capability_fn=None):
     """rows: list of dicts. Each must specify CLAIMNO, ORGNPINM, THRU_DT, and
     optionally ICD_PRCDR_CD1 (= the capability's procedure code for a positive
     claim, anything else / omission for a negative claim).
-    flag: one of 'imv', 'rrt', 'ecmo'."""
+    flag: one of 'imv', 'rrt', 'ecmo'.
+    capability_fn: the cms.stays function that derives the provider capability
+    column; defaults to add_providerAnnualCapability."""
     from cms.utilities import add_through_date_info
     from cms.base import add_prcdrCodeAll
-    from cms.stays import add_provider_capability_info
+    from cms.stays import add_providerAnnualCapability
+    if capability_fn is None:
+        capability_fn = add_providerAnnualCapability
     df = make_real_claim_df(spark, "ipBase", rows)
     df = add_through_date_info(df)
     df = add_prcdrCodeAll(df)
     df = _capability_deriver(flag)(df)
-    df = add_provider_capability_info(df, col=flag)
+    df = capability_fn(df, col=flag)
     return df
 
 
@@ -254,16 +258,16 @@ def _cap_row(claimno, orgnpinm, thru_dt, flag, has_capability):
 
 
 # ============================================================
-# End-to-end tests for add_provider_capability_info
+# End-to-end tests for add_providerAnnualCapability
 # ============================================================
 
-class TestAddProviderCapabilityInfo:
+class TestAddProviderAnnualCapability:
 
     @pytest.mark.parametrize("flag", ["imv", "rrt", "ecmo"])
     def test_capability_column_name_follows_convention(self, spark, flag):
-        # providerImvCapability / providerRrtCapability / providerEcmoCapability
+        # providerImvAnnualCapability / providerRrtAnnualCapability / providerEcmoAnnualCapability
         df = _run_capability_pipeline(spark, [_cap_row(1, 100, 20200115, flag, True)], flag)
-        expected = "provider" + flag[0].upper() + flag[1:] + "Capability"
+        expected = "provider" + flag[0].upper() + flag[1:] + "AnnualCapability"
         assert expected in df.columns
 
     @pytest.mark.parametrize("flag", ["imv", "rrt", "ecmo"])
@@ -275,7 +279,7 @@ class TestAddProviderCapabilityInfo:
             _cap_row(3, 100, 20200201, flag, False),
         ]
         df = _run_capability_pipeline(spark, rows, flag)
-        cap_col = "provider" + flag[0].upper() + flag[1:] + "Capability"
+        cap_col = "provider" + flag[0].upper() + flag[1:] + "AnnualCapability"
         # The window-max broadcasts capability=1 to every row in (100, 2020).
         for r in df.collect():
             assert r[cap_col] == 1
@@ -284,7 +288,7 @@ class TestAddProviderCapabilityInfo:
     def test_provider_with_no_positive_rows_has_capability_0(self, spark, flag):
         rows = [_cap_row(i, 100, 20200115, flag, False) for i in range(1, 4)]
         df = _run_capability_pipeline(spark, rows, flag)
-        cap_col = "provider" + flag[0].upper() + flag[1:] + "Capability"
+        cap_col = "provider" + flag[0].upper() + flag[1:] + "AnnualCapability"
         for r in df.collect():
             assert r[cap_col] == 0
 
@@ -297,7 +301,7 @@ class TestAddProviderCapabilityInfo:
             _cap_row(4, 100, 20210410, "imv", False),
         ]
         df = _run_capability_pipeline(spark, rows, "imv")
-        by_claim = {r["CLAIMNO"]: r["providerImvCapability"] for r in df.collect()}
+        by_claim = {r["CLAIMNO"]: r["providerImvAnnualCapability"] for r in df.collect()}
         # 2020 partition: capability=1 (at least one row had it)
         assert by_claim[1] == 1 and by_claim[2] == 1
         # 2021 partition: capability=0 (no rows had it)
@@ -312,7 +316,7 @@ class TestAddProviderCapabilityInfo:
             _cap_row(4, 200, 20200201, "imv", False),
         ]
         df = _run_capability_pipeline(spark, rows, "imv")
-        by_claim = {r["CLAIMNO"]: r["providerImvCapability"] for r in df.collect()}
+        by_claim = {r["CLAIMNO"]: r["providerImvAnnualCapability"] for r in df.collect()}
         assert by_claim[1] == 1 and by_claim[2] == 1
         assert by_claim[3] == 0 and by_claim[4] == 0
 
@@ -324,7 +328,7 @@ class TestAddProviderCapabilityInfo:
             _cap_row(3, 100, 20200305, "rrt", True),
         ]
         df = _run_capability_pipeline(spark, rows, "rrt")
-        caps = [r["providerRrtCapability"] for r in df.collect()]
+        caps = [r["providerRrtAnnualCapability"] for r in df.collect()]
         assert caps == [1, 1, 1]
 
     def test_full_grid_imv_capability(self, spark):
@@ -340,7 +344,7 @@ class TestAddProviderCapabilityInfo:
             _cap_row(8, 200, 20210410, "imv", False),
         ]
         df = _run_capability_pipeline(spark, rows, "imv")
-        by_claim = {r["CLAIMNO"]: r["providerImvCapability"] for r in df.collect()}
+        by_claim = {r["CLAIMNO"]: r["providerImvAnnualCapability"] for r in df.collect()}
         # 100/2020 -> 1
         assert by_claim[1] == 1 and by_claim[2] == 1
         # 100/2021 -> 0
@@ -364,17 +368,115 @@ class TestAddProviderCapabilityInfo:
         assert by_claim[1]["imv"] == 1
         assert by_claim[2]["imv"] == 0
         # Capability is the partition max -> both rows show capability=1.
-        assert by_claim[1]["providerImvCapability"] == 1
-        assert by_claim[2]["providerImvCapability"] == 1
+        assert by_claim[1]["providerImvAnnualCapability"] == 1
+        assert by_claim[2]["providerImvAnnualCapability"] == 1
 
     def test_input_flag_column_preserved(self, spark):
         # The original binary column (imv) is untouched; capability is a new column.
         df = _run_capability_pipeline(spark, [_cap_row(1, 100, 20200115, "imv", True)], "imv")
         assert "imv" in df.columns
-        assert "providerImvCapability" in df.columns
+        assert "providerImvAnnualCapability" in df.columns
         row = df.collect()[0]
         assert row["imv"] == 1
-        assert row["providerImvCapability"] == 1
+        assert row["providerImvAnnualCapability"] == 1
+
+
+# ============================================================
+# End-to-end tests for add_providerEverCapability
+#   Forward-propagating (cumulative) variant: once a provider performs the
+#   procedure in any year, every year from then on is flagged 1; it never
+#   resets, but does NOT propagate backward to earlier years.
+# ============================================================
+
+def _run_ever_capability_pipeline(spark, rows, flag):
+    from cms.stays import add_providerEverCapability
+    return _run_capability_pipeline(spark, rows, flag, capability_fn=add_providerEverCapability)
+
+
+class TestAddProviderEverCapability:
+
+    @pytest.mark.parametrize("flag", ["imv", "rrt", "ecmo"])
+    def test_capability_column_name_follows_convention(self, spark, flag):
+        # providerImvEverCapability / providerRrtEverCapability / providerEcmoEverCapability
+        df = _run_ever_capability_pipeline(spark, [_cap_row(1, 100, 20200115, flag, True)], flag)
+        expected = "provider" + flag[0].upper() + flag[1:] + "EverCapability"
+        assert expected in df.columns
+
+    @pytest.mark.parametrize("flag", ["imv", "rrt", "ecmo"])
+    def test_capability_propagates_forward_to_later_years(self, spark, flag):
+        # Provider 100 performs the procedure in 2018 only; 2019 and 2020 are idle.
+        rows = [
+            _cap_row(1, 100, 20180115, flag, True),
+            _cap_row(2, 100, 20190201, flag, False),
+            _cap_row(3, 100, 20200305, flag, False),
+        ]
+        df = _run_ever_capability_pipeline(spark, rows, flag)
+        cap_col = "provider" + flag[0].upper() + flag[1:] + "EverCapability"
+        by_claim = {r["CLAIMNO"]: r[cap_col] for r in df.collect()}
+        # 2018 sets it; 2019 and 2020 carry it forward.
+        assert by_claim[1] == 1
+        assert by_claim[2] == 1
+        assert by_claim[3] == 1
+
+    @pytest.mark.parametrize("flag", ["imv", "rrt", "ecmo"])
+    def test_capability_does_not_propagate_backward(self, spark, flag):
+        # Provider 100 is idle in 2018, first performs the procedure in 2019.
+        rows = [
+            _cap_row(1, 100, 20180115, flag, False),
+            _cap_row(2, 100, 20190201, flag, True),
+            _cap_row(3, 100, 20200305, flag, False),
+        ]
+        df = _run_ever_capability_pipeline(spark, rows, flag)
+        cap_col = "provider" + flag[0].upper() + flag[1:] + "EverCapability"
+        by_claim = {r["CLAIMNO"]: r[cap_col] for r in df.collect()}
+        # 2018 predates the first capable year -> 0
+        assert by_claim[1] == 0
+        # 2019 sets it; 2020 carries it forward.
+        assert by_claim[2] == 1
+        assert by_claim[3] == 1
+
+    @pytest.mark.parametrize("flag", ["imv", "rrt", "ecmo"])
+    def test_provider_never_capable_stays_0(self, spark, flag):
+        rows = [
+            _cap_row(1, 100, 20180115, flag, False),
+            _cap_row(2, 100, 20190201, flag, False),
+        ]
+        df = _run_ever_capability_pipeline(spark, rows, flag)
+        cap_col = "provider" + flag[0].upper() + flag[1:] + "EverCapability"
+        for r in df.collect():
+            assert r[cap_col] == 0
+
+    def test_capability_independent_per_provider(self, spark):
+        # Provider 100 capable in 2018; provider 200 never capable.
+        rows = [
+            _cap_row(1, 100, 20180115, "imv", True),
+            _cap_row(2, 100, 20190201, "imv", False),
+            _cap_row(3, 200, 20180115, "imv", False),
+            _cap_row(4, 200, 20190201, "imv", False),
+        ]
+        df = _run_ever_capability_pipeline(spark, rows, "imv")
+        by_claim = {r["CLAIMNO"]: r["providerImvEverCapability"] for r in df.collect()}
+        assert by_claim[1] == 1 and by_claim[2] == 1
+        assert by_claim[3] == 0 and by_claim[4] == 0
+
+    def test_multiple_rows_same_year_all_carry_flag(self, spark):
+        # Two claims share the first capable year; both, plus a later year, are flagged.
+        rows = [
+            _cap_row(1, 100, 20180115, "imv", False),
+            _cap_row(2, 100, 20180310, "imv", True),
+            _cap_row(3, 100, 20190201, "imv", False),
+        ]
+        df = _run_ever_capability_pipeline(spark, rows, "imv")
+        caps = [r["providerImvEverCapability"] for r in df.collect()]
+        assert caps == [1, 1, 1]
+
+    def test_input_flag_column_preserved(self, spark):
+        df = _run_ever_capability_pipeline(spark, [_cap_row(1, 100, 20200115, "imv", True)], "imv")
+        assert "imv" in df.columns
+        assert "providerImvEverCapability" in df.columns
+        row = df.collect()[0]
+        assert row["imv"] == 1
+        assert row["providerImvEverCapability"] == 1
 
 
 # ============================================================

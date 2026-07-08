@@ -18,12 +18,32 @@ def add_providerSepticShockVol(staysDF):
     staysDF = staysDF.withColumn("providerSepticShockVol", F.sum( F.col("septicShock") ).over(eachProvider))
     return staysDF
 
-def add_provider_capability_info(staysDF, col="imv"):
-    '''Adds a binary column with the capability for each organization regarding the column specified in the function call.
-    The column provided must be a binary column as well.'''
+def add_providerAnnualCapability(staysDF, col="imv"):
+    '''Adds a binary column flagging whether the organization performed `col` at least once in that
+    year -- provider<Col>AnnualCapability (e.g. col="imv" -> providerImvAnnualCapability).
+    The column provided must be a binary column as well.
+    This is a per-year flag: the window partitions on ORGNPINM AND THRU_DT_YEAR, so each year is
+    evaluated independently and the flag does NOT carry forward. A hospital that performed `col` in
+    one year but not the next gets 1 for the first year's stays and 0 for the next year's -- it is
+    not a durable, once-capable-always-capable attribute.'''
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    colName = "provider" + col[0].upper() + col[1:] + "Capability"
-    staysDF = staysDF.withColumn(colName, F.max( F.col(col) ).over(eachProvider)) 
+    colName = "provider" + col[0].upper() + col[1:] + "AnnualCapability"
+    staysDF = staysDF.withColumn(colName, F.max( F.col(col) ).over(eachProvider))
+    return staysDF
+
+def add_providerEverCapability(staysDF, col="imv"):
+    '''Adds a binary column flagging whether the organization has EVER performed `col`, up to and
+    including the current year -- provider<Col>EverCapability (e.g. col="imv" -> providerImvEverCapability).
+    The column provided must be a binary column as well.
+    This is a forward-propagating flag: the window partitions on ORGNPINM only and orders by
+    THRU_DT_YEAR, taking a cumulative max across all years up to the current one. Once a hospital
+    performs `col` in any year, every year from then on is flagged 1 -- it never resets, but it does
+    NOT propagate backward (years before the first capable year stay 0). A hospital capable in 2018
+    but idle in 2019 still gets 1 for 2019's stays. Contrast with add_providerAnnualCapability, which
+    evaluates each year independently and does not carry forward.'''
+    eachProvider = Window.partitionBy(["ORGNPINM"]).orderBy("THRU_DT_YEAR")
+    colName = "provider" + col[0].upper() + col[1:] + "EverCapability"
+    staysDF = staysDF.withColumn(colName, F.max( F.col(col) ).over(eachProvider))
     return staysDF
 
 def add_provider_stroke_treatment_info(staysDF, inpatient=True):
