@@ -180,6 +180,19 @@ def add_dyadTransferVol(transfersDF):
     transfersDF = transfersDF.withColumn("dyadTransferVol", F.count( F.col("fromCLAIMNO") ).over(eachDyad))
     return transfersDF
 
+def add_newDyad(transfersDF):
+    '''Adds a newDyad column: 1 if this is the earliest year the (fromORGNPINM, toORGNPINM) pair is
+    observed in the transfers, 0 otherwise. Partitions on the year-less pair -- not the `dyad` array
+    (which bakes in fromTHRU_DT_YEAR, so every dyad would trivially be its own minimum) -- so the flag
+    marks the first year the sending->receiving relationship appears. Mirrors add_firstTransfer.
+    Note: this is left-censored by the loaded year range (see utilitiesF.yearMin) -- a pair first seen
+    in the earliest loaded year is flagged new even if it existed in an unloaded prior year. Also, a
+    pair that drops out and returns after a gap is NOT re-flagged new; only its first-ever year is.'''
+    eachDyadPair = Window.partitionBy(["fromORGNPINM","toORGNPINM"])
+    transfersDF = transfersDF.withColumn("newDyad",
+                    (F.col("fromTHRU_DT_YEAR") == F.min(F.col("fromTHRU_DT_YEAR")).over(eachDyadPair)).cast('int'))
+    return transfersDF
+
 def add_dyadProportionTransfersOut(transfersDF):
     '''The proportion of all transfers out from the sending organization that go to the receiving organization by year.
     This column should have a minimum of 0. and a maximum of 1.'''
@@ -326,6 +339,7 @@ def add_dyad_info(transfersDF):
     '''Adds various columns about each dyad'''
     transfersDF = add_dyad(transfersDF)
     transfersDF = add_dyadVi(transfersDF)
+    transfersDF = add_newDyad(transfersDF)
     transfersDF = add_dyadTransferVol(transfersDF)
     transfersDF = add_dyadProportionTransfersOut(transfersDF)
     transfersDF = add_dyadProportionTransfersIn(transfersDF)
