@@ -1,4 +1,5 @@
 import pyspark.sql.functions as F
+from utilities import icd10Day
 
 def get_codes(method="Glasheen2019"):
     '''Returns a dictionary with conditions and their codes based on Glasheen2019 or Quan2005
@@ -261,12 +262,19 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, claimType="ip", method="Gla
                             .withColumn("malignancy", F.when( F.col("metastaticSolidTumor")==1, F.lit(0) ).otherwise( F.col("malignancy") ))
                             .withColumn("hiv", F.when( F.col("aids")==1, F.lit(0) ).otherwise( F.col("hiv") )))
 
-    #when the beneficiary enrolled in less than 360 days ago to FFS, we cannot accurately determine comorbidities so need to mark those as Null
+    #comorbidities need a full 360-day lookback window before the event to be determined reliably; mark them Null when
+    #that window is incomplete for either reason:
+    # (1) the beneficiary enrolled to FFS less than 360 days before the event (hospitalizationsIn12Months is Null), or
+    # (2) the event is less than 360 days after ICD10 took effect (Oct 1, 2015, see icd10Day), so part of the lookback
+    #     falls in the ICD9 era where codes match none of the ICD10 patterns. Events before Oct 1 2015 have a negative
+    #     difference and are nulled too, as expected (they are entirely ICD9).
     conditionsList.remove("infectionOrCancerDueToAids")
     conditionsList += ["aids"] #update the comorbidities list
+    daysSinceIcd10 = F.col("THRU_DT_DAY") - F.lit(icd10Day) #days from ICD10 start (Oct 1 2015) to the event
+    incompleteWindow = F.col("hospitalizationsIn12Months").isNull() | (daysSinceIcd10 < 360)
     for iCondition in conditionsList:
         conditions = conditions.withColumn(iCondition, #overwrite each condition column
-                                           F.when( F.col("hospitalizationsIn12Months").isNull(), F.lit(None)).otherwise(F.col(iCondition)))
+                                           F.when( incompleteWindow, F.lit(None)).otherwise(F.col(iCondition)))
     
     #hospitalizationsIn12Months is retained so callers can join back on the triple (DSYSRTKY, THRU_DT_DAY,
     #hospitalizationsIn12Months); needed when two distinct stays share the first two but differ in the third.

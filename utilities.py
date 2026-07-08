@@ -25,6 +25,10 @@ for year in range(min(years),max(years)):
     daysInYearsPriorDict[year] = days
     months = nNonLeapYears*12 + nLeapYears*12
     monthsInYearsPriorDict[year] = months
+#absolute day number of October 1, 2015 (when ICD10 took effect), in the same frame as THRU_DT_DAY (see
+#cms.utilities.add_through_date_info) so it tracks any change to leapYears/yearMin. 274 = day-of-year of Oct 1
+#in non-leap 2015 (Jan-Sep = 273 days). Used to null comorbidities whose 360-day lookback reaches into the ICD9 era.
+icd10Day = daysInYearsPriorDict[2015] + 274
 def get_daysInYearsPrior():
     return F.create_map([F.lit(x) for x in chain(*daysInYearsPriorDict.items())])
 
