@@ -169,14 +169,22 @@ get_data_dictionary <- function() {
     "dischargeHomeWithin2Days","Discharged home (STUS_CD=1) within 2 days of admission (LOS<=3) (0/1)",
 
     # ---- provider capability / volume (sepsis-shock cohort) ----
-    "providerSepticShockVol","Hospital septic-shock case volume that year",
-    "providerSepticShockVolPrior","Hospital prior-year septic-shock volume",
+    "providerSepticShockAnnualVolume","Hospital septic-shock case volume that year",
+    "providerSepticShockAnnualVolumePrior","Hospital prior-year septic-shock volume",
     "providerImvCapability","Hospital invasive mechanical ventilation capability that year (0/1)",
     "providerImvCapabilityPrior","Hospital prior-year IMV capability (0/1)",
     "providerRrtCapability","Hospital renal replacement therapy capability that year (0/1)",
     "providerRrtCapabilityPrior","Hospital prior-year RRT capability (0/1)",
     "providerMajorDiagnosticOrTherapeuticOrProceduresCapability","Hospital major OR-procedure capability that year (0/1)",
     "providerMajorDiagnosticOrTherapeuticOrProceduresCapabilityPrior","Hospital prior-year major OR-procedure capability (0/1)",
+
+    # ---- provider volume (stroke cohort) ----
+    "providerIshStrokeAnnualVolume","Hospital ischemic-stroke case volume that year",
+    "providerIshStrokeAnnualVolumePrior","Hospital prior-year ischemic-stroke volume",
+    "providerIchStrokeAnnualVolume","Hospital intracerebral-hemorrhage stroke case volume that year",
+    "providerIchStrokeAnnualVolumePrior","Hospital prior-year intracerebral-hemorrhage stroke volume",
+    "providerAnyStrokeAnnualVolume","Hospital any-stroke case volume that year",
+    "providerAnyStrokeAnnualVolumePrior","Hospital prior-year any-stroke volume",
 
     # ---- transfer network: node & dyad metrics ----
     "firstTransfer",   "1 if this is the patient's earliest transfer (min from-through-day), else 0",

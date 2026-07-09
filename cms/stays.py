@@ -6,17 +6,25 @@ import cms.claims as claimsF
 import cms.comorbidities as comorbiditiesF
 import utilities as utilitiesF
 
-def add_providerStrokeVol(staysDF, stroke="anyStroke"):
-    '''Calculates the stroke volume, number of rows, for each hospital and year'''
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    staysDF = staysDF.withColumn("providerStrokeVol", F.sum( F.col(stroke) ).over(eachProvider))
-    return staysDF
+def add_providerIshStrokeAnnualVolume(staysDF):
+    '''Adds providerIshStrokeAnnualVolume: the annual ischemic-stroke case volume per hospital-year.
+    Thin wrapper over add_providerAnnualVolume(col="ishStroke").'''
+    return add_providerAnnualVolume(staysDF, col="ishStroke")
 
-def add_providerSepticShockVol(staysDF):
-    '''Adds a column with the annual volume of septic shock diagnosis for each organization.'''
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
-    staysDF = staysDF.withColumn("providerSepticShockVol", F.sum( F.col("septicShock") ).over(eachProvider))
-    return staysDF
+def add_providerIchStrokeAnnualVolume(staysDF):
+    '''Adds providerIchStrokeAnnualVolume: the annual intracerebral-hemorrhage stroke case volume
+    per hospital-year. Thin wrapper over add_providerAnnualVolume(col="ichStroke").'''
+    return add_providerAnnualVolume(staysDF, col="ichStroke")
+
+def add_providerAnyStrokeAnnualVolume(staysDF):
+    '''Adds providerAnyStrokeAnnualVolume: the annual any-stroke case volume per hospital-year.
+    Thin wrapper over add_providerAnnualVolume(col="anyStroke").'''
+    return add_providerAnnualVolume(staysDF, col="anyStroke")
+
+def add_providerSepticShockAnnualVolume(staysDF):
+    '''Adds providerSepticShockAnnualVolume: the annual septic-shock case volume per hospital-year.
+    Thin wrapper over add_providerAnnualVolume(col="septicShock").'''
+    return add_providerAnnualVolume(staysDF, col="septicShock")
 
 def add_providerAnnualCapability(staysDF, col="imv"):
     '''Adds a binary column flagging whether the organization performed `col` at least once in that
@@ -37,8 +45,9 @@ def add_providerAnnualVolume(staysDF, col="anyStroke"):
     The column provided must be numeric (typically a binary flag, so the sum counts stays).
     This is the volume counterpart to add_providerAnnualCapability: same per-year window
     (ORGNPINM AND THRU_DT_YEAR), so each year is evaluated independently and the count does NOT
-    carry forward. The existing add_providerStrokeVol / add_providerSepticShockVol are fixed-column
-    specializations of this generic helper.'''
+    carry forward. add_providerIshStrokeAnnualVolume / add_providerIchStrokeAnnualVolume /
+    add_providerAnyStrokeAnnualVolume / add_providerSepticShockAnnualVolume are fixed-column
+    wrappers over this helper.'''
     eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
     colName = "provider" + col[0].upper() + col[1:] + "AnnualVolume"
     staysDF = staysDF.withColumn(colName, F.sum( F.col(col) ).over(eachProvider))
@@ -71,14 +80,15 @@ def add_provider_stroke_treatment_info(staysDF, inpatient=True):
     return staysDF
 
 def add_provider_stroke_info(staysDF, inpatient=True, stroke="anyStroke"):
-    '''Adds various columns about stroke for each hospital and year.'''
+    '''Adds various columns about stroke for each hospital and year. The volume column is named
+    after `stroke` via add_providerAnnualVolume (e.g. stroke="anyStroke" -> providerAnyStrokeAnnualVolume).'''
     staysDF = add_provider_stroke_treatment_info(staysDF, inpatient=inpatient)
-    staysDF = add_providerStrokeVol(staysDF, stroke=stroke)
+    staysDF = add_providerAnnualVolume(staysDF, col=stroke)
     return staysDF
 
 def add_provider_septic_shock_info(staysDF):
     '''Adds columns about septic shock for each hospital and year'''
-    staysDF = add_providerSepticShockVol(staysDF)
+    staysDF = add_providerSepticShockAnnualVolume(staysDF)
     return staysDF
 
 def add_provider_revenue_info(staysDF):
@@ -230,19 +240,19 @@ def add_first_stay_info(staysDF):
                                                  .otherwise(0) )) #the value of 0 includes both true 'not first admissions' but also 'impossible to know if first admission'
     return staysDF
                                     
-def add_column_prior(staysDF, column="providerSepticShockVol", who="ORGNPINM", when="THRU_DT_YEAR", gapFill=None):
+def add_column_prior(staysDF, column="providerSepticShockAnnualVolume", who="ORGNPINM", when="THRU_DT_YEAR", gapFill=None):
     '''Adds the column's value from the prior year at the provider (stays) grain.
     Thin wrapper over utilitiesF.add_column_prior with provider-level defaults
     (who=ORGNPINM, when=THRU_DT_YEAR); the shared logic lives in utilities.py.
     A null in the prior column means unobserved -- the provider's first observed year,
     where we cannot tell "no activity" from "not yet in the data". For a >1-year gap the
     provider provably existed (it bills on both sides), so the missing year had a real
-    volume of 0: pass gapFill=0 for count columns (providerSepticShockVol, providerStrokeVol)
+    volume of 0: pass gapFill=0 for count columns (the provider*AnnualVolume columns)
     to record that. Leave gapFill=None (the default) for proportion/index columns, where a
     gap year is undefined rather than zero. Do not coalesce first-year nulls to 0 downstream.'''
     return utilitiesF.add_column_prior(staysDF, column=column, who=who, when=when, gapFill=gapFill)
      
-def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockVol", gapFill=None):
+def add_orgnpinm_column_prior_year(staysDF, column="providerSepticShockAnnualVolume", gapFill=None):
     '''For each hospital and year it addes a column of the variable column for that hospital but from the prior year.
     Pass gapFill=0 for count/volume columns so a >1-year gap records a true 0 rather than null
     (see add_column_prior); leave gapFill=None for proportion/index columns (e.g. provider*Mean).'''

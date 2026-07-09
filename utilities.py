@@ -52,7 +52,7 @@ def add_column_prior(df, column, who, when, gapFill=None):
         "existed but had no activity" from "did not exist yet / outside our data window", so
         column+"Prior" is always null here regardless of gapFill.
       * `when` follows a >1-year gap (the group bills both before and after the gap, so it
-        provably existed during it). For a COUNT/VOLUME column (e.g. providerSepticShockVol)
+        provably existed during it). For a COUNT/VOLUME column (e.g. providerSepticShockAnnualVolume)
         the missing year genuinely had a value of 0, so pass gapFill=0 to record that. For a
         PROPORTION or index column (e.g. nodeHhi, dyadProportionTransfers*) the missing year
         is undefined (0/0), so leave gapFill=None and the gap stays null.

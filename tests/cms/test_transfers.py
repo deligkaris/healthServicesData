@@ -3011,14 +3011,14 @@ class TestSepticShockPipeline:
         r = result[0]
         assert r["fromsepticShock"] == 1
         assert r["tosepticShock"] == 0
-        assert r["fromproviderSepticShockVol"] == 1
-        assert r["toproviderSepticShockVol"] == 0
+        assert r["fromproviderSepticShockAnnualVolume"] == 1
+        assert r["toproviderSepticShockAnnualVolume"] == 0
 
     def test_provider_volume_aggregates_across_patients_in_year(self, spark):
         # 3 patients at hospital 100 in 2020: patients 1 & 2 are R6521 (septic
         # shock), patient 3 is not. Each transfers to hospital 200. After
         # provider_septic_shock_info windows the count over (ORGNPINM,
-        # THRU_DT_YEAR), every from-row should see providerSepticShockVol == 2.
+        # THRU_DT_YEAR), every from-row should see providerSepticShockAnnualVolume == 2.
         from cms.transfers import get_transfers
         from_df = self._from(
             spark,
@@ -3052,7 +3052,7 @@ class TestSepticShockPipeline:
         result = get_transfers(from_df, to_df).collect()
         assert len(result) == 3
         for r in result:
-            assert r["fromproviderSepticShockVol"] == 2
+            assert r["fromproviderSepticShockAnnualVolume"] == 2
         septic_claims = {r["fromCLAIMNO"] for r in result if r["fromsepticShock"] == 1}
         assert septic_claims == {11, 12}
 
@@ -3066,7 +3066,7 @@ class TestSepticShockPipeline:
         # the dedup -- so the surviving row carries the flag from its
         # interim sibling.
         # Without propagate_stay_info, fromsepticShock would be 0 and
-        # fromproviderSepticShockVol would be 0.
+        # fromproviderSepticShockAnnualVolume would be 0.
         from cms.transfers import get_transfers
         from_df = self._from(
             spark,
@@ -3093,20 +3093,20 @@ class TestSepticShockPipeline:
         assert r["fromCLAIMNO"] == 9999
         # propagate_stay_info maxed septicShock onto the surviving row.
         assert r["fromsepticShock"] == 1
-        # And add_providerSepticShockVol's window sum (= 1 surviving stay
+        # And add_providerSepticShockAnnualVolume's window sum (= 1 surviving stay
         # with septicShock=1) reflects the propagation.
-        assert r["fromproviderSepticShockVol"] == 1
+        assert r["fromproviderSepticShockAnnualVolume"] == 1
 
 
 # ============================================================
 # Ischemic-stroke chunk: dates + add_ishStroke(inpatient=True)
-# + add_anyStroke -> get_stays -> add_providerStrokeVol -> get_transfers
+# + add_anyStroke -> get_stays -> add_providerAnyStrokeAnnualVolume -> get_transfers
 # ============================================================
 
 def _run_ish_stroke_stays_for_provider(spark, *, orgnpinm, sysid, fips, state_fips,
                                        base_rows, rev_rows):
     from cms.base import add_ishStroke, add_anyStroke
-    from cms.stays import get_stays, add_providerStrokeVol
+    from cms.stays import get_stays, add_providerAnyStrokeAnnualVolume
 
     baseDF, summary = _setup_base_and_revenue(
         spark, orgnpinm=orgnpinm, base_rows=base_rows, rev_rows=rev_rows)
@@ -3119,14 +3119,14 @@ def _run_ish_stroke_stays_for_provider(spark, *, orgnpinm, sysid, fips, state_fi
     baseDF = baseDF.localCheckpoint(eager=True)
 
     staysDF = get_stays(baseDF, summary, claimType="ip")
-    staysDF = add_providerStrokeVol(staysDF, stroke="anyStroke")
+    staysDF = add_providerAnyStrokeAnnualVolume(staysDF)
     return _tag_provider_attrs(staysDF, sysid, fips, state_fips)
 
 
 class TestIshStrokePipeline:
     """End-to-end: PRNCPAL_DGNS_CD='I63...' OR DRG_CD in {61,62,63} flows
     through add_ishStroke -> add_anyStroke -> propagate_stay_info ->
-    add_providerStrokeVol -> get_transfers. Both detection paths
+    add_providerAnyStrokeAnnualVolume -> get_transfers. Both detection paths
     (diagnosis-driven and DRG-driven) are exercised."""
 
     FROM_NPI = 100
@@ -3163,9 +3163,9 @@ class TestIshStrokePipeline:
         assert r["fromishStrokeDgns"] == 1
         assert r["fromishStroke"] == 1
         assert r["fromanyStroke"] == 1
-        assert r["fromproviderStrokeVol"] == 1
+        assert r["fromproviderAnyStrokeAnnualVolume"] == 1
         assert r["toishStroke"] == 0
-        assert r["toproviderStrokeVol"] == 0
+        assert r["toproviderAnyStrokeAnnualVolume"] == 0
 
     def test_ish_stroke_via_drg_code(self, spark):
         # DRG_CD 61 sets ishStrokeDrg=1 even with no PRNCPAL_DGNS_CD;
@@ -3189,7 +3189,7 @@ class TestIshStrokePipeline:
         assert r["fromishStrokeDrg"] == 1
         assert r["fromishStroke"] == 1
         assert r["fromanyStroke"] == 1
-        assert r["fromproviderStrokeVol"] == 1
+        assert r["fromproviderAnyStrokeAnnualVolume"] == 1
 
     def test_ish_stroke_propagates_across_multi_claim_stay(self, spark):
         # Multi-claim stay at hospital 100 (same DSYSRTKY=1, ADMSN_DT=20200110):
@@ -3199,8 +3199,8 @@ class TestIshStrokePipeline:
         # numeric column that's not in the raw ipBase schema), so
         # ishStrokeDgns / ishStroke / anyStroke ALL get maxed onto the
         # surviving final row -- not just the columns from the old
-        # hardcoded allowlist. providerStrokeVol's window sum reflects the
-        # propagated anyStroke.
+        # hardcoded allowlist. providerAnyStrokeAnnualVolume's window sum reflects
+        # the propagated anyStroke.
         from cms.transfers import get_transfers
         from_df = self._from(
             spark,
@@ -3227,7 +3227,7 @@ class TestIshStrokePipeline:
         assert r["fromishStrokeDgns"] == 1
         assert r["fromishStroke"] == 1
         assert r["fromanyStroke"] == 1
-        assert r["fromproviderStrokeVol"] == 1
+        assert r["fromproviderAnyStrokeAnnualVolume"] == 1
 
 
 # ============================================================

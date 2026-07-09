@@ -18,12 +18,12 @@ def make_real_claim_df(spark, claim_type, rows):
 
 
 # ============================================================
-# End-to-end pipeline helper for add_providerSepticShockVol:
+# End-to-end pipeline helper for add_providerSepticShockAnnualVolume:
 #   real ipBase claims (THRU_DT + ICD_DGNS_CD1..25)
-#   -> add_through_date_info       (derives THRU_DT_YEAR)
-#   -> add_dgnsCodeAll             (collapses 25 dgns cols -> array)
-#   -> add_septicShock             (R6521-derived septicShock flag)
-#   -> add_providerSepticShockVol  (window sum per ORGNPINM x year)
+#   -> add_through_date_info               (derives THRU_DT_YEAR)
+#   -> add_dgnsCodeAll                     (collapses 25 dgns cols -> array)
+#   -> add_septicShock                     (R6521-derived septicShock flag)
+#   -> add_providerSepticShockAnnualVolume (window sum per ORGNPINM x year)
 # ============================================================
 
 def _run_septic_shock_vol_pipeline(spark, rows):
@@ -32,12 +32,12 @@ def _run_septic_shock_vol_pipeline(spark, rows):
     value or omission for a non-septic-shock claim)."""
     from cms.utilities import add_through_date_info
     from cms.base import add_dgnsCodeAll, add_septicShock
-    from cms.stays import add_providerSepticShockVol
+    from cms.stays import add_providerSepticShockAnnualVolume
     df = make_real_claim_df(spark, "ipBase", rows)
     df = add_through_date_info(df)
     df = add_dgnsCodeAll(df)
     df = add_septicShock(df)
-    df = add_providerSepticShockVol(df)
+    df = add_providerSepticShockAnnualVolume(df)
     return df
 
 
@@ -54,10 +54,10 @@ def _row(claimno, orgnpinm, thru_dt, is_septic_shock):
 
 
 # ============================================================
-# End-to-end tests for add_providerSepticShockVol
+# End-to-end tests for add_providerSepticShockAnnualVolume
 # ============================================================
 
-class TestAddProviderSepticShockVol:
+class TestAddProviderSepticShockAnnualVolume:
 
     def test_single_provider_single_year_all_septic_shock(self, spark):
         rows = [_row(i, 100, 20200115, True) for i in range(1, 5)]  # 4 claims, all R6521
@@ -65,7 +65,7 @@ class TestAddProviderSepticShockVol:
         result = df.collect()
         # Sanity: pipeline produced a septicShock=1 on every row
         assert all(r["septicShock"] == 1 for r in result)
-        assert all(r["providerSepticShockVol"] == 4 for r in result)
+        assert all(r["providerSepticShockAnnualVolume"] == 4 for r in result)
 
     def test_single_provider_single_year_mixed(self, spark):
         # 3 of 5 claims for provider 100 in 2020 have R6521.
@@ -78,14 +78,14 @@ class TestAddProviderSepticShockVol:
         ]
         df = _run_septic_shock_vol_pipeline(spark, rows)
         result = df.collect()
-        assert all(r["providerSepticShockVol"] == 3 for r in result)
+        assert all(r["providerSepticShockAnnualVolume"] == 3 for r in result)
 
     def test_all_non_septic_shock_returns_zero(self, spark):
         rows = [_row(i, 100, 20200115, False) for i in range(1, 5)]
         df = _run_septic_shock_vol_pipeline(spark, rows)
         result = df.collect()
         assert all(r["septicShock"] == 0 for r in result)
-        assert all(r["providerSepticShockVol"] == 0 for r in result)
+        assert all(r["providerSepticShockAnnualVolume"] == 0 for r in result)
 
     def test_two_providers_same_year_counted_independently(self, spark):
         # Provider 100 has 2 septic-shock cases, provider 200 has 1.
@@ -98,7 +98,7 @@ class TestAddProviderSepticShockVol:
             _row(6, 200, 20200201, False),
         ]
         df = _run_septic_shock_vol_pipeline(spark, rows)
-        by_claim = {r["CLAIMNO"]: r["providerSepticShockVol"] for r in df.collect()}
+        by_claim = {r["CLAIMNO"]: r["providerSepticShockAnnualVolume"] for r in df.collect()}
         for cn in (1, 2, 3):
             assert by_claim[cn] == 2
         for cn in (4, 5, 6):
@@ -114,7 +114,7 @@ class TestAddProviderSepticShockVol:
             _row(5, 100, 20210410, False),
         ]
         df = _run_septic_shock_vol_pipeline(spark, rows)
-        by_claim = {r["CLAIMNO"]: r["providerSepticShockVol"] for r in df.collect()}
+        by_claim = {r["CLAIMNO"]: r["providerSepticShockAnnualVolume"] for r in df.collect()}
         assert by_claim[1] == 2 and by_claim[2] == 2 and by_claim[3] == 2  # 2020
         assert by_claim[4] == 1 and by_claim[5] == 1                       # 2021
 
@@ -127,7 +127,7 @@ class TestAddProviderSepticShockVol:
             _row(3, 100, 20200201, True),
         ]
         df = _run_septic_shock_vol_pipeline(spark, rows)
-        vols = [r["providerSepticShockVol"] for r in df.collect()]
+        vols = [r["providerSepticShockAnnualVolume"] for r in df.collect()]
         assert vols == [1, 1, 1]
 
     def test_r6521_in_later_dgns_position_still_counted(self, spark):
@@ -143,8 +143,8 @@ class TestAddProviderSepticShockVol:
         by_claim = {r["CLAIMNO"]: r for r in df.collect()}
         assert by_claim[1]["septicShock"] == 1
         assert by_claim[2]["septicShock"] == 0
-        assert by_claim[1]["providerSepticShockVol"] == 1
-        assert by_claim[2]["providerSepticShockVol"] == 1  # window broadcasts
+        assert by_claim[1]["providerSepticShockAnnualVolume"] == 1
+        assert by_claim[2]["providerSepticShockAnnualVolume"] == 1  # window broadcasts
 
     def test_full_grid_multiple_providers_and_years(self, spark):
         # 100/2020 -> 3 septic shock, 100/2021 -> 1, 200/2020 -> 0, 200/2021 -> 4.
@@ -155,7 +155,7 @@ class TestAddProviderSepticShockVol:
             + [_row(i, 200, 20210110, True) for i in range(8, 12)]               # 8,9,10,11
         )
         df = _run_septic_shock_vol_pipeline(spark, rows)
-        by_claim = {r["CLAIMNO"]: r["providerSepticShockVol"] for r in df.collect()}
+        by_claim = {r["CLAIMNO"]: r["providerSepticShockAnnualVolume"] for r in df.collect()}
         for cn in (1, 2, 3):
             assert by_claim[cn] == 3
         for cn in (4, 5):
@@ -184,7 +184,7 @@ class TestAddProviderSepticShockVol:
         df = _run_septic_shock_vol_pipeline(spark, rows)
         assert df.agg(F.sum("septicShock")).collect()[0][0] == 4
         # Provider 100: 3 septic shock; provider 200: 1 septic shock.
-        by_claim = {r["CLAIMNO"]: r["providerSepticShockVol"] for r in df.collect()}
+        by_claim = {r["CLAIMNO"]: r["providerSepticShockAnnualVolume"] for r in df.collect()}
         for cn in (1, 2, 3, 4, 5):
             assert by_claim[cn] == 3
         for cn in (6, 7, 8, 9, 10):
@@ -194,7 +194,7 @@ class TestAddProviderSepticShockVol:
         rows = [_row(1, 100, 20200115, True)]
         df = _run_septic_shock_vol_pipeline(spark, rows)
         # New column from the function under test.
-        assert "providerSepticShockVol" in df.columns
+        assert "providerSepticShockAnnualVolume" in df.columns
         # Upstream-derived columns survived.
         for col in ["THRU_DT_YEAR", "dgnsCodeAll", "septicShock"]:
             assert col in df.columns
@@ -546,13 +546,14 @@ def _run_stroke_pipeline(spark, rows, inpatient=True):
 
 
 # ============================================================
-# End-to-end tests for add_providerStrokeVol
+# End-to-end tests for the provider stroke annual-volume wrappers
+# (add_providerAnyStrokeAnnualVolume / add_providerIshStrokeAnnualVolume)
 # ============================================================
 
-class TestAddProviderStrokeVol:
+class TestAddProviderStrokeAnnualVolume:
 
-    def test_anyStroke_default_sums_per_provider_year(self, spark):
-        from cms.stays import add_providerStrokeVol
+    def test_anyStroke_sums_per_provider_year(self, spark):
+        from cms.stays import add_providerAnyStrokeAnnualVolume
         # 3 ish-stroke + 1 other-stroke claims for provider 100/2020; the 5th claim is no stroke.
         rows = [
             _stroke_row(1, 100, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
@@ -562,12 +563,12 @@ class TestAddProviderStrokeVol:
             _stroke_row(5, 100, 20200515, 20200520, dgns="I10"),
         ]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerStrokeVol(df)
-        by_claim = {r["CLAIMNO"]: r["providerStrokeVol"] for r in df.collect()}
+        df = add_providerAnyStrokeAnnualVolume(df)
+        by_claim = {r["CLAIMNO"]: r["providerAnyStrokeAnnualVolume"] for r in df.collect()}
         assert all(v == 4 for v in by_claim.values())
 
     def test_partition_independent_per_year_and_provider(self, spark):
-        from cms.stays import add_providerStrokeVol
+        from cms.stays import add_providerAnyStrokeAnnualVolume
         # 100/2020 -> 2 strokes; 100/2021 -> 1; 200/2020 -> 3.
         rows = [
             _stroke_row(1, 100, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
@@ -579,38 +580,38 @@ class TestAddProviderStrokeVol:
             _stroke_row(7, 200, 20200305, 20200310, dgns=_ISH_STROKE_DGNS_CODE),
         ]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerStrokeVol(df)
-        by_claim = {r["CLAIMNO"]: r["providerStrokeVol"] for r in df.collect()}
+        df = add_providerAnyStrokeAnnualVolume(df)
+        by_claim = {r["CLAIMNO"]: r["providerAnyStrokeAnnualVolume"] for r in df.collect()}
         for cn in (1, 2, 3):
             assert by_claim[cn] == 2
         assert by_claim[4] == 1
         for cn in (5, 6, 7):
             assert by_claim[cn] == 3
 
-    def test_custom_stroke_column(self, spark):
-        from cms.stays import add_providerStrokeVol
-        # With stroke='ishStroke', only ish-stroke rows count.
+    def test_ish_stroke_only_counts_ischemic(self, spark):
+        from cms.stays import add_providerIshStrokeAnnualVolume
+        # add_providerIshStrokeAnnualVolume sums ishStroke, so only ish-stroke rows count.
         rows = [
             _stroke_row(1, 100, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
             _stroke_row(2, 100, 20200201, 20200205, dgns=_ISH_STROKE_DGNS_CODE),
             _stroke_row(3, 100, 20200410, 20200412, dgns=_OTHER_STROKE_CODE),  # other, not ish
         ]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerStrokeVol(df, stroke="ishStroke")
+        df = add_providerIshStrokeAnnualVolume(df)
         for r in df.collect():
-            assert r["providerStrokeVol"] == 2
+            assert r["providerIshStrokeAnnualVolume"] == 2
 
     def test_no_strokes_returns_zero(self, spark):
-        from cms.stays import add_providerStrokeVol
+        from cms.stays import add_providerAnyStrokeAnnualVolume
         rows = [_stroke_row(i, 100, 20200115, 20200120, dgns="I10") for i in range(1, 4)]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerStrokeVol(df)
+        df = add_providerAnyStrokeAnnualVolume(df)
         for r in df.collect():
             assert r["anyStroke"] == 0
-            assert r["providerStrokeVol"] == 0
+            assert r["providerAnyStrokeAnnualVolume"] == 0
 
     def test_value_broadcast_to_every_row(self, spark):
-        from cms.stays import add_providerStrokeVol
+        from cms.stays import add_providerAnyStrokeAnnualVolume
         # Window-sum: the volume attaches to every row in the partition,
         # including non-stroke claims.
         rows = [
@@ -619,9 +620,9 @@ class TestAddProviderStrokeVol:
             _stroke_row(3, 100, 20200305, 20200310, dgns="I10"),
         ]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerStrokeVol(df)
+        df = add_providerAnyStrokeAnnualVolume(df)
         for r in df.collect():
-            assert r["providerStrokeVol"] == 1
+            assert r["providerAnyStrokeAnnualVolume"] == 1
 
 
 # ============================================================
@@ -717,11 +718,11 @@ class TestAddProviderStrokeInfo:
         df = add_provider_stroke_info(df, inpatient=True, stroke="anyStroke")
         for col in ("providerTpaMean", "providerTpaVol",
                     "providerEvtMean", "providerEvtVol",
-                    "providerStrokeVol"):
+                    "providerAnyStrokeAnnualVolume"):
             assert col in df.columns
         row = df.collect()[0]
         # 3 strokes (claims 1,2,3) across 4 claims in 100/2020.
-        assert row["providerStrokeVol"] == 3
+        assert row["providerAnyStrokeAnnualVolume"] == 3
         assert row["providerTpaVol"] == 1
         assert row["providerEvtVol"] == 1
 
@@ -736,7 +737,7 @@ class TestAddProviderStrokeInfo:
         df = add_provider_stroke_info(df, inpatient=False, stroke="anyStroke")
         assert "providerTpaMean" in df.columns
         assert "providerTpaVol" in df.columns
-        assert "providerStrokeVol" in df.columns
+        assert "providerAnyStrokeAnnualVolume" in df.columns
         assert "providerEvtMean" not in df.columns
         assert "providerEvtVol" not in df.columns
 
@@ -750,7 +751,7 @@ class TestAddProviderStrokeInfo:
         df = add_provider_stroke_info(df, inpatient=True, stroke="ishStroke")
         for r in df.collect():
             # Only the ish-stroke claim is counted (custom stroke column).
-            assert r["providerStrokeVol"] == 1
+            assert r["providerIshStrokeAnnualVolume"] == 1
 
 
 # ============================================================
@@ -760,7 +761,7 @@ class TestAddProviderStrokeInfo:
 class TestAddProviderSepticShockInfo:
 
     def test_adds_provider_septic_shock_vol(self, spark):
-        # Same pipeline as TestAddProviderSepticShockVol but invokes the wrapper.
+        # Same pipeline as TestAddProviderSepticShockAnnualVolume but invokes the wrapper.
         from cms.stays import add_provider_septic_shock_info
         rows = [
             _row(1, 100, 20200115, True),
@@ -775,8 +776,8 @@ class TestAddProviderSepticShockInfo:
         df = add_dgnsCodeAll(df)
         df = add_septicShock(df)
         df = add_provider_septic_shock_info(df)
-        assert "providerSepticShockVol" in df.columns
-        by_claim = {r["CLAIMNO"]: r["providerSepticShockVol"] for r in df.collect()}
+        assert "providerSepticShockAnnualVolume" in df.columns
+        by_claim = {r["CLAIMNO"]: r["providerSepticShockAnnualVolume"] for r in df.collect()}
         for cn in (1, 2, 3):
             assert by_claim[cn] == 2
         assert by_claim[4] == 0
@@ -1357,13 +1358,13 @@ def _prior_schema():
     return StructType([
         StructField("ORGNPINM", IntegerType(), True),
         StructField("THRU_DT_YEAR", IntegerType(), True),
-        StructField("providerSepticShockVol", IntegerType(), True),
+        StructField("providerSepticShockAnnualVolume", IntegerType(), True),
     ])
 
 
 def _make_prior_df(spark, rows):
-    """rows: list of (ORGNPINM, THRU_DT_YEAR, providerSepticShockVol)."""
-    data = [{"ORGNPINM": o, "THRU_DT_YEAR": y, "providerSepticShockVol": v}
+    """rows: list of (ORGNPINM, THRU_DT_YEAR, providerSepticShockAnnualVolume)."""
+    data = [{"ORGNPINM": o, "THRU_DT_YEAR": y, "providerSepticShockAnnualVolume": v}
             for o, y, v in rows]
     return spark.createDataFrame(data, schema=_prior_schema())
 
@@ -1374,14 +1375,14 @@ class TestAddColumnPrior:
         from cms.stays import add_column_prior
         df = _make_prior_df(spark, [(100, 2020, 5), (100, 2021, 10)])
         result = add_column_prior(df)
-        assert "providerSepticShockVolPrior" in result.columns
+        assert "providerSepticShockAnnualVolumePrior" in result.columns
         assert "prior" not in result.columns  # scratch column is dropped before returning
 
     def test_contiguous_years_return_prior_value(self, spark):
         # 100/2020 has no predecessor -> null; 100/2021 -> 5; 100/2022 -> 10.
         from cms.stays import add_column_prior
         df = _make_prior_df(spark, [(100, 2020, 5), (100, 2021, 10), (100, 2022, 15)])
-        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockAnnualVolumePrior"]
                for r in add_column_prior(df).collect()}
         assert out == {2020: None, 2021: 5, 2022: 10}
 
@@ -1389,14 +1390,14 @@ class TestAddColumnPrior:
         from cms.stays import add_column_prior
         df = _make_prior_df(spark, [(100, 2020, 5)])
         out = add_column_prior(df).collect()
-        assert out[0]["providerSepticShockVolPrior"] is None
+        assert out[0]["providerSepticShockAnnualVolumePrior"] is None
 
     def test_year_gap_nulls_prior(self, spark):
         # 100 reports 2020 and 2022 but not 2021; the 2022 row should have null,
         # not the 2020 value (when - prior == 2, not 1).
         from cms.stays import add_column_prior
         df = _make_prior_df(spark, [(100, 2020, 5), (100, 2022, 15)])
-        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockAnnualVolumePrior"]
                for r in add_column_prior(df).collect()}
         assert out == {2020: None, 2022: None}
 
@@ -1410,8 +1411,8 @@ class TestAddColumnPrior:
             (100, 2021, 10), (100, 2021, 10), (100, 2021, 10),
         ])
         rows = add_column_prior(df).collect()
-        priors_2020 = [r["providerSepticShockVolPrior"] for r in rows if r["THRU_DT_YEAR"] == 2020]
-        priors_2021 = [r["providerSepticShockVolPrior"] for r in rows if r["THRU_DT_YEAR"] == 2021]
+        priors_2020 = [r["providerSepticShockAnnualVolumePrior"] for r in rows if r["THRU_DT_YEAR"] == 2020]
+        priors_2021 = [r["providerSepticShockAnnualVolumePrior"] for r in rows if r["THRU_DT_YEAR"] == 2021]
         assert priors_2020 == [None, None]
         assert priors_2021 == [5, 5, 5]
 
@@ -1423,7 +1424,7 @@ class TestAddColumnPrior:
             (100, 2020, 5), (100, 2021, 10),
             (200, 2020, 50), (200, 2021, 100),
         ])
-        out = {(r["ORGNPINM"], r["THRU_DT_YEAR"]): r["providerSepticShockVolPrior"]
+        out = {(r["ORGNPINM"], r["THRU_DT_YEAR"]): r["providerSepticShockAnnualVolumePrior"]
                for r in add_column_prior(df).collect()}
         assert out == {
             (100, 2020): None, (100, 2021): 5,
@@ -1455,7 +1456,7 @@ class TestAddColumnPrior:
         # -- the provider's first observed year -- stays null (unobserved, not 0).
         from cms.stays import add_column_prior
         df = _make_prior_df(spark, [(100, 2020, 5), (100, 2022, 15)])
-        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockAnnualVolumePrior"]
                for r in add_column_prior(df, gapFill=0).collect()}
         assert out == {2020: None, 2022: 0}
 
@@ -1463,7 +1464,7 @@ class TestAddColumnPrior:
         # Passing gapFill=None explicitly matches the default: the gap stays null.
         from cms.stays import add_column_prior
         df = _make_prior_df(spark, [(100, 2020, 5), (100, 2022, 15)])
-        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockAnnualVolumePrior"]
                for r in add_column_prior(df, gapFill=None).collect()}
         assert out == {2020: None, 2022: None}
 
@@ -1478,7 +1479,7 @@ class TestAddColumnPrior:
         df = _make_prior_df(spark, [
             (100, 2020, 5), (100, 2021, 0), (100, 2022, 9), (100, 2024, 7),
         ])
-        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockAnnualVolumePrior"]
                for r in add_column_prior(df, gapFill=0).collect()}
         assert out == {2020: None, 2021: 5, 2022: 0, 2024: 0}
 
@@ -1490,7 +1491,7 @@ class TestAddColumnPrior:
             (100, 2020, 5),
             (100, 2023, 15), (100, 2023, 15), (100, 2023, 15),
         ])
-        priors_2023 = [r["providerSepticShockVolPrior"]
+        priors_2023 = [r["providerSepticShockAnnualVolumePrior"]
                        for r in add_column_prior(df, gapFill=0).collect()
                        if r["THRU_DT_YEAR"] == 2023]
         assert priors_2023 == [0, 0, 0]
@@ -1502,7 +1503,7 @@ class TestAddColumnPrior:
             (100, 2020, 5), (100, 2022, 15),   # provider 100 has a gap
             (200, 2020, 50), (200, 2021, 100),  # provider 200 contiguous
         ])
-        out = {(r["ORGNPINM"], r["THRU_DT_YEAR"]): r["providerSepticShockVolPrior"]
+        out = {(r["ORGNPINM"], r["THRU_DT_YEAR"]): r["providerSepticShockAnnualVolumePrior"]
                for r in add_column_prior(df, gapFill=0).collect()}
         assert out == {
             (100, 2020): None, (100, 2022): 0,
@@ -1516,7 +1517,7 @@ class TestAddOrgnpinmColumnPriorYear:
         # Delegates to add_column_prior with who=ORGNPINM, when=THRU_DT_YEAR.
         from cms.stays import add_orgnpinm_column_prior_year
         df = _make_prior_df(spark, [(100, 2020, 5), (100, 2021, 10), (100, 2022, 15)])
-        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockAnnualVolumePrior"]
                for r in add_orgnpinm_column_prior_year(df).collect()}
         assert out == {2020: None, 2021: 5, 2022: 10}
 
@@ -1525,35 +1526,35 @@ class TestAddOrgnpinmColumnPriorYear:
         schema = StructType([
             StructField("ORGNPINM", IntegerType(), True),
             StructField("THRU_DT_YEAR", IntegerType(), True),
-            StructField("providerStrokeVol", IntegerType(), True),
+            StructField("providerAnyStrokeAnnualVolume", IntegerType(), True),
         ])
         df = spark.createDataFrame(
-            [{"ORGNPINM": 100, "THRU_DT_YEAR": 2020, "providerStrokeVol": 3},
-             {"ORGNPINM": 100, "THRU_DT_YEAR": 2021, "providerStrokeVol": 7}],
+            [{"ORGNPINM": 100, "THRU_DT_YEAR": 2020, "providerAnyStrokeAnnualVolume": 3},
+             {"ORGNPINM": 100, "THRU_DT_YEAR": 2021, "providerAnyStrokeAnnualVolume": 7}],
             schema=schema,
         )
-        result = add_orgnpinm_column_prior_year(df, column="providerStrokeVol")
-        assert "providerStrokeVolPrior" in result.columns
-        out = {r["THRU_DT_YEAR"]: r["providerStrokeVolPrior"] for r in result.collect()}
+        result = add_orgnpinm_column_prior_year(df, column="providerAnyStrokeAnnualVolume")
+        assert "providerAnyStrokeAnnualVolumePrior" in result.columns
+        out = {r["THRU_DT_YEAR"]: r["providerAnyStrokeAnnualVolumePrior"] for r in result.collect()}
         assert out == {2020: None, 2021: 3}
 
     def test_gapfill_zero_on_stroke_vol_gap(self, spark):
-        # providerStrokeVol is a count like providerSepticShockVol: with gapFill=0
+        # providerAnyStrokeAnnualVolume is a count like providerSepticShockAnnualVolume: with gapFill=0
         # a >1-year gap records 0 (provider existed, no stroke claims that year),
         # the first observed year stays null.
         from cms.stays import add_orgnpinm_column_prior_year
         schema = StructType([
             StructField("ORGNPINM", IntegerType(), True),
             StructField("THRU_DT_YEAR", IntegerType(), True),
-            StructField("providerStrokeVol", IntegerType(), True),
+            StructField("providerAnyStrokeAnnualVolume", IntegerType(), True),
         ])
         df = spark.createDataFrame(
-            [{"ORGNPINM": 100, "THRU_DT_YEAR": 2020, "providerStrokeVol": 3},
-             {"ORGNPINM": 100, "THRU_DT_YEAR": 2022, "providerStrokeVol": 7}],
+            [{"ORGNPINM": 100, "THRU_DT_YEAR": 2020, "providerAnyStrokeAnnualVolume": 3},
+             {"ORGNPINM": 100, "THRU_DT_YEAR": 2022, "providerAnyStrokeAnnualVolume": 7}],
             schema=schema,
         )
-        out = {r["THRU_DT_YEAR"]: r["providerStrokeVolPrior"]
-               for r in add_orgnpinm_column_prior_year(df, column="providerStrokeVol",
+        out = {r["THRU_DT_YEAR"]: r["providerAnyStrokeAnnualVolumePrior"]
+               for r in add_orgnpinm_column_prior_year(df, column="providerAnyStrokeAnnualVolume",
                                                         gapFill=0).collect()}
         assert out == {2020: None, 2022: 0}
 
@@ -1562,8 +1563,8 @@ class TestAddOrgnpinmColumnPriorYear:
         # the first observed year stays null.
         from cms.stays import add_orgnpinm_column_prior_year
         df = _make_prior_df(spark, [(100, 2020, 5), (100, 2022, 15)])
-        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
-               for r in add_orgnpinm_column_prior_year(df, column="providerSepticShockVol",
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockAnnualVolumePrior"]
+               for r in add_orgnpinm_column_prior_year(df, column="providerSepticShockAnnualVolume",
                                                         gapFill=0).collect()}
         assert out == {2020: None, 2022: 0}
 
@@ -1571,8 +1572,8 @@ class TestAddOrgnpinmColumnPriorYear:
         # Without gapFill the wrapper leaves gap years null (proportion/index-safe default).
         from cms.stays import add_orgnpinm_column_prior_year
         df = _make_prior_df(spark, [(100, 2020, 5), (100, 2022, 15)])
-        out = {r["THRU_DT_YEAR"]: r["providerSepticShockVolPrior"]
-               for r in add_orgnpinm_column_prior_year(df, column="providerSepticShockVol").collect()}
+        out = {r["THRU_DT_YEAR"]: r["providerSepticShockAnnualVolumePrior"]
+               for r in add_orgnpinm_column_prior_year(df, column="providerSepticShockAnnualVolume").collect()}
         assert out == {2020: None, 2022: None}
 
 
