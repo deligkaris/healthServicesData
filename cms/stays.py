@@ -31,6 +31,19 @@ def add_providerAnnualCapability(staysDF, col="imv"):
     staysDF = staysDF.withColumn(colName, F.max( F.col(col) ).over(eachProvider))
     return staysDF
 
+def add_providerAnnualVolume(staysDF, col="anyStroke"):
+    '''Adds a column with the annual volume (sum of `col`) the organization accrued in that year --
+    provider<Col>AnnualVolume (e.g. col="anyStroke" -> providerAnyStrokeAnnualVolume).
+    The column provided must be numeric (typically a binary flag, so the sum counts stays).
+    This is the volume counterpart to add_providerAnnualCapability: same per-year window
+    (ORGNPINM AND THRU_DT_YEAR), so each year is evaluated independently and the count does NOT
+    carry forward. The existing add_providerStrokeVol / add_providerSepticShockVol are fixed-column
+    specializations of this generic helper.'''
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    colName = "provider" + col[0].upper() + col[1:] + "AnnualVolume"
+    staysDF = staysDF.withColumn(colName, F.sum( F.col(col) ).over(eachProvider))
+    return staysDF
+
 def add_providerEverCapability(staysDF, col="imv"):
     '''Adds a binary column flagging whether the organization has EVER performed `col`, up to and
     including the current year -- provider<Col>EverCapability (e.g. col="imv" -> providerImvEverCapability).
