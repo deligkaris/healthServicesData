@@ -3093,20 +3093,20 @@ class TestSepticShockPipeline:
         assert r["fromCLAIMNO"] == 9999
         # propagate_stay_info maxed septicShock onto the surviving row.
         assert r["fromsepticShock"] == 1
-        # And add_providerSepticShockAnnualVolume's window sum (= 1 surviving stay
+        # And the septic-shock annual-volume window sum (= 1 surviving stay
         # with septicShock=1) reflects the propagation.
         assert r["fromproviderSepticShockAnnualVolume"] == 1
 
 
 # ============================================================
 # Ischemic-stroke chunk: dates + add_ishStroke(inpatient=True)
-# + add_anyStroke -> get_stays -> add_providerAnyStrokeAnnualVolume -> get_transfers
+# + add_anyStroke -> get_stays -> add_providerAnnualVolume(col="anyStroke") -> get_transfers
 # ============================================================
 
 def _run_ish_stroke_stays_for_provider(spark, *, orgnpinm, sysid, fips, state_fips,
                                        base_rows, rev_rows):
     from cms.base import add_ishStroke, add_anyStroke
-    from cms.stays import get_stays, add_providerAnyStrokeAnnualVolume
+    from cms.stays import get_stays, add_providerAnnualVolume
 
     baseDF, summary = _setup_base_and_revenue(
         spark, orgnpinm=orgnpinm, base_rows=base_rows, rev_rows=rev_rows)
@@ -3119,14 +3119,14 @@ def _run_ish_stroke_stays_for_provider(spark, *, orgnpinm, sysid, fips, state_fi
     baseDF = baseDF.localCheckpoint(eager=True)
 
     staysDF = get_stays(baseDF, summary, claimType="ip")
-    staysDF = add_providerAnyStrokeAnnualVolume(staysDF)
+    staysDF = add_providerAnnualVolume(staysDF, col="anyStroke")
     return _tag_provider_attrs(staysDF, sysid, fips, state_fips)
 
 
 class TestIshStrokePipeline:
     """End-to-end: PRNCPAL_DGNS_CD='I63...' OR DRG_CD in {61,62,63} flows
     through add_ishStroke -> add_anyStroke -> propagate_stay_info ->
-    add_providerAnyStrokeAnnualVolume -> get_transfers. Both detection paths
+    add_providerAnnualVolume(col="anyStroke") -> get_transfers. Both detection paths
     (diagnosis-driven and DRG-driven) are exercised."""
 
     FROM_NPI = 100

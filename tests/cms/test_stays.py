@@ -18,12 +18,12 @@ def make_real_claim_df(spark, claim_type, rows):
 
 
 # ============================================================
-# End-to-end pipeline helper for add_providerSepticShockAnnualVolume:
+# End-to-end pipeline helper for septic-shock annual volume:
 #   real ipBase claims (THRU_DT + ICD_DGNS_CD1..25)
-#   -> add_through_date_info               (derives THRU_DT_YEAR)
-#   -> add_dgnsCodeAll                     (collapses 25 dgns cols -> array)
-#   -> add_septicShock                     (R6521-derived septicShock flag)
-#   -> add_providerSepticShockAnnualVolume (window sum per ORGNPINM x year)
+#   -> add_through_date_info                         (derives THRU_DT_YEAR)
+#   -> add_dgnsCodeAll                               (collapses 25 dgns cols -> array)
+#   -> add_septicShock                               (R6521-derived septicShock flag)
+#   -> add_providerAnnualVolume(col="septicShock")   (window sum per ORGNPINM x year)
 # ============================================================
 
 def _run_septic_shock_vol_pipeline(spark, rows):
@@ -32,12 +32,12 @@ def _run_septic_shock_vol_pipeline(spark, rows):
     value or omission for a non-septic-shock claim)."""
     from cms.utilities import add_through_date_info
     from cms.base import add_dgnsCodeAll, add_septicShock
-    from cms.stays import add_providerSepticShockAnnualVolume
+    from cms.stays import add_providerAnnualVolume
     df = make_real_claim_df(spark, "ipBase", rows)
     df = add_through_date_info(df)
     df = add_dgnsCodeAll(df)
     df = add_septicShock(df)
-    df = add_providerSepticShockAnnualVolume(df)
+    df = add_providerAnnualVolume(df, col="septicShock")
     return df
 
 
@@ -54,7 +54,7 @@ def _row(claimno, orgnpinm, thru_dt, is_septic_shock):
 
 
 # ============================================================
-# End-to-end tests for add_providerSepticShockAnnualVolume
+# End-to-end tests for septic-shock annual volume via add_providerAnnualVolume
 # ============================================================
 
 class TestAddProviderSepticShockAnnualVolume:
@@ -546,14 +546,14 @@ def _run_stroke_pipeline(spark, rows, inpatient=True):
 
 
 # ============================================================
-# End-to-end tests for the provider stroke annual-volume wrappers
-# (add_providerAnyStrokeAnnualVolume / add_providerIshStrokeAnnualVolume)
+# End-to-end tests for stroke annual volume via add_providerAnnualVolume
+# (col="anyStroke" / col="ishStroke")
 # ============================================================
 
 class TestAddProviderStrokeAnnualVolume:
 
     def test_anyStroke_sums_per_provider_year(self, spark):
-        from cms.stays import add_providerAnyStrokeAnnualVolume
+        from cms.stays import add_providerAnnualVolume
         # 3 ish-stroke + 1 other-stroke claims for provider 100/2020; the 5th claim is no stroke.
         rows = [
             _stroke_row(1, 100, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
@@ -563,12 +563,12 @@ class TestAddProviderStrokeAnnualVolume:
             _stroke_row(5, 100, 20200515, 20200520, dgns="I10"),
         ]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerAnyStrokeAnnualVolume(df)
+        df = add_providerAnnualVolume(df, col="anyStroke")
         by_claim = {r["CLAIMNO"]: r["providerAnyStrokeAnnualVolume"] for r in df.collect()}
         assert all(v == 4 for v in by_claim.values())
 
     def test_partition_independent_per_year_and_provider(self, spark):
-        from cms.stays import add_providerAnyStrokeAnnualVolume
+        from cms.stays import add_providerAnnualVolume
         # 100/2020 -> 2 strokes; 100/2021 -> 1; 200/2020 -> 3.
         rows = [
             _stroke_row(1, 100, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
@@ -580,7 +580,7 @@ class TestAddProviderStrokeAnnualVolume:
             _stroke_row(7, 200, 20200305, 20200310, dgns=_ISH_STROKE_DGNS_CODE),
         ]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerAnyStrokeAnnualVolume(df)
+        df = add_providerAnnualVolume(df, col="anyStroke")
         by_claim = {r["CLAIMNO"]: r["providerAnyStrokeAnnualVolume"] for r in df.collect()}
         for cn in (1, 2, 3):
             assert by_claim[cn] == 2
@@ -589,29 +589,29 @@ class TestAddProviderStrokeAnnualVolume:
             assert by_claim[cn] == 3
 
     def test_ish_stroke_only_counts_ischemic(self, spark):
-        from cms.stays import add_providerIshStrokeAnnualVolume
-        # add_providerIshStrokeAnnualVolume sums ishStroke, so only ish-stroke rows count.
+        from cms.stays import add_providerAnnualVolume
+        # col="ishStroke" sums ishStroke, so only ish-stroke rows count.
         rows = [
             _stroke_row(1, 100, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
             _stroke_row(2, 100, 20200201, 20200205, dgns=_ISH_STROKE_DGNS_CODE),
             _stroke_row(3, 100, 20200410, 20200412, dgns=_OTHER_STROKE_CODE),  # other, not ish
         ]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerIshStrokeAnnualVolume(df)
+        df = add_providerAnnualVolume(df, col="ishStroke")
         for r in df.collect():
             assert r["providerIshStrokeAnnualVolume"] == 2
 
     def test_no_strokes_returns_zero(self, spark):
-        from cms.stays import add_providerAnyStrokeAnnualVolume
+        from cms.stays import add_providerAnnualVolume
         rows = [_stroke_row(i, 100, 20200115, 20200120, dgns="I10") for i in range(1, 4)]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerAnyStrokeAnnualVolume(df)
+        df = add_providerAnnualVolume(df, col="anyStroke")
         for r in df.collect():
             assert r["anyStroke"] == 0
             assert r["providerAnyStrokeAnnualVolume"] == 0
 
     def test_value_broadcast_to_every_row(self, spark):
-        from cms.stays import add_providerAnyStrokeAnnualVolume
+        from cms.stays import add_providerAnnualVolume
         # Window-sum: the volume attaches to every row in the partition,
         # including non-stroke claims.
         rows = [
@@ -620,7 +620,7 @@ class TestAddProviderStrokeAnnualVolume:
             _stroke_row(3, 100, 20200305, 20200310, dgns="I10"),
         ]
         df = _run_stroke_pipeline(spark, rows)
-        df = add_providerAnyStrokeAnnualVolume(df)
+        df = add_providerAnnualVolume(df, col="anyStroke")
         for r in df.collect():
             assert r["providerAnyStrokeAnnualVolume"] == 1
 
