@@ -2186,3 +2186,55 @@ class TestAddPriorHospitalizationInfoEndToEnd:
             assert f in result_df.columns, f"original column {f} dropped"
         # No row duplication introduced by the join-back.
         assert result_df.count() == 1
+
+
+# ============================================================
+# get_clean_through_dates
+# ============================================================
+
+def _make_clean_dates_df(spark, rows, withAdmission=True):
+    """rows: list of (CLAIMNO, daysDeadAfterThroughDate, daysDeadAfterAdmissionDate) triples.
+    When withAdmission is False the admission column is omitted entirely (op claims)."""
+    fields = [StructField("CLAIMNO", IntegerType(), True),
+              StructField("daysDeadAfterThroughDate", IntegerType(), True)]
+    if withAdmission:
+        fields.append(StructField("daysDeadAfterAdmissionDate", IntegerType(), True))
+    data = [r if withAdmission else r[:2] for r in rows]
+    return spark.createDataFrame(data, schema=StructType(fields))
+
+
+class TestGetCleanThroughDates:
+
+    def test_keeps_positive_and_null_through_dates(self, spark):
+        from cms.base import get_clean_through_dates
+        df = _make_clean_dates_df(spark, [(1, 5, 7), (2, 0, 0), (3, None, None)])
+        assert {r["CLAIMNO"] for r in get_clean_through_dates(df).collect()} == {1, 2, 3}
+
+    def test_drops_negative_through_date(self, spark):
+        from cms.base import get_clean_through_dates
+        df = _make_clean_dates_df(spark, [(1, -1, 3)])
+        assert get_clean_through_dates(df).count() == 0
+
+    def test_drops_negative_admission_date_with_valid_through_date(self, spark):
+        # Only reachable when ADMSN_DT_DAY > THRU_DT_DAY, i.e. an inverted-date claim.
+        from cms.base import get_clean_through_dates
+        df = _make_clean_dates_df(spark, [(1, 2, -3)])
+        assert get_clean_through_dates(df).count() == 0
+
+    def test_keeps_null_admission_date(self, spark):
+        # No death date, or no admission date, means we cannot judge: keep the claim.
+        from cms.base import get_clean_through_dates
+        df = _make_clean_dates_df(spark, [(1, 4, None)])
+        assert get_clean_through_dates(df).count() == 1
+
+    def test_no_admission_column_falls_back_to_through_date_only(self, spark):
+        # op claims never get daysDeadAfterAdmissionDate; the filter must not error.
+        from cms.base import get_clean_through_dates
+        df = _make_clean_dates_df(spark, [(1, 5, None), (2, -1, None)], withAdmission=False)
+        result = get_clean_through_dates(df)
+        assert [r["CLAIMNO"] for r in result.collect()] == [1]
+
+    def test_mixed_rows(self, spark):
+        from cms.base import get_clean_through_dates
+        df = _make_clean_dates_df(spark, [(1, 5, 9), (2, -2, 4), (3, 3, -1), (4, None, None), (5, 0, 0)])
+        assert sorted(r["CLAIMNO"] for r in get_clean_through_dates(df).collect()) == [1, 4, 5]

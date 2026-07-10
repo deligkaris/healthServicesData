@@ -2079,10 +2079,18 @@ def drop_unused_columns(baseDF):
     return baseDF.drop(*dropColumns)
 
 def get_clean_through_dates(baseDF):
-    '''Some claims had a mistake on either the through date or the death date from mbsf, 
-       cannot know for sure without additional work, so keep only positive and null daysDeadAfterVisit 
-       also cannot use NULL for this because null means no death date available'''
-    return baseDF.filter( (F.col("daysDeadAfterThroughDate")>=0) | (F.col("daysDeadAfterThroughDate").isNull()) )
+    '''Some claims had a mistake on either the through date, the admission date, or the death date from mbsf,
+       cannot know for sure without additional work, so keep only positive and null daysDeadAfterVisit
+       also cannot use NULL for this because null means no death date available.
+
+       The admission date is checked only when daysDeadAfterAdmissionDate exists (ip claims; add_beneficiary_info
+       adds it for claimType=="ip" only). Note that admission<=through implies
+       daysDeadAfterAdmissionDate>=daysDeadAfterThroughDate, so the admission check only ever removes claims whose
+       admission date is itself after their through date.'''
+    isClean = (F.col("daysDeadAfterThroughDate")>=0) | (F.col("daysDeadAfterThroughDate").isNull())
+    if "daysDeadAfterAdmissionDate" in baseDF.columns:
+        isClean = isClean & ( (F.col("daysDeadAfterAdmissionDate")>=0) | (F.col("daysDeadAfterAdmissionDate").isNull()) )
+    return baseDF.filter( isClean )
 
 def add_diedInVisit(baseDF):
     '''Adds a binary column with flag indicating if patient died in this visit.''' 
