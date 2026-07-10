@@ -192,6 +192,11 @@ def add_preliminary_info(dataframes, data, lastObservableDay, runTests=False):
                 #assumes that mbsf has already been processed here
                 dataframes[claimTypePart] = baseF.add_beneficiary_info(dataframes[claimTypePart], dataframes["mbsf"], data,
                                                                        lastObservableDay, claimType="ip")
+                dataframes[claimTypePart] = baseF.add_diedInVisit(dataframes[claimTypePart])
+                dataframes[claimTypePart] = baseF.add_dischargeHomeWithin2Days(dataframes[claimTypePart])
+                dataframes[claimTypePart] = baseF.add_transferToIn(dataframes[claimTypePart])
+                dataframes[claimTypePart] = baseF.add_transferFromDifferentFacility(dataframes[claimTypePart])
+                dataframes[claimTypePart] = baseF.add_shortTermInpatientOrganization(dataframes[claimTypePart])
             if (claimType=="car"):
                  dataframes[claimTypePart] = baseF.add_denied(dataframes[claimTypePart])
             if (claimType=="op"):
