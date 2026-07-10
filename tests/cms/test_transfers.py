@@ -2541,6 +2541,9 @@ class TestAddDaysAtHomeInfoTransfers:
         for c in ("homeDays90Group", "homeDays365Group",
                   "homeDaysIndependent90Group", "homeDaysIndependent365Group"):
             assert row[c] is None
+        # The underlying losAt* counts must be NULL too, not filled 0, since the window is unobserved.
+        for c in ("losAtall90", "losAtall365", "losAtallMinusHha90", "losAtallMinusHha365"):
+            assert row[c] is None
 
     def test_partially_truncated_window_nulls_only_the_longer_horizon(self, spark):
         # Data ends on day 1100, so the 90-day window closes inside it but the 365-day window does not.
@@ -2549,6 +2552,9 @@ class TestAddDaysAtHomeInfoTransfers:
         assert row["homeDaysIndependent90"] == 90
         assert row["homeDays365"] is None
         assert row["homeDaysIndependent365"] is None
+        # observed 90-day window with no facility stay -> count filled 0; unobserved 365-day window -> NULL.
+        assert row["losAtall90"] == 0
+        assert row["losAtall365"] is None
 
     def test_window_ending_exactly_on_last_observable_day_is_observed(self, spark):
         row = self._days_at_home(spark, lastObservableDay=1090)
@@ -2558,6 +2564,8 @@ class TestAddDaysAtHomeInfoTransfers:
         row = self._days_at_home(spark, lastObservableDay=2000)
         assert row["homeDays90"] == 90
         assert row["homeDays365"] == 365
+        assert row["losAtall90"] == 0
+        assert row["losAtall365"] == 0
 
     def test_died_in_visit_is_0_even_when_window_is_truncated(self, spark):
         # STUS_CD==20 settles the outcome on the spot, no follow-up needed.
@@ -2566,10 +2574,13 @@ class TestAddDaysAtHomeInfoTransfers:
         assert row["homeDays365"] == 0
 
     def test_death_inside_truncated_window_is_computed(self, spark):
-        # Died on day 1030, so every day of the window that could count is already observed.
+        # Died on day 1030, so every day of the window that could count is already observed:
+        # the recorded death makes even the truncated window complete, so losAt is 0 rather than NULL.
         row = self._days_at_home(spark, lastObservableDay=1050, death=1030, dead90=1, dead365=1)
         assert row["homeDays90"] == 31   # 1030 - 1000 + 1, minus 0 facility days
         assert row["homeDays365"] == 31
+        assert row["losAtall90"] == 0
+        assert row["losAtall365"] == 0
 
     def test_end_to_end_eight_columns_sufficient_with_extras_round_tripping(self, spark):
         # Stronger end-to-end check that:

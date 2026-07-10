@@ -1810,9 +1810,10 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
     return baseDF
 
 #inputs: baseDF is probably an inpatient or outpatient claims DF, XDF is probably hosp, hha, snf, or ip claims, X specifies claim type
+#        lastObservableDay is the last day covered by the loaded data, see cms.utilities.get_lastObservableDay
 #outputs: baseDF with four additional columns, losAtX90, losDaysAtX90, losAtX365, losDaysAtX365
 #note: due to the complex joins etc I prefer to add the four columns at the same time here
-def add_los_at_X_info(baseDF, XDF, X="hosp"):
+def add_los_at_X_info(baseDF, XDF, lastObservableDay, X="hosp"):
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90)
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=365)
     #XDF = (XDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) #need only 3 columns from this df
@@ -1855,11 +1856,23 @@ def add_los_at_X_info(baseDF, XDF, X="hosp"):
                          on=["CLAIMNO","DSYSRTKY"],
                          how="left_outer")
 
-    # if a beneficiary does not have other X claims, put a 0
-    baseDF = baseDF.fillna(0.0,subset=f"losAt{X}90").fillna(0.0,subset=f"losAt{X}365")
-    #replace nulls due to left_outer join with empty arrays [] so that the concatenation will be done correctly
-    baseDF = (baseDF.withColumn(f"losDaysAt{X}90", F.coalesce( F.col(f"losDaysAt{X}90"), F.array()))
-                    .withColumn(f"losDaysAt{X}365",F.coalesce( F.col(f"losDaysAt{X}365"), F.array())))
+    # A beneficiary with no matching X claim gets 0 -- but only when the window is fully observed. When the
+    # window reaches past the end of the loaded data the left-join null is ambiguous: it could mean "no
+    # facility stay" or "the stay is in a year we did not load", and even a matched, non-null count is then
+    # only a lower bound. So fill 0 (or keep the observed count) only for an observed window, else keep NULL.
+    # A window is observed if it ends on or before lastObservableDay, or if the patient has a recorded death
+    # within it -- a recorded death is on or before lastObservableDay and the facility stays were already
+    # clipped at the death date above, so no later days can be missing. Mirrors get_homeDays exactly, so the
+    # losAt{X} columns and the homeDays derived from them agree on which rows are censored.
+    for horizon in (90, 365):
+        windowEnd = F.col(f"{horizon}DaysFromADMSN_DT_DAY")
+        observed = (windowEnd <= F.lit(lastObservableDay)) | (F.col("DEATH_DT_DAY") <= windowEnd)
+        baseDF = (baseDF.withColumn(f"losAt{X}{horizon}",
+                                    F.when(observed, F.coalesce(F.col(f"losAt{X}{horizon}"), F.lit(0.0))))
+                        #replace nulls due to left_outer join with empty arrays [] so concatenation works; an
+                        #unobserved window still gets [] here -- the scalar losAt{X}{horizon} carries the censoring
+                        .withColumn(f"losDaysAt{X}{horizon}",
+                                    F.coalesce(F.col(f"losDaysAt{X}{horizon}"), F.array())))
 
     return baseDF
 
@@ -1906,7 +1919,7 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
     ipDF = ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
     allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF])
              .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
-    baseDF = add_los_at_X_info(baseDF, allDF, X="allMinusHha")
+    baseDF = add_los_at_X_info(baseDF, allDF, lastObservableDay, X="allMinusHha")
     #baseDF = add_los_total_info(baseDF, X="allMinusHha")
     baseDF = (baseDF.withColumn("homeDays90", get_homeDays(90, "losAtallMinusHha90", lastObservableDay))
                     .withColumn("homeDays90Group", F.when( F.col("homeDays90")==0, 0) #in analyses a categorical variable might be more useful
@@ -1923,7 +1936,7 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
     hhaDF = hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
     allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF])
              .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
-    baseDF = add_los_at_X_info(baseDF, allDF, X="all")
+    baseDF = add_los_at_X_info(baseDF, allDF, lastObservableDay, X="all")
     #baseDF = add_los_total_info(baseDF, X="all")
     baseDF = (baseDF.withColumn("homeDaysIndependent90", get_homeDays(90, "losAtall90", lastObservableDay))
                     .withColumn("homeDaysIndependent90Group",
