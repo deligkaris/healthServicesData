@@ -47,6 +47,25 @@ class TestYearsWithinCmsDataLimits:
         assert years_within_cms_data_limits(2015, 2015) is True
 
 
+class TestGetLastObservableDay:
+
+    def test_is_the_day_before_january_1_of_the_next_year(self):
+        from cms.utilities import get_lastObservableDay
+        from utilities import daysInYearsPriorDict
+        # Day numbers are daysInYearsPrior[year] + dayOfYear, so Jan 1 of yearF+1 is one day later.
+        assert get_lastObservableDay(2021) + 1 == daysInYearsPriorDict[2022] + 1
+
+    def test_accounts_for_leap_years(self):
+        from cms.utilities import get_lastObservableDay
+        assert get_lastObservableDay(2016) - get_lastObservableDay(2015) == 366  # 2016 is a leap year
+        assert get_lastObservableDay(2021) - get_lastObservableDay(2020) == 365
+
+    def test_increases_with_year(self):
+        from cms.utilities import get_lastObservableDay
+        days = [get_lastObservableDay(y) for y in range(2015, 2023)]
+        assert days == sorted(days)
+
+
 class TestGetClaimTypeClaimPart:
 
     def test_opBase(self):

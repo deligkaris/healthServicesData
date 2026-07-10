@@ -1100,17 +1100,18 @@ def add_tpaOsu(baseDF):
 
     #return baseDF
 
-def add_beneficiary_info(baseDF, mbsfDF, data, claimType="op"):
-
+def add_beneficiary_info(baseDF, mbsfDF, data, lastObservableDay, claimType="op"):
+    '''lastObservableDay makes the mortality flags NULL rather than 0 for claims whose follow-up window
+    extends past the end of the loaded data. See add_XDaysAfterYDateDead.'''
     baseDF = add_mbsf_info(baseDF,mbsfDF)
     baseDF = add_daysDeadAfterThroughDate(baseDF)
-    baseDF = add_90DaysAfterThroughDateDead(baseDF)
-    baseDF = add_365DaysAfterThroughDateDead(baseDF)
+    baseDF = add_90DaysAfterThroughDateDead(baseDF, lastObservableDay)
+    baseDF = add_365DaysAfterThroughDateDead(baseDF, lastObservableDay)
     if (claimType=="ip"):
         baseDF = add_daysDeadAfterAdmissionDate(baseDF)
-        baseDF = add_30DaysAfterAdmissionDateDead(baseDF)
-        baseDF = add_90DaysAfterAdmissionDateDead(baseDF)
-        baseDF = add_365DaysAfterAdmissionDateDead(baseDF)
+        baseDF = add_30DaysAfterAdmissionDateDead(baseDF, lastObservableDay)
+        baseDF = add_90DaysAfterAdmissionDateDead(baseDF, lastObservableDay)
+        baseDF = add_365DaysAfterAdmissionDateDead(baseDF, lastObservableDay)
  
     baseDF = add_fips_info(baseDF, data["cbsa"]) 
     baseDF = add_rucc(baseDF, data["ersRucc"])
@@ -1409,40 +1410,49 @@ def add_daysDeadAfterAdmissionDate(baseDF):
     baseDF = (baseDF.withColumn( "daysDeadAfterAdmissionDate", F.col("DEATH_DT_DAY")-F.col("ADMSN_DT_DAY")))
     return baseDF
 
-def add_90DaysAfterThroughDateDead(baseDF):
-    '''90-day mortality flag from the claim through date: 1 if the patient died within 90 days
-    of THRU_DT (inclusive), 0 otherwise (including patients still alive).
-    Assumes add_daysDeadAfterThroughDate has been run.'''
-    baseDF = baseDF.withColumn( "90DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 90, 1).otherwise(0))
-    return baseDF
+def add_XDaysAfterYDateDead(baseDF, lastObservableDay, X=365, Y="Admission"):
+    '''Adds the mortality flag XDaysAfterYDateDead: 1 if the patient died within X days of the Y date
+    (inclusive), 0 if the patient was known to be alive X days after it, and NULL if the claim was not
+    observed long enough to tell.
+    Y is "Admission" or "Through", and selects both the daysDeadAfterYDate column this reads and the
+    Y_DT_DAY column that dates the start of follow-up.
 
-def add_30DaysAfterAdmissionDateDead(baseDF):
-    '''30-day mortality flag from the admission date: 1 if the patient died within 30 days
-    of ADMSN_DT (inclusive), 0 otherwise (including patients still alive).
-    Assumes add_daysDeadAfterAdmissionDate has been run.'''
-    baseDF = baseDF.withColumn( "30DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 30, 1).otherwise(0))
-    return baseDF
+    lastObservableDay is the absolute day number (same frame as THRU_DT_DAY, see
+    cms.utilities.add_through_date_info) of the last day covered by the mbsf files that were loaded,
+    ie December 31 of the final year of the pull, see cms.utilities.get_lastObservableDay.
+    Deaths after that day are not in the data, so claims whose X-day window reaches past it are
+    administratively right-censored and get NULL rather than being counted as survivors.
+    A known death date after the X-day window still yields 0 even when the claim is censored, because
+    surviving X days is then observed rather than assumed.
 
-def add_90DaysAfterAdmissionDateDead(baseDF):
-    '''90-day mortality flag from the admission date: 1 if the patient died within 90 days
-    of ADMSN_DT (inclusive), 0 otherwise (including patients still alive).
-    Assumes add_daysDeadAfterAdmissionDate has been run.'''
-    baseDF = baseDF.withColumn( "90DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 90, 1).otherwise(0))
-    return baseDF
+    Assumes add_daysDeadAfterYDate has been run.'''
+    daysDead = F.col(f"daysDeadAfter{Y}Date")
+    startDay = F.col("ADMSN_DT_DAY") if Y=="Admission" else F.col("THRU_DT_DAY")
+    flag = ( F.when( daysDead <= X, 1)                                 #died within the window
+              .when( daysDead > X, 0)                                  #known to have outlived the window
+              .when( startDay + X <= F.lit(lastObservableDay), 0)      #no death recorded, window fully observed
+              .otherwise( F.lit(None).cast('int') ))                   #no death recorded, window truncated
+    return baseDF.withColumn( f"{X}DaysAfter{Y}DateDead", flag)
 
-def add_365DaysAfterThroughDateDead(baseDF):
-    '''365-day mortality flag from the claim through date: 1 if the patient died within 365 days
-    of THRU_DT (inclusive), 0 otherwise (including patients still alive).
-    Assumes add_daysDeadAfterThroughDate has been run.'''
-    baseDF = baseDF.withColumn( "365DaysAfterThroughDateDead", F.when( F.col("daysDeadAfterThroughDate") <= 365, 1).otherwise(0))
-    return baseDF
+def add_90DaysAfterThroughDateDead(baseDF, lastObservableDay):
+    '''90-day mortality flag from the claim through date. See add_XDaysAfterYDateDead.'''
+    return add_XDaysAfterYDateDead(baseDF, lastObservableDay, X=90, Y="Through")
 
-def add_365DaysAfterAdmissionDateDead(baseDF):
-    '''365-day mortality flag from the admission date: 1 if the patient died within 365 days
-    of ADMSN_DT (inclusive), 0 otherwise (including patients still alive).
-    Assumes add_daysDeadAfterAdmissionDate has been run.'''
-    baseDF = baseDF.withColumn( "365DaysAfterAdmissionDateDead", F.when( F.col("daysDeadAfterAdmissionDate") <= 365, 1).otherwise(0))
-    return baseDF
+def add_30DaysAfterAdmissionDateDead(baseDF, lastObservableDay):
+    '''30-day mortality flag from the admission date. See add_XDaysAfterYDateDead.'''
+    return add_XDaysAfterYDateDead(baseDF, lastObservableDay, X=30, Y="Admission")
+
+def add_90DaysAfterAdmissionDateDead(baseDF, lastObservableDay):
+    '''90-day mortality flag from the admission date. See add_XDaysAfterYDateDead.'''
+    return add_XDaysAfterYDateDead(baseDF, lastObservableDay, X=90, Y="Admission")
+
+def add_365DaysAfterThroughDateDead(baseDF, lastObservableDay):
+    '''365-day mortality flag from the claim through date. See add_XDaysAfterYDateDead.'''
+    return add_XDaysAfterYDateDead(baseDF, lastObservableDay, X=365, Y="Through")
+
+def add_365DaysAfterAdmissionDateDead(baseDF, lastObservableDay):
+    '''365-day mortality flag from the admission date. See add_XDaysAfterYDateDead.'''
+    return add_XDaysAfterYDateDead(baseDF, lastObservableDay, X=365, Y="Admission")
 
 def add_los(baseDF): #length of stay = los
     #https://resdac.org/cms-data/variables/day-count-length-stay
@@ -1871,30 +1881,42 @@ def add_los_total_info(baseDF, X="all"):
                     .drop(f"losDaysAt{X}Total90", f"losDaysAt{X}Total365", f"losDaysAt{X}90", f"losDaysAt{X}365"))
     return baseDF 
 
-def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
+def get_homeDays(X, losColumn, lastObservableDay):
+    '''Returns the homeDays column expression for the X-day window: the days of the window the patient spent
+    neither dead nor in one of the facilities counted by losColumn.
+    A patient who died in the index visit has 0 home days, and one who died inside the window has home days
+    only up to the death date -- both are known regardless of how much data follows the admission.
+
+    For the remaining claims, those whose window reaches past the end of the loaded data
+    (ADMSN_DT_DAY + X > lastObservableDay) are administratively right-censored and get NULL: neither the
+    XDaysAfterAdmissionDateDead flag nor losColumn can see the whole window, so counting the unobserved days
+    as days at home would overstate the outcome. See cms.utilities.get_lastObservableDay.'''
+    diedInWindow = F.col(f"{X}DaysAfterAdmissionDateDead")==1
+    return ( F.when( F.col("STUS_CD")==20, F.lit(0))
+              .when( diedInWindow, F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col(losColumn))
+              .when( F.col("ADMSN_DT_DAY") + X > F.lit(lastObservableDay), F.lit(None).cast('int'))
+              .otherwise( X - F.col(losColumn) ))
+
+def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay):
+    '''lastObservableDay makes the homeDays columns (and therefore their Group columns) NULL for admissions
+    whose window extends past the end of the loaded data. See get_homeDays.'''
     #here I am using the definition of Fonarow2016, with the difference that I am including hospice
     snfDF = snfDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY"))
-    hospDF = hospDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
-    ipDF = ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) 
+    hospDF = hospDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
+    ipDF = ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
     allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF])
              .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
     baseDF = add_los_at_X_info(baseDF, allDF, X="allMinusHha")
     #baseDF = add_los_total_info(baseDF, X="allMinusHha")
-    baseDF = (baseDF.withColumn("homeDays90", F.when( F.col("STUS_CD")==20, F.lit(0))
-                                               .when( F.col("90DaysAfterAdmissionDateDead")==1, 
-                                                      F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtallMinusHha90"))
-                                               .otherwise( 90-F.col("losAtallMinusHha90") )) 
+    baseDF = (baseDF.withColumn("homeDays90", get_homeDays(90, "losAtallMinusHha90", lastObservableDay))
                     .withColumn("homeDays90Group", F.when( F.col("homeDays90")==0, 0) #in analyses a categorical variable might be more useful
                                                     .when( F.col("homeDays90")<=30, 1)
-                                                    .when( F.col("homeDays90")<=60, 2) 
+                                                    .when( F.col("homeDays90")<=60, 2)
                                                     .when( F.col("homeDays90")<=90, 3))
-                    .withColumn("homeDays365", F.when( F.col("STUS_CD")==20, F.lit(0))
-                                                .when( F.col("365DaysAfterAdmissionDateDead")==1, 
-                                                       F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtallMinusHha365"))
-                                                .otherwise( 365-F.col("losAtallMinusHha365") ))
+                    .withColumn("homeDays365", get_homeDays(365, "losAtallMinusHha365", lastObservableDay))
                     .withColumn("homeDays365Group", F.when( F.col("homeDays365")==0, 0) #in analyses a categorical variable might be more useful
                                                      .when( F.col("homeDays365")<=120, 1)
-                                                     .when( F.col("homeDays365")<=240, 2) 
+                                                     .when( F.col("homeDays365")<=240, 2)
                                                      .when( F.col("homeDays365")<=360, 3)))
 
     #now include HHA and label these as home living independently rates
@@ -1903,20 +1925,14 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF):
              .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
     baseDF = add_los_at_X_info(baseDF, allDF, X="all")
     #baseDF = add_los_total_info(baseDF, X="all")
-    baseDF = (baseDF.withColumn("homeDaysIndependent90", F.when( F.col("STUS_CD")==20, F.lit(0))
-                                                          .when( F.col("90DaysAfterAdmissionDateDead")==1, 
-                                                                 F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtall90"))
-                                                          .otherwise( 90-F.col("losAtall90") ))
-                    .withColumn("homeDaysIndependent90Group", 
+    baseDF = (baseDF.withColumn("homeDaysIndependent90", get_homeDays(90, "losAtall90", lastObservableDay))
+                    .withColumn("homeDaysIndependent90Group",
                                 F.when( F.col("homeDaysIndependent90")==0, 0) #in analyses a categorical variable might be more useful
                                  .when( F.col("homeDaysIndependent90")<=30, 1)
-                                 .when( F.col("homeDaysIndependent90")<=60, 2) 
+                                 .when( F.col("homeDaysIndependent90")<=60, 2)
                                  .when( F.col("homeDaysIndependent90")<=90, 3))
-                    .withColumn("homeDaysIndependent365", F.when( F.col("STUS_CD")==20, F.lit(0))
-                                                           .when( F.col("365DaysAfterAdmissionDateDead")==1, 
-                                                                  F.col("DEATH_DT_DAY") - F.col("ADMSN_DT_DAY") + 1 - F.col("losAtall365"))
-                                                           .otherwise( 365-F.col("losAtall365") ))
-                    .withColumn("homeDaysIndependent365Group", 
+                    .withColumn("homeDaysIndependent365", get_homeDays(365, "losAtall365", lastObservableDay))
+                    .withColumn("homeDaysIndependent365Group",
                                 F.when( F.col("homeDaysIndependent365")==0, 0) #in analyses a categorical variable might be more useful
                                  .when( F.col("homeDaysIndependent365")<=120, 1)
                                  .when( F.col("homeDaysIndependent365")<=240, 2)

@@ -2451,6 +2451,10 @@ class TestAddPriorHospitalizationInfoTransfers:
 # then renames back.
 # ============================================================
 
+#the admissions in these tests sit on day ~1000, so this lastObservableDay leaves every window observed
+_FULLY_OBSERVED_DAY = 100000
+
+
 class TestAddDaysAtHomeInfoTransfers:
 
     def test_columns_added_and_to_prefix_restored(self, spark):
@@ -2484,7 +2488,8 @@ class TestAddDaysAtHomeInfoTransfers:
             StructField("THRU_DT_DAY", IntegerType(), True),
         ])
         empty = spark.createDataFrame([], schema=small_schema)
-        result = add_days_at_home_info(transfers_df, empty, empty, empty, empty)
+        # lastObservableDay far past the admission day, so nothing is right-censored.
+        result = add_days_at_home_info(transfers_df, empty, empty, empty, empty, _FULLY_OBSERVED_DAY)
         # to* columns should still be named to* after the round-trip.
         for c in ("toDSYSRTKY", "toCLAIMNO", "toADMSN_DT_DAY", "toTHRU_DT_DAY",
                   "toDEATH_DT_DAY", "toSTUS_CD",
@@ -2501,6 +2506,70 @@ class TestAddDaysAtHomeInfoTransfers:
         row = result.collect()[0]
         assert row["homeDays90"] == 90
         assert row["homeDays365"] == 365
+
+    def _days_at_home(self, spark, lastObservableDay, stus=1, death=None, dead90=0, dead365=0):
+        """Run the transfers wrapper on one alive-at-discharge row admitted on day 1000, no facility stays."""
+        from cms.transfers import add_days_at_home_info
+        transfers_schema = StructType([
+            StructField("toDSYSRTKY", IntegerType(), True),
+            StructField("toCLAIMNO", IntegerType(), True),
+            StructField("toADMSN_DT_DAY", IntegerType(), True),
+            StructField("toTHRU_DT_DAY", IntegerType(), True),
+            StructField("toDEATH_DT_DAY", IntegerType(), True),
+            StructField("toSTUS_CD", IntegerType(), True),
+            StructField("to90DaysAfterAdmissionDateDead", IntegerType(), True),
+            StructField("to365DaysAfterAdmissionDateDead", IntegerType(), True),
+        ])
+        rows = [{"toDSYSRTKY": 1, "toCLAIMNO": 1, "toADMSN_DT_DAY": 1000, "toTHRU_DT_DAY": 1005,
+                 "toDEATH_DT_DAY": death, "toSTUS_CD": stus,
+                 "to90DaysAfterAdmissionDateDead": dead90, "to365DaysAfterAdmissionDateDead": dead365}]
+        small_schema = StructType([
+            StructField("DSYSRTKY", IntegerType(), True),
+            StructField("ADMSN_DT_DAY", IntegerType(), True),
+            StructField("THRU_DT_DAY", IntegerType(), True),
+        ])
+        empty = spark.createDataFrame([], schema=small_schema)
+        result = add_days_at_home_info(spark.createDataFrame(rows, schema=transfers_schema),
+                                       empty, empty, empty, empty, lastObservableDay=lastObservableDay)
+        return result.collect()[0]
+
+    def test_truncated_window_is_null(self, spark):
+        # Admitted on day 1000, data ends on day 1050: neither the 90- nor the 365-day window is observed.
+        row = self._days_at_home(spark, lastObservableDay=1050)
+        for c in ("homeDays90", "homeDays365", "homeDaysIndependent90", "homeDaysIndependent365"):
+            assert row[c] is None
+        for c in ("homeDays90Group", "homeDays365Group",
+                  "homeDaysIndependent90Group", "homeDaysIndependent365Group"):
+            assert row[c] is None
+
+    def test_partially_truncated_window_nulls_only_the_longer_horizon(self, spark):
+        # Data ends on day 1100, so the 90-day window closes inside it but the 365-day window does not.
+        row = self._days_at_home(spark, lastObservableDay=1100)
+        assert row["homeDays90"] == 90
+        assert row["homeDaysIndependent90"] == 90
+        assert row["homeDays365"] is None
+        assert row["homeDaysIndependent365"] is None
+
+    def test_window_ending_exactly_on_last_observable_day_is_observed(self, spark):
+        row = self._days_at_home(spark, lastObservableDay=1090)
+        assert row["homeDays90"] == 90
+
+    def test_fully_observed_window_matches_uncensored_result(self, spark):
+        row = self._days_at_home(spark, lastObservableDay=2000)
+        assert row["homeDays90"] == 90
+        assert row["homeDays365"] == 365
+
+    def test_died_in_visit_is_0_even_when_window_is_truncated(self, spark):
+        # STUS_CD==20 settles the outcome on the spot, no follow-up needed.
+        row = self._days_at_home(spark, lastObservableDay=1050, stus=20)
+        assert row["homeDays90"] == 0
+        assert row["homeDays365"] == 0
+
+    def test_death_inside_truncated_window_is_computed(self, spark):
+        # Died on day 1030, so every day of the window that could count is already observed.
+        row = self._days_at_home(spark, lastObservableDay=1050, death=1030, dead90=1, dead365=1)
+        assert row["homeDays90"] == 31   # 1030 - 1000 + 1, minus 0 facility days
+        assert row["homeDays365"] == 31
 
     def test_end_to_end_eight_columns_sufficient_with_extras_round_tripping(self, spark):
         # Stronger end-to-end check that:
@@ -2568,7 +2637,7 @@ class TestAddDaysAtHomeInfoTransfers:
             [{"DSYSRTKY": 3, "ADMSN_DT_DAY": 1010, "THRU_DT_DAY": 1016}],
             schema=small_schema)
         empty = spark.createDataFrame([], schema=small_schema)
-        result = add_days_at_home_info(transfers_df, snf_df, hha_df, empty, empty)
+        result = add_days_at_home_info(transfers_df, snf_df, hha_df, empty, empty, _FULLY_OBSERVED_DAY)
 
         for c in ("toDSYSRTKY", "toCLAIMNO", "toADMSN_DT_DAY", "toTHRU_DT_DAY",
                   "toDEATH_DT_DAY", "toSTUS_CD",

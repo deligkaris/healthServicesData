@@ -8,7 +8,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.types import StructType
 import re
 from functools import reduce
-from utilities import yearMin, yearMax, get_daysInYearsPrior, get_monthsInYearsPrior
+from utilities import yearMin, yearMax, daysInYearsPriorDict, get_daysInYearsPrior, get_monthsInYearsPrior
 
 yearJKTransition = 2016 #year CMS switched from J to K format
 yearMinWithCMSData = 2012
@@ -23,6 +23,13 @@ def years_within_cms_data_limits(yearI, yearF):
     '''inputs: year initial and final requested
        outputs: boolean if years requested CMS data exists'''
     return True if ( (yearI>=yearMinWithCMSData) & (yearF<=yearMaxWithCMSData) ) else False
+
+def get_lastObservableDay(yearF):
+    '''inputs: the final year of the CMS pull
+       outputs: the absolute day number (same frame as THRU_DT_DAY, see add_through_date_info) of
+       December 31 of yearF, which is the last day on which the loaded mbsf files can record a death.
+       Follow-up beyond this day is administratively right-censored.'''
+    return daysInYearsPriorDict[yearF+1]
 
 def get_claimType_claimPart(claimTypePart):
     '''inputs: claimTypePart eg opBase, snfRevenue etc
@@ -159,9 +166,11 @@ def enforce_schema(df, claimType, claimPart):
     df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])
     return df
 
-def add_preliminary_info(dataframes, data, runTests=False):
+def add_preliminary_info(dataframes, data, lastObservableDay, runTests=False):
     '''inputs: original CMS dataframes
-       outputs: input dataframes with additional columns appended that are needed almost always'''
+       outputs: input dataframes with additional columns appended that are needed almost always
+       lastObservableDay makes the ip mortality flags NULL rather than 0 for admissions whose follow-up
+       window extends past the end of the loaded data, see base.add_XDaysAfterYDateDead'''
     for claimTypePart in list(dataframes.keys()):
         if runTests:
             initialRowCounts = dataframes[claimTypePart].count()
@@ -181,7 +190,8 @@ def add_preliminary_info(dataframes, data, runTests=False):
                 dataframes[claimTypePart] = baseF.add_provider_info(dataframes[claimTypePart], data)
                 dataframes[claimTypePart] = baseF.add_los(dataframes[claimTypePart])
                 #assumes that mbsf has already been processed here
-                dataframes[claimTypePart] = baseF.add_beneficiary_info(dataframes[claimTypePart], dataframes["mbsf"], data, claimType="ip")
+                dataframes[claimTypePart] = baseF.add_beneficiary_info(dataframes[claimTypePart], dataframes["mbsf"], data,
+                                                                       lastObservableDay, claimType="ip")
             if (claimType=="car"):
                  dataframes[claimTypePart] = baseF.add_denied(dataframes[claimTypePart])
             if (claimType=="op"):
@@ -210,7 +220,9 @@ def add_preliminary_info(dataframes, data, runTests=False):
 def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, runTests=False, cleanThroughDates=True):
     """The FFS flag is here to prevent unintended errors.
     If the project requires FFS data, then all dataframes must be filtered for FFS.
-    data is a dictionary of spark dataframes with supporting information, eg provider of services, NPI, etc"""
+    data is a dictionary of spark dataframes with supporting information, eg provider of services, NPI, etc
+    The ip mortality flags are NULL, not 0, for admissions whose follow-up window extends past December 31 of
+    yearF, because a death after that day is not in the loaded mbsf files, see base.add_XDaysAfterYDateDead."""
     if ( years_within_code_limits(yearI, yearF)==False ):
         raise ValueError("code was not designed to operate for the years provided")
     elif( years_within_cms_data_limits(yearI, yearF)==False ):
@@ -226,7 +238,7 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, r
         dataframes = read_data(spark, filenames, yearI, yearF)
         if cleanMbsf: #need to clean mbsf prior to using it to add information to base claims in add_preliminary_info
             dataframes["mbsf"] = mbsfF.prep_mbsf(dataframes["mbsf"])
-        dataframes = add_preliminary_info(dataframes, data, runTests=runTests)
+        dataframes = add_preliminary_info(dataframes, data, get_lastObservableDay(yearF), runTests=runTests)
         if FFS: 
             dataframes = filter_FFS(dataframes)
         dataframes["mbsf"] = mbsfF.drop_unused_columns(dataframes["mbsf"])

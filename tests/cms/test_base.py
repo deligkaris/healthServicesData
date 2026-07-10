@@ -1557,7 +1557,7 @@ class TestAdd30DaysAfterAdmissionDateDead:
         df = df.join(deaths_df, on="DSYSRTKY", how="left")
 
         df = add_daysDeadAfterAdmissionDate(df)
-        df = add_30DaysAfterAdmissionDateDead(df)
+        df = add_30DaysAfterAdmissionDateDead(df, _last_day_of(2027))
 
         by_claim = {r["CLAIMNO"]: r["30DaysAfterAdmissionDateDead"] for r in df.collect()}
         assert by_claim[101] == 1
@@ -1582,7 +1582,7 @@ class TestAdd30DaysAfterAdmissionDateDead:
         ])
         df = spark.createDataFrame(rows, schema=schema)
         df = add_daysDeadAfterAdmissionDate(df)
-        df = add_30DaysAfterAdmissionDateDead(df)
+        df = add_30DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         out = {r["CLAIMNO"]: r["30DaysAfterAdmissionDateDead"] for r in df.collect()}
         assert out[1] == 1
         assert out[2] == 0
@@ -1601,7 +1601,7 @@ class TestAdd30DaysAfterAdmissionDateDead:
             schema=schema,
         )
         df = add_daysDeadAfterAdmissionDate(df)
-        df = add_30DaysAfterAdmissionDateDead(df)
+        df = add_30DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         row = df.collect()[0]
         assert row["daysDeadAfterAdmissionDate"] is None
         assert row["30DaysAfterAdmissionDateDead"] == 0
@@ -1620,7 +1620,7 @@ class TestAdd30DaysAfterAdmissionDateDead:
             schema=schema,
         )
         df = add_daysDeadAfterAdmissionDate(df)
-        df = add_30DaysAfterAdmissionDateDead(df)
+        df = add_30DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         row = df.collect()[0]
         assert row["daysDeadAfterAdmissionDate"] == 0
         assert row["30DaysAfterAdmissionDateDead"] == 1
@@ -1654,11 +1654,24 @@ class TestAdd30DaysAfterAdmissionDateDead:
         df = df.join(spark.createDataFrame(deaths, schema=deaths_schema), on="DSYSRTKY", how="left")
 
         df = add_daysDeadAfterAdmissionDate(df)
-        df = add_30DaysAfterAdmissionDateDead(df)
+        df = add_30DaysAfterAdmissionDateDead(df, _last_day_of(2027))
 
         total_30day_deaths = df.agg(F.sum("30DaysAfterAdmissionDateDead")).collect()[0][0]
         assert total_30day_deaths == 4  # claims 1, 3, 6, 9
         assert df.count() == 10
+
+    def test_truncated_window_with_no_death_is_null(self, spark):
+        # Admitted 2020-12-15, so the 30-day window closes in 2021, past the end of a pull through 2020.
+        from cms.base import add_30DaysAfterAdmissionDateDead
+        df = add_30DaysAfterAdmissionDateDead(_setup_admission_pipeline(spark, {1: None}, admsn=20201215),
+                                              lastObservableDay=_last_day_of(2020))
+        assert df.collect()[0]["30DaysAfterAdmissionDateDead"] is None
+
+    def test_fully_observed_window_with_no_death_is_0(self, spark):
+        from cms.base import add_30DaysAfterAdmissionDateDead
+        df = add_30DaysAfterAdmissionDateDead(_setup_admission_pipeline(spark, {1: None}),
+                                              lastObservableDay=_last_day_of(2020))
+        assert df.collect()[0]["30DaysAfterAdmissionDateDead"] == 0
 
 
 # ============================================================
@@ -1712,6 +1725,12 @@ def _setup_through_pipeline(spark, claim_death_offsets, thru=20200115):
     df = df.join(deaths_df, on="DSYSRTKY", how="left")
     df = add_daysDeadAfterThroughDate(df)
     return df
+
+
+def _last_day_of(year):
+    """Absolute day number of December 31 of `year`, ie the lastObservableDay of a pull ending there."""
+    from cms.utilities import get_lastObservableDay
+    return get_lastObservableDay(year)
 
 
 # ============================================================
@@ -1775,22 +1794,36 @@ class TestAdd90DaysAfterAdmissionDateDead:
             6: 200,   # 0
             7: None,  # 0
         })
-        df = add_90DaysAfterAdmissionDateDead(df)
+        df = add_90DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         out = {r["CLAIMNO"]: r["90DaysAfterAdmissionDateDead"] for r in df.collect()}
         assert out == {1: 1, 2: 1, 3: 1, 4: 1, 5: 0, 6: 0, 7: 0}
 
     def test_boundary_day_90_is_inclusive(self, spark):
         from cms.base import add_90DaysAfterAdmissionDateDead
         df = _setup_admission_pipeline(spark, {1: 90, 2: 91})
-        df = add_90DaysAfterAdmissionDateDead(df)
+        df = add_90DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         out = {r["CLAIMNO"]: r["90DaysAfterAdmissionDateDead"] for r in df.collect()}
         assert out == {1: 1, 2: 0}
 
     def test_alive_returns_0(self, spark):
         from cms.base import add_90DaysAfterAdmissionDateDead
         df = _setup_admission_pipeline(spark, {1: None})
-        df = add_90DaysAfterAdmissionDateDead(df)
+        df = add_90DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         assert df.collect()[0]["90DaysAfterAdmissionDateDead"] == 0
+
+    def test_fully_observed_window_with_no_death_is_0(self, spark):
+        # Admitted 2020-01-15, the 90-day window closes in April 2020, well inside a pull through 2020.
+        from cms.base import add_90DaysAfterAdmissionDateDead
+        df = add_90DaysAfterAdmissionDateDead(_setup_admission_pipeline(spark, {1: None, 2: 50, 3: 100}),
+                                              lastObservableDay=_last_day_of(2020))
+        out = {r["CLAIMNO"]: r["90DaysAfterAdmissionDateDead"] for r in df.collect()}
+        assert out == {1: 0, 2: 1, 3: 0}
+
+    def test_truncated_window_with_no_death_is_null(self, spark):
+        from cms.base import add_90DaysAfterAdmissionDateDead
+        df = add_90DaysAfterAdmissionDateDead(_setup_admission_pipeline(spark, {1: None}, admsn=20201215),
+                                              lastObservableDay=_last_day_of(2020))
+        assert df.collect()[0]["90DaysAfterAdmissionDateDead"] is None
 
 
 # ============================================================
@@ -1810,22 +1843,57 @@ class TestAdd365DaysAfterAdmissionDateDead:
             6: 500,   # 0
             7: None,  # 0
         })
-        df = add_365DaysAfterAdmissionDateDead(df)
+        df = add_365DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         out = {r["CLAIMNO"]: r["365DaysAfterAdmissionDateDead"] for r in df.collect()}
         assert out == {1: 1, 2: 1, 3: 1, 4: 1, 5: 0, 6: 0, 7: 0}
 
     def test_boundary_day_365_is_inclusive(self, spark):
         from cms.base import add_365DaysAfterAdmissionDateDead
         df = _setup_admission_pipeline(spark, {1: 365, 2: 366})
-        df = add_365DaysAfterAdmissionDateDead(df)
+        df = add_365DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         out = {r["CLAIMNO"]: r["365DaysAfterAdmissionDateDead"] for r in df.collect()}
         assert out == {1: 1, 2: 0}
 
     def test_alive_returns_0(self, spark):
+        # A missing death date means "survived" only once the window is fully observed, which a pull
+        # running through 2027 makes true of a 2020 admission.
         from cms.base import add_365DaysAfterAdmissionDateDead
         df = _setup_admission_pipeline(spark, {1: None})
-        df = add_365DaysAfterAdmissionDateDead(df)
+        df = add_365DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         assert df.collect()[0]["365DaysAfterAdmissionDateDead"] == 0
+
+    def test_truncated_window_with_no_death_is_null(self, spark):
+        # Admitted 2020-01-15, so the 365-day window closes in 2021, past the end of a pull through 2020.
+        from cms.base import add_365DaysAfterAdmissionDateDead
+        df = add_365DaysAfterAdmissionDateDead(_setup_admission_pipeline(spark, {1: None}),
+                                               lastObservableDay=_last_day_of(2020))
+        assert df.collect()[0]["365DaysAfterAdmissionDateDead"] is None
+
+    def test_death_inside_truncated_window_still_flags_1(self, spark):
+        from cms.base import add_365DaysAfterAdmissionDateDead
+        df = add_365DaysAfterAdmissionDateDead(_setup_admission_pipeline(spark, {1: 30}),
+                                               lastObservableDay=_last_day_of(2020))
+        assert df.collect()[0]["365DaysAfterAdmissionDateDead"] == 1
+
+    def test_known_death_after_window_is_0_even_when_censored(self, spark):
+        # Outliving the window is observed here, not assumed, so censoring does not apply.
+        from cms.base import add_365DaysAfterAdmissionDateDead
+        df = add_365DaysAfterAdmissionDateDead(_setup_admission_pipeline(spark, {1: 400}),
+                                               lastObservableDay=_last_day_of(2020))
+        assert df.collect()[0]["365DaysAfterAdmissionDateDead"] == 0
+
+    def test_window_ending_exactly_on_last_observable_day_is_observed(self, spark):
+        # 2020 is a leap year, so 2020-01-01 + 365 days is 2020-12-31, the last observable day.
+        from cms.base import add_365DaysAfterAdmissionDateDead
+        df = add_365DaysAfterAdmissionDateDead(_setup_admission_pipeline(spark, {1: None}, admsn=20200101),
+                                               lastObservableDay=_last_day_of(2020))
+        assert df.collect()[0]["365DaysAfterAdmissionDateDead"] == 0
+
+    def test_window_ending_one_day_past_is_censored(self, spark):
+        from cms.base import add_365DaysAfterAdmissionDateDead
+        df = add_365DaysAfterAdmissionDateDead(_setup_admission_pipeline(spark, {1: None}, admsn=20200102),
+                                               lastObservableDay=_last_day_of(2020))
+        assert df.collect()[0]["365DaysAfterAdmissionDateDead"] is None
 
 
 # ============================================================
@@ -1845,21 +1913,35 @@ class TestAdd90DaysAfterThroughDateDead:
             6: 200,   # 0
             7: None,  # 0
         })
-        df = add_90DaysAfterThroughDateDead(df)
+        df = add_90DaysAfterThroughDateDead(df, _last_day_of(2027))
         out = {r["CLAIMNO"]: r["90DaysAfterThroughDateDead"] for r in df.collect()}
         assert out == {1: 1, 2: 1, 3: 1, 4: 1, 5: 0, 6: 0, 7: 0}
 
     def test_boundary_day_90_is_inclusive(self, spark):
         from cms.base import add_90DaysAfterThroughDateDead
         df = _setup_through_pipeline(spark, {1: 90, 2: 91})
-        df = add_90DaysAfterThroughDateDead(df)
+        df = add_90DaysAfterThroughDateDead(df, _last_day_of(2027))
         out = {r["CLAIMNO"]: r["90DaysAfterThroughDateDead"] for r in df.collect()}
         assert out == {1: 1, 2: 0}
 
     def test_alive_returns_0(self, spark):
         from cms.base import add_90DaysAfterThroughDateDead
         df = _setup_through_pipeline(spark, {1: None})
-        df = add_90DaysAfterThroughDateDead(df)
+        df = add_90DaysAfterThroughDateDead(df, _last_day_of(2027))
+        assert df.collect()[0]["90DaysAfterThroughDateDead"] == 0
+
+    def test_censoring_is_measured_from_the_through_day(self, spark):
+        # Through date 2020-12-15, so the 90-day window closes in 2021 and only the death is observed.
+        from cms.base import add_90DaysAfterThroughDateDead
+        df = add_90DaysAfterThroughDateDead(_setup_through_pipeline(spark, {1: None, 2: 10}, thru=20201215),
+                                            lastObservableDay=_last_day_of(2020))
+        out = {r["CLAIMNO"]: r["90DaysAfterThroughDateDead"] for r in df.collect()}
+        assert out == {1: None, 2: 1}
+
+    def test_fully_observed_window_with_no_death_is_0(self, spark):
+        from cms.base import add_90DaysAfterThroughDateDead
+        df = add_90DaysAfterThroughDateDead(_setup_through_pipeline(spark, {1: None}),
+                                            lastObservableDay=_last_day_of(2020))
         assert df.collect()[0]["90DaysAfterThroughDateDead"] == 0
 
 
@@ -1880,22 +1962,29 @@ class TestAdd365DaysAfterThroughDateDead:
             6: 500,   # 0
             7: None,  # 0
         })
-        df = add_365DaysAfterThroughDateDead(df)
+        df = add_365DaysAfterThroughDateDead(df, _last_day_of(2027))
         out = {r["CLAIMNO"]: r["365DaysAfterThroughDateDead"] for r in df.collect()}
         assert out == {1: 1, 2: 1, 3: 1, 4: 1, 5: 0, 6: 0, 7: 0}
 
     def test_boundary_day_365_is_inclusive(self, spark):
         from cms.base import add_365DaysAfterThroughDateDead
         df = _setup_through_pipeline(spark, {1: 365, 2: 366})
-        df = add_365DaysAfterThroughDateDead(df)
+        df = add_365DaysAfterThroughDateDead(df, _last_day_of(2027))
         out = {r["CLAIMNO"]: r["365DaysAfterThroughDateDead"] for r in df.collect()}
         assert out == {1: 1, 2: 0}
 
     def test_alive_returns_0(self, spark):
         from cms.base import add_365DaysAfterThroughDateDead
         df = _setup_through_pipeline(spark, {1: None})
-        df = add_365DaysAfterThroughDateDead(df)
+        df = add_365DaysAfterThroughDateDead(df, _last_day_of(2027))
         assert df.collect()[0]["365DaysAfterThroughDateDead"] == 0
+
+    def test_truncated_window_with_no_death_is_null(self, spark):
+        from cms.base import add_365DaysAfterThroughDateDead
+        df = add_365DaysAfterThroughDateDead(_setup_through_pipeline(spark, {1: None, 2: 10}),
+                                             lastObservableDay=_last_day_of(2020))
+        out = {r["CLAIMNO"]: r["365DaysAfterThroughDateDead"] for r in df.collect()}
+        assert out == {1: None, 2: 1}
 
 
 # ============================================================
@@ -1913,9 +2002,9 @@ class TestMortalityFlagConsistency:
             add_365DaysAfterAdmissionDateDead,
         )
         df = _setup_admission_pipeline(spark, {1: 15, 2: 60, 3: 200, 4: 500, 5: None})
-        df = add_30DaysAfterAdmissionDateDead(df)
-        df = add_90DaysAfterAdmissionDateDead(df)
-        df = add_365DaysAfterAdmissionDateDead(df)
+        df = add_30DaysAfterAdmissionDateDead(df, _last_day_of(2027))
+        df = add_90DaysAfterAdmissionDateDead(df, _last_day_of(2027))
+        df = add_365DaysAfterAdmissionDateDead(df, _last_day_of(2027))
         for r in df.collect():
             assert r["30DaysAfterAdmissionDateDead"] <= r["90DaysAfterAdmissionDateDead"]
             assert r["90DaysAfterAdmissionDateDead"] <= r["365DaysAfterAdmissionDateDead"]
@@ -1926,8 +2015,8 @@ class TestMortalityFlagConsistency:
             add_365DaysAfterThroughDateDead,
         )
         df = _setup_through_pipeline(spark, {1: 15, 2: 60, 3: 200, 4: 500, 5: None})
-        df = add_90DaysAfterThroughDateDead(df)
-        df = add_365DaysAfterThroughDateDead(df)
+        df = add_90DaysAfterThroughDateDead(df, _last_day_of(2027))
+        df = add_365DaysAfterThroughDateDead(df, _last_day_of(2027))
         for r in df.collect():
             assert r["90DaysAfterThroughDateDead"] <= r["365DaysAfterThroughDateDead"]
 

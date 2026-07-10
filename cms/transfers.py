@@ -120,11 +120,12 @@ def add_prior_hospitalization_info(transfersDF, ipBaseDF):
     transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
     return transfersDF
 
-def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF):
+def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF, lastObservableDay):
     '''For the transfers dataframe, this function adds columns about the number of days the patients stayed home.
     baseF.add_days_at_home_info reads its date/status columns by canonical (un-prefixed) name, so we rename only
     the specific to-side columns it consults, then restore them after the call. Output columns it adds
-    (homeDays90, homeDays365, etc.) describe the receiving stay and are kept un-prefixed.'''
+    (homeDays90, homeDays365, etc.) describe the receiving stay and are kept un-prefixed.
+    lastObservableDay is passed through, see baseF.get_homeDays.'''
     toToCanonical = {
         "toDSYSRTKY":                       "DSYSRTKY",
         "toCLAIMNO":                        "CLAIMNO",
@@ -136,7 +137,7 @@ def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseD
         "to365DaysAfterAdmissionDateDead":  "365DaysAfterAdmissionDateDead",
     }
     transfersDF = _rename_columns(transfersDF, toToCanonical)
-    transfersDF = baseF.add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF)
+    transfersDF = baseF.add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF, lastObservableDay)
     transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
     return transfersDF
 
