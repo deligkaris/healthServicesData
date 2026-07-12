@@ -4,6 +4,8 @@
 # Transfer-dyad data dictionary.
 # Convention: from<Name> = sending hospital / origin claim; to<Name> = receiving hospital / destination claim
 # (same beneficiary on both sides). *_DAY / *_MONTH are cumulative counters across study years; *_YEAR is calendar year.
+# Right-censoring: follow-up outcomes (mortality flags, losAt*, homeDays*) are NULL -- not 0 -- when their
+# window extends past the last day of the loaded data (cms.utilities.get_lastObservableDay).
 get_data_dictionary <- function() {
   tibble::tribble(
     ~column, ~description,
@@ -146,12 +148,32 @@ get_data_dictionary <- function() {
     "DEATH_DT_DAY",    "Death as cumulative day number; NULL if alive",
     "DEATH_DT",        "Raw validated death date; NULL if alive/unvalidated",
     "daysDeadAfterThroughDate","Days from through-date to death (neg if before)",
-    "90DaysAfterThroughDateDead","Died within 90d of through-date (0/1)",
-    "365DaysAfterThroughDateDead","Died within 365d of through-date (0/1)",
+    "90DaysAfterThroughDateDead","Died within 90d of through-date (0/1; NULL if window unobserved)",
+    "365DaysAfterThroughDateDead","Died within 365d of through-date (0/1; NULL if window unobserved)",
     "daysDeadAfterAdmissionDate","Days from admission to death",
-    "30DaysAfterAdmissionDateDead","Died within 30d of admission (0/1)",
-    "90DaysAfterAdmissionDateDead","Died within 90d of admission (0/1)",
-    "365DaysAfterAdmissionDateDead","Died within 365d of admission (0/1)",
+    "30DaysAfterAdmissionDateDead","Died within 30d of admission (0/1; NULL if window unobserved)",
+    "90DaysAfterAdmissionDateDead","Died within 90d of admission (0/1; NULL if window unobserved)",
+    "365DaysAfterAdmissionDateDead","Died within 365d of admission (0/1; NULL if window unobserved)",
+
+    # ---- days at home / facility days after admission (receiving claim; Fonarow-2016 style, hospice included) ----
+    "90DaysFromADMSN_DT_DAY","End of the 90-day follow-up window (cumulative day number)",
+    "365DaysFromADMSN_DT_DAY","End of the 365-day follow-up window (cumulative day number)",
+    "losAtallMinusHha90","Days spent in SNF/hospice/inpatient within 90d of admission (NULL if window unobserved)",
+    "losAtallMinusHha365","Days spent in SNF/hospice/inpatient within 365d of admission (NULL if window unobserved)",
+    "losDaysAtallMinusHha90","Array of the individual days counted by losAtallMinusHha90",
+    "losDaysAtallMinusHha365","Array of the individual days counted by losAtallMinusHha365",
+    "losAtall90","Days spent in SNF/hospice/inpatient/HHA within 90d of admission (NULL if window unobserved)",
+    "losAtall365","Days spent in SNF/hospice/inpatient/HHA within 365d of admission (NULL if window unobserved)",
+    "losDaysAtall90","Array of the individual days counted by losAtall90",
+    "losDaysAtall365","Array of the individual days counted by losAtall365",
+    "homeDays90",      "Days at home in 90d after admission (0 if died in visit; up to death date if died in window)",
+    "homeDays90Group", "homeDays90 grouped (0=0,1=<=30,2=<=60,3=<=90)",
+    "homeDays365",     "Days at home in 365d after admission",
+    "homeDays365Group","homeDays365 grouped (0=0,1=<=120,2=<=240,3=<=360)",
+    "homeDaysIndependent90","Days at home in 90d after admission, HHA days also excluded (living independently)",
+    "homeDaysIndependent90Group","homeDaysIndependent90 grouped (0=0,1=<=30,2=<=60,3=<=90)",
+    "homeDaysIndependent365","Days at home in 365d after admission, HHA days also excluded",
+    "homeDaysIndependent365Group","homeDaysIndependent365 grouped (0=0,1=<=120,2=<=240,3=<=360)",
 
     # ---- revenue-center flags ----
     "ed",              "Emergency-dept revenue center present (0/1)",
@@ -167,16 +189,24 @@ get_data_dictionary <- function() {
     "majorDiagnosticOrTherapeuticOrProcedures","Any HCUP class 3/4 major OR procedure (0/1)",
     "diedInVisit",     "Died during the stay (STUS_CD=20) (0/1)",
     "dischargeHomeWithin2Days","Discharged home (STUS_CD=1) within 2 days of admission (LOS<=3) (0/1)",
+    "transferToIn",    "Discharged to a short-term hospital or other inpatient care (STUS_CD in 2,5) (0/1)",
+    "transferFromDifferentFacility","Admitted as a transfer from another hospital (SRC_ADMS=4) (0/1)",
+    "shortTermInpatientOrganization","Claim organization is a short-term adult inpatient facility (GACH/RACH/CAH and not rehab/pediatric/psychiatric/LTC) (0/1)",
 
     # ---- provider capability / volume (sepsis-shock cohort) ----
+    # AnnualCapability = performed it at least once that year (each year independent, does not carry forward);
+    # EverCapability = performed it in any year up to and including this one (never resets, no backfill).
     "providerSepticShockAnnualVolume","Hospital septic-shock case volume that year",
     "providerSepticShockAnnualVolumePrior","Hospital prior-year septic-shock volume",
-    "providerImvCapability","Hospital invasive mechanical ventilation capability that year (0/1)",
-    "providerImvCapabilityPrior","Hospital prior-year IMV capability (0/1)",
-    "providerRrtCapability","Hospital renal replacement therapy capability that year (0/1)",
-    "providerRrtCapabilityPrior","Hospital prior-year RRT capability (0/1)",
-    "providerMajorDiagnosticOrTherapeuticOrProceduresCapability","Hospital major OR-procedure capability that year (0/1)",
-    "providerMajorDiagnosticOrTherapeuticOrProceduresCapabilityPrior","Hospital prior-year major OR-procedure capability (0/1)",
+    "providerImvAnnualCapability","Hospital invasive mechanical ventilation capability that year (0/1)",
+    "providerImvAnnualCapabilityPrior","Hospital prior-year IMV capability (0/1)",
+    "providerImvEverCapability","Hospital IMV capability observed in this or any earlier year (0/1)",
+    "providerRrtAnnualCapability","Hospital renal replacement therapy capability that year (0/1)",
+    "providerRrtAnnualCapabilityPrior","Hospital prior-year RRT capability (0/1)",
+    "providerRrtEverCapability","Hospital RRT capability observed in this or any earlier year (0/1)",
+    "providerMajorDiagnosticOrTherapeuticOrProceduresAnnualCapability","Hospital major OR-procedure capability that year (0/1)",
+    "providerMajorDiagnosticOrTherapeuticOrProceduresAnnualCapabilityPrior","Hospital prior-year major OR-procedure capability (0/1)",
+    "providerMajorDiagnosticOrTherapeuticOrProceduresEverCapability","Hospital major OR-procedure capability observed in this or any earlier year (0/1)",
 
     # ---- provider volume (stroke cohort) ----
     "providerIshStrokeAnnualVolume","Hospital ischemic-stroke case volume that year",
@@ -207,6 +237,7 @@ get_data_dictionary <- function() {
     "nodeToMriVol",    "Receiving hospital: sum of MRI flags over its incoming transfers",
     "nodeToMriMean",   "Receiving hospital: mean MRI flag over its incoming transfers",
     "dyadVi",          "1 if sending & receiving share the same system (SYSID), else 0",
+    "newDyad",         "1 if this is the earliest observed year of the (sending, receiving) pair, else 0 (left-censored by the loaded years; a pair returning after a gap is not re-flagged)",
     "dyadTransferVol", "Number of transfers along this specific dyad (year)",
     "dyadProportionTransfersOut","dyadTransferVol / sending hospital's nodeOutVol",
     "dyadProportionTransfersIn","dyadTransferVol / receiving hospital's nodeInVol",
