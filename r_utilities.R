@@ -220,6 +220,8 @@ get_data_dictionary <- function() {
     "firstTransfer",   "1 if this is the patient's earliest transfer (min from-through-day), else 0",
     "nodeOutVol",      "Sending hospital: total transfers sent out that year",
     "nodeInVol",       "Receiving hospital: total transfers received that year",
+    "nodeOutVolPrior", "Prior-year value of nodeOutVol (0 if it sent none that year; NULL in the hospital's first observed year)",
+    "nodeInVolPrior",  "Prior-year value of nodeInVol (0 if it received none that year; NULL in the hospital's first observed year)",
     "nodeFromSetOfToNodes","Sending hospital: array of distinct destination NPIs that year",
     "nodeFromSizeOfToNodes","Sending hospital: count of distinct destinations that year",
     "nodeToSetOfFromNodes","Receiving hospital: array of distinct source NPIs that year",
