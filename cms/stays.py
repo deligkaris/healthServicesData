@@ -315,7 +315,17 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip"):
 
     Limitation: day-level overlap is symmetric -- a prior stay that ends on the
     current admission day and a concurrent stay that starts on it are not
-    distinguishable here.'''
+    distinguishable here.
+
+    Note on the get_unique_stays dedup: admissionSource/thruDestination are added here,
+    AFTER the dedup, and propagate_stay_info would skip them anyway (it only max()es
+    numeric columns, and these are strings). That is fine for ip: the source lookup is
+    keyed on ADMSN_DT_DAY, which is the ip stay partition key, so every claim of the stay
+    would resolve the same admissionSource and the surviving row's value is the stay's
+    value. Same for thruDestination on op, keyed on THRU_DT_DAY. The one case that is not
+    stay-invariant is admissionSource for op stays (partitioned on THRU_DT_DAY): if the op
+    claims of one visit disagree on ADMSN_DT_DAY, the value comes from whichever claim won
+    the dedup.'''
     ip = cmsDFS["ipBase"]
     sources = [
         _per_stay_index(ip.filter(F.col("rehabilitation") == 1), "ip", "ipRehab"),
