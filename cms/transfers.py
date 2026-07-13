@@ -93,13 +93,19 @@ def add_firstTransfer(transfersDF):
 
 def add_node_volume_info(transfersDF):
     '''Given transfers, calculate the number of transfers that go out from a given from provider and the
-    number of transfers that go in to a given to provider.
+    number of transfers that go in to a given to provider, and both volumes in the year prior.
     Both partitions key on fromTHRU_DT_YEAR (the transfer's originating year) so that node- and dyad-level
-    aggregations share a single year basis -- see add_dyad.'''
+    aggregations share a single year basis -- see add_dyad. The prior lags key on the same provider the
+    volume itself keys on: fromORGNPINM for nodeOutVol, toORGNPINM for nodeInVol.
+    gapFill=0: a provider-year appears in transfers only when the provider sent (resp. received) at least
+    1 transfer, so a >1-year gap means it sent (received) zero that year -- a true 0 volume. The provider's
+    first observed year stays null (unobserved, not zero) -- do not coalesce it to 0 downstream.'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
     transfersDF = (transfersDF.withColumn("nodeOutVol", F.count( F.col("fromCLAIMNO") ).over(eachFromProvider))
                               .withColumn("nodeInVol", F.count( F.col("toCLAIMNO") ).over(eachToProvider)))
+    transfersDF = add_column_prior(transfersDF, column="nodeOutVol", who="fromORGNPINM", when="fromTHRU_DT_YEAR", gapFill=0)
+    transfersDF = add_column_prior(transfersDF, column="nodeInVol", who="toORGNPINM", when="fromTHRU_DT_YEAR", gapFill=0)
     return transfersDF
 
 def add_prior_hospitalization_info(transfersDF, ipBaseDF):
@@ -318,16 +324,21 @@ def add_column_prior(transfersDF, column, who, when, gapFill=None):
     '''Adds the column's value from the prior year at the transfers grain.
     Thin wrapper over utilitiesF.add_column_prior; the shared logic lives in utilities.py.
     Callers pass who/when explicitly. `who` must match the grain of `column`:
-    who="fromORGNPINM" for provider/node-level columns keyed on the sending provider
-    (eg nodeHhi), and who=["fromORGNPINM","toORGNPINM"] -- the year-less dyad pair -- for
+    who="fromORGNPINM" for node-level columns keyed on the sending provider (eg nodeHhi,
+    nodeOutVol), who="toORGNPINM" for node-level columns keyed on the receiving provider
+    (eg nodeInVol), and who=["fromORGNPINM","toORGNPINM"] -- the year-less dyad pair -- for
     dyad-level columns (eg dyadProportionTransfersOut/In) so the prior value comes from the
     same dyad a year earlier rather than an arbitrary partner. when=fromTHRU_DT_YEAR is the
-    transfer's originating year.
+    transfer's originating year -- and it is the right `when` even for columns keyed on the
+    receiving provider (nodeInVol), because those are counted per (toORGNPINM,fromTHRU_DT_YEAR)
+    too (see add_node_volume_info); `when` must be the year the column was partitioned by or
+    `column` would not be constant within each (who,when) group and the max() broadcast below
+    would pick an arbitrary one of several values.
     A null in the prior column means unobserved (the dyad/node's first observed year), not
-    zero -- do not coalesce it to 0 downstream. Pass gapFill=0 only for count/volume columns
-    so a >1-year gap records a true 0 (see add_column_prior); the current callers (nodeHhi,
-    dyadProportionTransfers*) are proportions/indexes where a gap year is undefined, so they
-    keep the default None.'''
+    zero -- do not coalesce it to 0 downstream. Pass gapFill=0 only for columns where a >1-year
+    gap records a true 0 (see add_column_prior): nodeOutVol (a count) and dyadProportionTransfers*
+    (a 0 numerator over the node's out volume). nodeHhi keeps the default None because a gap year
+    there is an undefined distribution, not a zero.'''
     return utilitiesF.add_column_prior(transfersDF, column=column, who=who, when=when, gapFill=gapFill)
 
 def add_node_hhi_info(transfersDF):

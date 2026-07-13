@@ -1102,6 +1102,90 @@ class TestAddNodeVolumeInfo:
         assert out["a2"] == (2, 2)
         assert out["a3"] == (1, 1)
 
+    def test_nodeOutVolPrior_carries_prior_year_value(self, spark):
+        # A sends 2 transfers in 2020 and 1 in 2021 -> the 2021 rows see nodeOutVolPrior=2,
+        # and 2020 (A's first observed year) stays null.
+        from cms.transfers import add_node_volume_info
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 300, 2020, 2020, "a2", "c1"),
+            (100, 200, 2021, 2021, "a3", "b2"),
+        ]
+        df = make_raw_transfers_df(spark, rows)
+        out = {r["fromCLAIMNO"]: r["nodeOutVolPrior"] for r in add_node_volume_info(df).collect()}
+        assert out["a1"] is None
+        assert out["a2"] is None
+        assert out["a3"] == 2
+
+    def test_nodeOutVolPrior_gap_year_is_zero(self, spark):
+        # A sends transfers in 2020 and 2022 but none in 2021: the 2022 rows must see
+        # nodeOutVolPrior=0 (a true zero out volume), not the 2020 value.
+        from cms.transfers import add_node_volume_info
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 200, 2022, 2022, "a2", "b2"),
+        ]
+        df = make_raw_transfers_df(spark, rows)
+        out = {r["fromCLAIMNO"]: r["nodeOutVolPrior"] for r in add_node_volume_info(df).collect()}
+        assert out["a1"] is None
+        assert out["a2"] == 0
+
+    def test_nodeOutVolPrior_per_provider(self, spark):
+        # The lag is keyed on fromORGNPINM: A's prior must not leak into E's rows.
+        from cms.transfers import add_node_volume_info
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 300, 2020, 2020, "a2", "c1"),
+            (500, 200, 2020, 2020, "e1", "b2"),
+            (100, 200, 2021, 2021, "a3", "b3"),
+            (500, 200, 2021, 2021, "e2", "b4"),
+        ]
+        df = make_raw_transfers_df(spark, rows)
+        out = {r["fromCLAIMNO"]: r["nodeOutVolPrior"] for r in add_node_volume_info(df).collect()}
+        assert out["a3"] == 2  # A sent 2 in 2020
+        assert out["e2"] == 1  # E sent 1 in 2020
+
+    def test_nodeInVolPrior_carries_prior_year_value(self, spark):
+        # B receives 2 transfers in 2020 and 1 in 2021 -> the 2021 rows see nodeInVolPrior=2,
+        # and 2020 (B's first observed year) stays null.
+        from cms.transfers import add_node_volume_info
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (500, 200, 2020, 2020, "e1", "b2"),
+            (100, 200, 2021, 2021, "a2", "b3"),
+        ]
+        df = make_raw_transfers_df(spark, rows)
+        out = {r["fromCLAIMNO"]: r["nodeInVolPrior"] for r in add_node_volume_info(df).collect()}
+        assert out["a1"] is None
+        assert out["e1"] is None
+        assert out["a2"] == 2
+
+    def test_nodeInVolPrior_gap_year_is_zero(self, spark):
+        from cms.transfers import add_node_volume_info
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 200, 2022, 2022, "a2", "b2"),
+        ]
+        df = make_raw_transfers_df(spark, rows)
+        out = {r["fromCLAIMNO"]: r["nodeInVolPrior"] for r in add_node_volume_info(df).collect()}
+        assert out["a1"] is None
+        assert out["a2"] == 0
+
+    def test_nodeInVolPrior_keys_on_receiving_provider(self, spark):
+        # The in-volume lag is keyed on toORGNPINM, independently of the out-volume lag: in 2020
+        # A sends 2 (to B and C) and B receives 1, so A's 2021 row sees nodeOutVolPrior=2 while
+        # the transfer arriving at B in 2021 sees nodeInVolPrior=1.
+        from cms.transfers import add_node_volume_info
+        rows = [
+            (100, 200, 2020, 2020, "a1", "b1"),
+            (100, 300, 2020, 2020, "a2", "c1"),
+            (100, 200, 2021, 2021, "a3", "b2"),
+        ]
+        df = make_raw_transfers_df(spark, rows)
+        out = {r["fromCLAIMNO"]: (r["nodeOutVolPrior"], r["nodeInVolPrior"])
+               for r in add_node_volume_info(df).collect()}
+        assert out["a3"] == (2, 1)
+
 
 # ============================================================
 # Tests for add_dyadVi — same-system flag for the two providers.
