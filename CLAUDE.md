@@ -40,9 +40,17 @@ Raw files (20+ sources)
 - **cms/revenue.py** -- Revenue center flags: ICU, ED, MRI, CT with claim-level vs line-level aggregation
 - **cms/claims.py** -- Joins base claims with summarized revenue/line data
 
+## Column Naming Conventions
+
+Raw CMS columns keep their CMS Field Short Name, which is always UPPERCASE (`REV_CNTR`, `HCPCS_CD`, `DSYSRTKY` -- every one of the ~1000 fields in `cms/schemas.py`). Every column this codebase adds starts with a LOWERCASE character (`ed`, `icu`, `ishStroke`, `providerAnnualVolume`).
+
+The case is therefore what distinguishes a raw CMS field from an enricher-added one, and code may rely on it to select "the columns we added" by regex rather than by a hand-maintained list (see `revenue.get_revenue_summary` / `line.get_line_summary`). Do not add a column whose name starts with an uppercase letter.
+
+The one exception: the date components derived from a CMS date field keep that field's uppercase name as their prefix (`THRU_DT_YEAR`, `ADMSN_DT_DAY`, `DEATH_DT_MONTH`, ... -- see `base.add_admission_date_info`), because they belong to the raw field rather than being a new measure. They are uppercase precisely so that the lowercase-means-ours rule keeps working: anything selecting "our" columns wants the flags and aggregations, not the date parts.
+
 ## Function Naming Conventions
 
-All column names follow CMS Field Short Name convention. Function names encode their behavior:
+Function names encode their behavior:
 
 - **`add_x(df)`** -- adds exactly 1 column named `x`
 - **`add_x_info(df)`** -- adds multiple columns (use `printSchema()` to see what was added)
