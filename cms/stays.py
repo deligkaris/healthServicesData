@@ -1,5 +1,6 @@
 from functools import reduce
 from pyspark.sql.window import Window
+from pyspark.storagelevel import StorageLevel
 import pyspark.sql.functions as F
 import cms.revenue as revenueF
 import cms.claims as claimsF
@@ -286,7 +287,7 @@ def _resolve_setting(otherCol):
     return expr
 
 
-def get_otherStays(cmsDFS):
+def get_otherStays(cmsDFS, persistFlag=False, persistLocation=StorageLevel.MEMORY_AND_DISK):
     '''Returns one row per beneficiary with an otherStays array holding every stay they had in any
     setting: cmsDFS["ipBase"] (split into ipRehab / ipLtc / ipOther by the rehabilitation and
     ltcHospital flags), cmsDFS["snfBase"], cmsDFS["hhaBase"] and cmsDFS["hospBase"] (hospice). Each
@@ -297,8 +298,15 @@ def get_otherStays(cmsDFS):
     and discharged to. It depends only on cmsDFS -- not on staysDF and not on claimType -- so it is
     the same index for every stays dataframe of a project. Building it aggregates the whole ip + snf +
     hha + hospice base, so a project that calls add_source_and_destination_info more than once (e.g.
-    once for the sending stays and once for the receiving stays of a transfer) should build it once,
-    persist it, and pass it to each call as otherStaysDF rather than have every call rebuild it.
+    once for the sending stays and once for the receiving stays of a transfer) should build it once
+    here and pass it to each call as otherStaysDF rather than have every call rebuild it.
+
+    persistFlag: persist the index before returning it, for exactly that case -- it is then computed
+    once and read from the cache by every call it is passed to. No count() is done to force it: the
+    cache fills on the first action that needs it anyway, and forcing it here would only add a spark
+    job. The index holds one array per beneficiary of every stay they ever had, with the days each
+    covered, so it is wider than its row count suggests; MEMORY_AND_DISK spills rather than fails,
+    but check the storage tab if it spills heavily -- the cache can then cost more than the rebuild.
 
     Assumes every source DF in cmsDFS has losDays (baseF.add_losDays), and that cmsDFS["ipBase"] has
     the rehabilitation and ltcHospital flags.'''
@@ -312,10 +320,13 @@ def get_otherStays(cmsDFS):
         _per_stay_index(cmsDFS["hhaBase"],  "hha",  "hha"),
         _per_stay_index(cmsDFS["hospBase"], "hosp", "hosp"),
     ]
-    return (reduce(lambda x, y: x.unionByName(y), sources)
-            .groupBy("DSYSRTKY")
-            .agg(F.collect_list(F.struct("otherStayKey", "losDays", "claimType"))
-                  .alias("otherStays")))
+    otherStaysDF = (reduce(lambda x, y: x.unionByName(y), sources)
+                    .groupBy("DSYSRTKY")
+                    .agg(F.collect_list(F.struct("otherStayKey", "losDays", "claimType"))
+                          .alias("otherStays")))
+    if (persistFlag):
+        otherStaysDF.persist(persistLocation)
+    return otherStaysDF
 
 
 def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysDF=None):
