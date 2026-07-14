@@ -2,6 +2,12 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import re
 
+#Column naming convention (holds codebase-wide, see CLAUDE.md): every raw CMS field is UPPERCASE
+#(REV_CNTR, HCPCS_CD, DSYSRTKY -- see cms/schemas.py) and every column we add starts with a lowercase
+#character (ed, icu, mri, ct, echo). The case is what marks a column as ours, so the summary below can
+#find the flags to collapse to the claim level by regex instead of a hand-maintained list -- a new
+#add_* flag then flows into the summary with no other edit. Keep new columns lowercase-initial.
+
 #I think for now I prefer not implementing any filters on revenue records because I am doing an inner join of base with revenue summaries
 #maybe I should rethink how to to do the base and revenue summary join
 #for now implement filters either on base or on claims
@@ -85,8 +91,19 @@ def add_echo(revenueDF, inClaim=False):
     return revenueDF
 
 def filter_claims(revenueDF, baseDF):
-    '''I thought that this function would save time when I process the revenue file but this join
-    actually creates significantly more work...so I am not using it for now.'''
+    '''Keeps only the revenue lines whose claim is present in baseDF.
+
+    Whether this pays for itself depends entirely on how selective baseDF is and on the join strategy:
+      * Against a barely-filtered base (as in cms.utilities.filter_FFS, where nearly every revenue line
+        belongs to some claim in the base) it eliminates almost nothing and only adds work -- this is why
+        the note used to say it "creates significantly more work".
+      * Against a base already cut down to the claims a project actually uses (a diagnosis/provider-type
+        filter, say), it drops most revenue lines before they are ever aggregated, which shrinks the
+        aggregation shuffle, the summary that gets persisted, and the base-to-summary join downstream.
+    The join must be a broadcast hash join to win: a sort-merge join would sort every revenue line in the
+    file, which is the very cost get_revenue_summary avoids. The key set is 3 ints per claim, so wrap the
+    base in F.broadcast() (or raise spark.sql.autoBroadcastJoinThreshold) rather than hoping Catalyst
+    picks broadcast on its own -- the default 10MB threshold is easily exceeded.'''
     #CLAIMNO resets every year, so I need CLAIMNO, DSYSRTKY and THRU_DT to uniquely link base and revenue files
     revenueDF = revenueDF.join(baseDF.select(F.col("CLAIMNO"),F.col("DSYSRTKY"),F.col("THRU_DT")),
                                on=["CLAIMNO","DSYSRTKY","THRU_DT"],
@@ -94,25 +111,44 @@ def filter_claims(revenueDF, baseDF):
     return revenueDF
 
 def get_revenue_summary(revenueDF):
-    #the only summary I think I typically need are the inClaim summaries, and those columns now end with InClaim
-    #include a few other columns so that I can link the summary to the base 
-    revenueSummaryDF = revenueDF.select("DSYSRTKY", "CLAIMNO", "THRU_DT", revenueDF.colRegex("`^[a-zA-Z]+(InClaim)$`")).distinct()
-    #the summary will be joined to base, so the InClaim is no longer needed
-    namesWithoutInClaim = [re.sub("InClaim","",x) for x in revenueSummaryDF.columns]
-    revenueSummaryDF = revenueSummaryDF.toDF(*namesWithoutInClaim)
-    return revenueSummaryDF
+    '''Collapses the revenue lines to one row per claim, keyed on DSYSRTKY/CLAIMNO/THRU_DT (CLAIMNO resets
+    every year, so THRU_DT is needed to link a claim back to the base file). A claim's flag is 1 when any
+    of its lines carries it -- max() over the claim, which is the value the xInClaim columns hold.
+
+    Takes the per-line flags (add_revenue_info with inClaim=False), NOT the xInClaim window columns. The
+    two are equivalent, but the groupBy partially aggregates on each executor and shuffles one row per
+    claim, whereas the window it replaces had to sort every revenue line of the file and carry the whole
+    line-level dataframe through to a distinct() that then threw all but one line per claim away. On the
+    national ip revenue file that sort was the most expensive step of the summary.
+
+    The flags to aggregate are found by case, not by a list: every raw CMS field is uppercase and every
+    column we add is lowercase-initial (see the convention at the top of this module), so a new add_*
+    flag flows into the summary with no edit here. xInClaim columns are excluded -- a caller that already
+    ran with inClaim=True also has the per-line flags, so it still summarizes to the same columns.'''
+    flags = [c for c in revenueDF.columns
+             if re.fullmatch("[a-z][a-zA-Z]*", c) and not c.endswith("InClaim")]
+    return (revenueDF.groupBy("DSYSRTKY", "CLAIMNO", "THRU_DT")
+                     .agg(*[F.max(F.col(c)).alias(c) for c in flags]))
 
 def add_revenue_info(revenueDF, inClaim=True):
-    revenueDF = add_ed(revenueDF, inClaim=inClaim) 
+    revenueDF = add_ed(revenueDF, inClaim=inClaim)
     revenueDF = add_mri(revenueDF, inClaim=inClaim)
     revenueDF = add_ct(revenueDF, inClaim=inClaim)
     revenueDF = add_icu(revenueDF, inClaim=inClaim)
     return revenueDF
 
-def get_revenue_info(revenueDF, inClaim=True):
-    '''inClaim = True will cause the claim summary to be returned, which is what I need almost always...'''
-    #revenueDF = filter_claims(revenueDF, baseDF) #costs time so avoid for now
-    revenueDF = add_revenue_info(revenueDF, inClaim=inClaim)
+def get_revenue_info(revenueDF, inClaim=True, baseDF=None):
+    '''inClaim = True will cause the claim summary to be returned, which is what I need almost always...
+
+    baseDF (optional): restrict the revenue lines to the claims of baseDF before the flags are aggregated,
+    see filter_claims. Pass it when the project only ever joins the summary back to a small subset of the
+    claims -- the lines of every other claim are then summarized for nothing. Pass F.broadcast(baseDF) so
+    the restriction is a broadcast hash join; a sort-merge join would sort every revenue line and give the
+    saving back. Leave it None to summarize the whole revenue file (the previous behavior).'''
+    if baseDF is not None:
+        revenueDF = filter_claims(revenueDF, baseDF)
+    #the summary aggregates the per-line flags to the claim itself, so the xInClaim windows are not computed for it
+    revenueDF = add_revenue_info(revenueDF, inClaim=False)
     if inClaim:
         revenueDF = get_revenue_summary(revenueDF)
     return revenueDF
