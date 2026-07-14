@@ -286,19 +286,47 @@ def _resolve_setting(otherCol):
     return expr
 
 
-def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip"):
+def get_otherStays(cmsDFS):
+    '''Returns one row per beneficiary with an otherStays array holding every stay they had in any
+    setting: cmsDFS["ipBase"] (split into ipRehab / ipLtc / ipOther by the rehabilitation and
+    ltcHospital flags), cmsDFS["snfBase"], cmsDFS["hhaBase"] and cmsDFS["hospBase"] (hospice). Each
+    source is collapsed to one row per stay via _per_stay_index, so every entry carries its own stay
+    identity (otherStayKey) and the days it covered (losDays).
+
+    This is the index add_source_and_destination_info probes to decide what a stay was admitted from
+    and discharged to. It depends only on cmsDFS -- not on staysDF and not on claimType -- so it is
+    the same index for every stays dataframe of a project. Building it aggregates the whole ip + snf +
+    hha + hospice base, so a project that calls add_source_and_destination_info more than once (e.g.
+    once for the sending stays and once for the receiving stays of a transfer) should build it once,
+    persist it, and pass it to each call as otherStaysDF rather than have every call rebuild it.
+
+    Assumes every source DF in cmsDFS has losDays (baseF.add_losDays), and that cmsDFS["ipBase"] has
+    the rehabilitation and ltcHospital flags.'''
+    ip = cmsDFS["ipBase"]
+    sources = [
+        _per_stay_index(ip.filter(F.col("rehabilitation") == 1), "ip", "ipRehab"),
+        _per_stay_index(ip.filter(F.col("ltcHospital") == 1),    "ip", "ipLtc"),
+        _per_stay_index(ip.filter((F.col("rehabilitation") == 0) &
+                                  (F.col("ltcHospital") == 0)),  "ip", "ipOther"),
+        _per_stay_index(cmsDFS["snfBase"],  "snf",  "snf"),
+        _per_stay_index(cmsDFS["hhaBase"],  "hha",  "hha"),
+        _per_stay_index(cmsDFS["hospBase"], "hosp", "hosp"),
+    ]
+    return (reduce(lambda x, y: x.unionByName(y), sources)
+            .groupBy("DSYSRTKY")
+            .agg(F.collect_list(F.struct("otherStayKey", "losDays", "claimType"))
+                  .alias("otherStays")))
+
+
+def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysDF=None):
     '''Adds admissionSource and thruDestination to staysDF by checking, per stay,
     whether the beneficiary has any OTHER stay whose days cover ADMSN_DT_DAY (source)
     or THRU_DT_DAY (destination).
 
-    The per-beneficiary index is built from cmsDFS["ipBase"] (split into ipRehab /
-    ipLtc / ipOther by the rehabilitation and ltcHospital flags), cmsDFS["snfBase"],
-    cmsDFS["hhaBase"], and cmsDFS["hospBase"] (where "hosp" is hospice). Each source
-    is collapsed to one row per stay via _per_stay_index, so each entry carries its
-    own stay identity. The current stay is then excluded by comparing otherStayKey
-    against the current row's stay-key struct -- without this, every stay would
-    trivially "overlap itself" and admissionSource/thruDestination could never be
-    "home" for the row's own claim type.
+    The per-beneficiary index of those other stays comes from get_otherStays (see there for how it is
+    built). The current stay is then excluded by comparing otherStayKey against the current row's
+    stay-key struct -- without this, every stay would trivially "overlap itself" and
+    admissionSource/thruDestination could never be "home" for the row's own claim type.
 
     Resolution priority when multiple settings overlap a day (see
     _SOURCE_DEST_PRIORITY):
@@ -312,6 +340,12 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip"):
       * cmsDFS["ipBase"] has the rehabilitation and ltcHospital flags.
       * claimType selects the stay key used to identify staysDF rows (and therefore
         the self-exclusion key). Defaults to "ip".
+      * otherStaysDF (optional) is a prebuilt index from get_otherStays. Pass it when
+        this function is called more than once in a project, so the index -- an
+        aggregation over the whole ip/snf/hha/hospice base -- is built once instead of
+        once per call. When it is None the index is built here from cmsDFS, which is
+        the previous behavior; cmsDFS is then the only source of the index and is
+        otherwise unused.
 
     Limitation: day-level overlap is symmetric -- a prior stay that ends on the
     current admission day and a concurrent stay that starts on it are not
@@ -326,21 +360,7 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip"):
     stay-invariant is admissionSource for op stays (partitioned on THRU_DT_DAY): if the op
     claims of one visit disagree on ADMSN_DT_DAY, the value comes from whichever claim won
     the dedup.'''
-    ip = cmsDFS["ipBase"]
-    sources = [
-        _per_stay_index(ip.filter(F.col("rehabilitation") == 1), "ip", "ipRehab"),
-        _per_stay_index(ip.filter(F.col("ltcHospital") == 1),    "ip", "ipLtc"),
-        _per_stay_index(ip.filter((F.col("rehabilitation") == 0) &
-                                  (F.col("ltcHospital") == 0)),  "ip", "ipOther"),
-        _per_stay_index(cmsDFS["snfBase"],  "snf",  "snf"),
-        _per_stay_index(cmsDFS["hhaBase"],  "hha",  "hha"),
-        _per_stay_index(cmsDFS["hospBase"], "hosp", "hosp"),
-    ]
-
-    allDF = (reduce(lambda x, y: x.unionByName(y), sources)
-             .groupBy("DSYSRTKY")
-             .agg(F.collect_list(F.struct("otherStayKey", "losDays", "claimType"))
-                   .alias("otherStays")))
+    otherStaysDF = get_otherStays(cmsDFS) if otherStaysDF is None else otherStaysDF
 
     keys = _stay_keys(claimType)
     current_stay_key = F.struct(F.col(keys[0]).alias("DSYSRTKY"),
@@ -350,7 +370,7 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip"):
     not_self = lambda x: x.otherStayKey != current_stay_key
 
     staysDF = (staysDF
-               .join(allDF, on="DSYSRTKY", how="left_outer")
+               .join(otherStaysDF, on="DSYSRTKY", how="left_outer")
                .withColumn("otherStaysOnAdmission",
                    F.array_distinct(
                        F.filter(F.col("otherStays"),
