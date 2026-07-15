@@ -331,13 +331,28 @@ def get_otherStays(cmsDFS, persistFlag=False, persistLocation=StorageLevel.MEMOR
 
 def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysDF=None):
     '''Adds admissionSource and thruDestination to staysDF by checking, per stay,
-    whether the beneficiary has any OTHER stay whose days cover ADMSN_DT_DAY (source)
-    or THRU_DT_DAY (destination).
+    whether the beneficiary has any OTHER stay whose days cover the stay's source
+    window or its destination window.
+
+    The rule depends on claimType:
+      * ip (and any type with a real admission date): source = the single day ADMSN_DT_DAY, destination =
+        the single day THRU_DT_DAY. An other stay counts when its losDays contains that day. This is the
+        original behavior.
+      * op: a visit is a single day (its through date, THRU_DT_DAY) with no admission date. An other stay
+        counts as the source only if its losDays contains BOTH THRU_DT_DAY - 1 AND THRU_DT_DAY -- i.e. it
+        spans continuously from the day before into the ED day, so the patient was in that setting right up
+        to the visit. Symmetrically it counts as the destination only if its losDays contains BOTH
+        THRU_DT_DAY AND THRU_DT_DAY + 1 -- it covers the ED day and continues past it. A stay that merely
+        ends the day before (lacks THRU_DT_DAY) or merely begins the day after (lacks THRU_DT_DAY) is NOT
+        counted. Because the two conditions look in opposite directions, admissionSource and thruDestination
+        can differ for op. op stays need no ADMSN_DT_DAY column.
 
     The per-beneficiary index of those other stays comes from get_otherStays (see there for how it is
     built). The current stay is then excluded by comparing otherStayKey against the current row's
     stay-key struct -- without this, every stay would trivially "overlap itself" and
-    admissionSource/thruDestination could never be "home" for the row's own claim type.
+    admissionSource/thruDestination could never be "home" for the row's own claim type. (op is not in
+    the index, so an op staysDF never self-collides; the exclusion still matters when staysDF is one of
+    the indexed types.)
 
     Resolution priority when multiple settings overlap a day (see
     _SOURCE_DEST_PRIORITY):
@@ -345,12 +360,12 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
     falling back to "home" when nothing overlaps.
 
     Assumes:
-      * staysDF is at stay granularity (post get_unique_stays) and has DSYSRTKY,
-        PROVIDER, ORGNPINM, ADMSN_DT_DAY, THRU_DT_DAY.
+      * staysDF is at stay granularity (post get_unique_stays) and has DSYSRTKY, PROVIDER, ORGNPINM,
+        THRU_DT_DAY, and -- for ip -- ADMSN_DT_DAY.
       * Every source DF in cmsDFS has losDays (baseF.add_losDays).
       * cmsDFS["ipBase"] has the rehabilitation and ltcHospital flags.
       * claimType selects the stay key used to identify staysDF rows (and therefore
-        the self-exclusion key). Defaults to "ip".
+        the self-exclusion key) and the admission-day column. Defaults to "ip".
       * otherStaysDF (optional) is a prebuilt index from get_otherStays. Pass it when
         this function is called more than once in a project, so the index -- an
         aggregation over the whole ip/snf/hha/hospice base -- is built once instead of
@@ -358,19 +373,17 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
         the previous behavior; cmsDFS is then the only source of the index and is
         otherwise unused.
 
-    Limitation: day-level overlap is symmetric -- a prior stay that ends on the
+    Limitation: for ip, day-level overlap is symmetric -- a prior stay that ends on the
     current admission day and a concurrent stay that starts on it are not
-    distinguishable here.
+    distinguishable here. op sidesteps this by widening each side toward its own edge.
 
     Note on the get_unique_stays dedup: admissionSource/thruDestination are added here,
     AFTER the dedup, and propagate_stay_info would skip them anyway (it only max()es
     numeric columns, and these are strings). That is fine for ip: the source lookup is
     keyed on ADMSN_DT_DAY, which is the ip stay partition key, so every claim of the stay
     would resolve the same admissionSource and the surviving row's value is the stay's
-    value. Same for thruDestination on op, keyed on THRU_DT_DAY. The one case that is not
-    stay-invariant is admissionSource for op stays (partitioned on THRU_DT_DAY): if the op
-    claims of one visit disagree on ADMSN_DT_DAY, the value comes from whichever claim won
-    the dedup.'''
+    value. For op the windows are keyed on THRU_DT_DAY, the op stay partition key, so the
+    same holds.'''
     otherStaysDF = get_otherStays(cmsDFS) if otherStaysDF is None else otherStaysDF
 
     keys = _stay_keys(claimType)
@@ -380,20 +393,30 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
                                 F.col(keys[3]).alias("stayDay"))
     not_self = lambda x: x.otherStayKey != current_stay_key
 
+    #the source (admission) and destination (through) conditions on another stay's losDays. op has no
+    #admission date and is a single-day visit, so a stay qualifies only if it spans continuously across the
+    #boundary -- both the day before and the ED day for a source, both the ED day and the day after for a
+    #destination (see docstring). everything else tests its single real admission/through day.
+    if claimType == "op":
+        thru = F.col("THRU_DT_DAY")
+        onAdmission = lambda x: F.array_contains(x.losDays, thru - 1) & F.array_contains(x.losDays, thru)
+        onThru      = lambda x: F.array_contains(x.losDays, thru) & F.array_contains(x.losDays, thru + 1)
+    else:
+        onAdmission = lambda x: F.array_contains(x.losDays, F.col("ADMSN_DT_DAY"))
+        onThru      = lambda x: F.array_contains(x.losDays, F.col("THRU_DT_DAY"))
+
     staysDF = (staysDF
                .join(otherStaysDF, on="DSYSRTKY", how="left_outer")
                .withColumn("otherStaysOnAdmission",
                    F.array_distinct(
                        F.filter(F.col("otherStays"),
-                                lambda x: not_self(x) &
-                                          F.array_contains(x.losDays, F.col("ADMSN_DT_DAY")))
+                                lambda x: not_self(x) & onAdmission(x))
                         .getField("claimType")))
                .withColumn("admissionSource", _resolve_setting("otherStaysOnAdmission"))
                .withColumn("otherStaysOnThru",
                    F.array_distinct(
                        F.filter(F.col("otherStays"),
-                                lambda x: not_self(x) &
-                                          F.array_contains(x.losDays, F.col("THRU_DT_DAY")))
+                                lambda x: not_self(x) & onThru(x))
                         .getField("claimType")))
                .withColumn("thruDestination", _resolve_setting("otherStaysOnThru")))
     return staysDF
