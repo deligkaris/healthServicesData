@@ -44,7 +44,7 @@ def get_clean_transfers(transfersDF):
     transfersDF = remove_uncertain_transfers(transfersDF)
     return transfersDF
 
-def get_transfers(fromClaimsDF, toClaimsDF):
+def get_transfers(*, fromClaimsDF, toClaimsDF):
     '''Takes two dataframes, one that represents stays in the from provider and another one that represents stays in the to provider.
     Merges the two dataframes to create transfers from the from provider to the to provider.'''
     # rename the dataframe columns because pandas cannot handle two columns with the same name, just in case pd is used in analysis 
