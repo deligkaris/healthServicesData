@@ -1713,6 +1713,30 @@ def _snf_staysDF_from(spark, snf_rows):
     return get_unique_stays(_prep_snfBase(spark, snf_rows), claimType="snf")
 
 
+def _op_src_dest_row(claimno, *, dsysrtky, orgnpinm, thru_dt, provider=_NON_REHAB_CCN):
+    """opBase-shaped row. op has no admission date (the opBase schema has no
+    ADMSN_DT), so an op visit is a single day: its through date."""
+    return {
+        "DSYSRTKY": dsysrtky, "CLAIMNO": claimno, "ORGNPINM": orgnpinm,
+        "PROVIDER": provider, "THRU_DT": thru_dt,
+    }
+
+
+def _prep_opBase(spark, rows):
+    """Build opBase upstream chain: no add_admission_date_info / add_losDays
+    (op gets neither in add_preliminary_info), so THRU_DT_DAY is the only day."""
+    from cms.utilities import add_through_date_info
+    df = make_real_claim_df(spark, "opBase", rows)
+    df = add_through_date_info(df)
+    return df
+
+
+def _op_staysDF_from(spark, op_rows):
+    """OP-cohort staysDF: prep opBase + collapse via get_unique_stays(op)."""
+    from cms.stays import get_unique_stays
+    return get_unique_stays(_prep_opBase(spark, op_rows), claimType="op")
+
+
 # ============================================================
 # End-to-end tests for add_source_and_destination_info
 # ============================================================
@@ -2086,3 +2110,132 @@ class TestAddSourceAndDestinationInfo:
         out = add_source_and_destination_info(staysDF, cmsDFS).collect()
         assert out[0]["admissionSource"] == "ipOther"
         assert len(out[0]["otherStaysOnAdmission"]) == 1
+
+    # ---- K. op claimType: single-day visit, +/-1 day AND windows ----
+    #
+    # An op ED visit is a single day (its through date, D). With claimType="op":
+    #   source  (admissionSource): an other stay counts iff its losDays spans BOTH D-1 and D
+    #   dest    (thruDestination): an other stay counts iff its losDays spans BOTH D and D+1
+    # These dates are consecutive calendar days, which map to consecutive THRU_DT_DAY
+    # indices, so 20200114 / 20200115 / 20200116 are D-1 / D / D+1. op is never in the
+    # otherStays index, so self-exclusion is moot; the op stay is only ever the probe.
+
+    def test_op_admission_source_snf(self, spark):
+        # SNF spanning 20200110-20200115 covers both D-1 and D -> source=snf.
+        # It does NOT cover D+1, so it is not a destination -> home.
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200110, thru_dt=20200115)
+        staysDF = _op_staysDF_from(spark, [op])
+        cmsDFS = _build_cmsDFS(spark, snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="op").collect()
+        assert len(out) == 1
+        assert out[0]["admissionSource"] == "snf"
+        assert out[0]["thruDestination"] == "home"
+
+    def test_op_source_excludes_stay_ending_day_before(self, spark):
+        # SNF ending on D-1 (20200114) covers D-1 but not D, so it fails the
+        # "both D-1 AND D" source rule -> home. This is the key difference from
+        # a plain overlap: a stay the patient left the day before is not a source.
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200110, thru_dt=20200114)
+        staysDF = _op_staysDF_from(spark, [op])
+        cmsDFS = _build_cmsDFS(spark, snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["admissionSource"] == "home"
+        assert out[0]["thruDestination"] == "home"
+
+    def test_op_thru_destination_snf(self, spark):
+        # SNF spanning 20200115-20200120 covers both D and D+1 -> dest=snf.
+        # It does NOT cover D-1, so it is not a source -> home.
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200115, thru_dt=20200120)
+        staysDF = _op_staysDF_from(spark, [op])
+        cmsDFS = _build_cmsDFS(spark, snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["thruDestination"] == "snf"
+        assert out[0]["admissionSource"] == "home"
+
+    def test_op_destination_excludes_stay_admitting_day_after(self, spark):
+        # An ip stay admitting on D+1 (20200116) covers D+1 but not D, so it
+        # fails the "both D AND D+1" destination rule -> home. Mirror of the
+        # source boundary exclusion.
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        ip = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                              admsn_dt=20200116, thru_dt=20200120)
+        staysDF = _op_staysDF_from(spark, [op])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[ip])
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["thruDestination"] == "home"
+        assert out[0]["admissionSource"] == "home"
+
+    def test_op_source_and_destination_differ(self, spark):
+        # The two windows look in opposite directions, so they can resolve to
+        # different settings: a SNF the patient came from (spans into D) and an
+        # ip stay the patient went to (spans out of D).
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200110, thru_dt=20200115)   # D-1 and D
+        ip = _ip_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                              admsn_dt=20200115, thru_dt=20200118)      # D and D+1
+        staysDF = _op_staysDF_from(spark, [op])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[ip], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["admissionSource"] == "snf"
+        assert out[0]["thruDestination"] == "ipOther"
+
+    def test_op_stay_spanning_both_boundaries_is_source_and_destination(self, spark):
+        # A hospice stay spanning 20200110-20200120 covers D-1, D, and D+1, so
+        # it satisfies both windows -> source=hosp AND dest=hosp.
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        hosp = _hosp_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                  hspcstrt=20200110, thru_dt=20200120)
+        staysDF = _op_staysDF_from(spark, [op])
+        cmsDFS = _build_cmsDFS(spark, hosp_rows=[hosp])
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["admissionSource"] == "hosp"
+        assert out[0]["thruDestination"] == "hosp"
+
+    def test_op_no_overlap_returns_home(self, spark):
+        # A beneficiary with a stay nowhere near the ED day -> home on both.
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200201, thru_dt=20200205)
+        staysDF = _op_staysDF_from(spark, [op])
+        cmsDFS = _build_cmsDFS(spark, snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["admissionSource"] == "home"
+        assert out[0]["thruDestination"] == "home"
+
+    def test_op_destination_priority_hosp_over_ipOther(self, spark):
+        # Two settings both satisfy the destination window {D, D+1}: an ipOther
+        # stay and a hospice stay. _SOURCE_DEST_PRIORITY puts hosp above ipOther,
+        # so dest=hosp. Neither covers D-1, so source=home.
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        ip = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                              admsn_dt=20200115, thru_dt=20200116)      # D and D+1
+        hosp = _hosp_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                  hspcstrt=20200115, thru_dt=20200117)  # D and D+1
+        staysDF = _op_staysDF_from(spark, [op])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[ip], hosp_rows=[hosp])
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["thruDestination"] == "hosp"
+        assert out[0]["admissionSource"] == "home"
