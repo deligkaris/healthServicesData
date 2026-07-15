@@ -44,13 +44,13 @@ def get_clean_transfers(transfersDF):
     transfersDF = remove_uncertain_transfers(transfersDF)
     return transfersDF
 
-def get_transfers(*, fromClaimsDF, toClaimsDF):
+def get_transfers(*, fromStaysDf, toStaysDf):
     '''Takes two dataframes, one that represents stays in the from provider and another one that represents stays in the to provider.
     Merges the two dataframes to create transfers from the from provider to the to provider.'''
-    # rename the dataframe columns because pandas cannot handle two columns with the same name, just in case pd is used in analysis 
-    toClaimsDF = toClaimsDF.toDF(*("to"+c for c in toClaimsDF.columns))
-    fromClaimsDF = fromClaimsDF.toDF(*("from"+c for c in fromClaimsDF.columns))
-    transfersDF = fromClaimsDF.join(toClaimsDF,    
+    # rename the dataframe columns because pandas cannot handle two columns with the same name, just in case pd is used in analysis
+    toStaysDf = toStaysDf.toDF(*("to"+c for c in toStaysDf.columns))
+    fromStaysDf = fromStaysDf.toDF(*("from"+c for c in fromStaysDf.columns))
+    transfersDF = fromStaysDf.join(toStaysDf,
                              on = [(F.col("fromDSYSRTKY")==F.col("toDSYSRTKY")) &
                                    (F.col("fromTHRU_DT_DAY")<=F.col("toADMSN_DT_DAY")) &
                                    (F.col("fromTHRU_DT_DAY")>=F.col("toADMSN_DT_DAY")-1) &

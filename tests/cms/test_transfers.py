@@ -2190,7 +2190,7 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115, ed=1)])
         to_df = self._to_df(spark, [_stay(1, 21, 20200115, 20200120, ct=1, mri=1)])
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         row = result[0]
         assert row["fromDSYSRTKY"] == 1
@@ -2206,7 +2206,7 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [_stay(1, 21, 20200116, 20200120)])
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         assert result[0]["toCLAIMNO"] == 21
 
@@ -2215,14 +2215,14 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [_stay(1, 21, 20200117, 20200120)])
-        assert get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
 
     def test_different_beneficiaries_do_not_transfer(self, spark):
         # The join requires fromDSYSRTKY == toDSYSRTKY.
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [_stay(2, 21, 20200115, 20200120)])
-        assert get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
 
     def test_same_provider_on_both_sides_yields_no_transfers(self, spark):
         # If both stays DFs are at the same provider, the fromORGNPINM!=toORGNPINM
@@ -2233,7 +2233,7 @@ class TestGetTransfersFromSingleProviderStays:
             spark, [_stay(1, 21, 20200115, 20200120)],
             orgnpinm=self.FROM_NPI,  # both sides at provider 100
         )
-        assert get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
 
     def test_multiple_candidate_to_stays_keeps_closest(self, spark):
         # Beneficiary 1 discharges from A on 2020-01-15; two candidate stays
@@ -2245,7 +2245,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(1, 21, 20200115, 20200120),  # earlier admission - kept
             _stay(1, 22, 20200116, 20200121),  # later admission   - dropped
         ])
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         assert result[0]["toCLAIMNO"] == 21
 
@@ -2259,7 +2259,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(1, 12, 20200111, 20200115),  # latest discharge
         ])
         to_df = self._to_df(spark, [_stay(1, 21, 20200115, 20200120)])
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         # After get_closest_from_claim, fromCLAIMNO=12 is the closest; the
         # f1->t1 row survives because each side now has a unique partner.
         assert len(result) == 1
@@ -2277,7 +2277,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(1, 21, 20200115, 20200120),
             _stay(1, 22, 20200215, 20200220),
         ])
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         by_claim = {r["fromCLAIMNO"]: r["firstTransfer"] for r in result}
         assert by_claim == {11: 1, 12: 0}
 
@@ -2295,7 +2295,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(2, 22, 20200215, 20200220),
             _stay(3, 23, 20200315, 20200320),
         ])
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 3
         for r in result:
             assert r["nodeOutVol"] == 3
@@ -2312,7 +2312,7 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [_stay(1, 21, 20200115, 20200120)])
-        row = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()[0]
+        row = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()[0]
         # Same system flag: FROM_SYS=7, TO_SYS=8 -> not same system
         assert row["dyadVi"] == 0
         # Counties differ (01001 vs 01003)
@@ -2330,7 +2330,7 @@ class TestGetTransfersFromSingleProviderStays:
             fips=self.FROM_FIPS,
             state=self.FROM_STATE,
         )
-        row = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()[0]
+        row = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()[0]
         assert row["dyadVi"] == 1
         assert row["dyadAcrossCounties"] == 0
         assert row["dyadAcrossStates"] == 0
@@ -2349,7 +2349,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(2, 22, 20210115, 20210120),
             _stay(3, 23, 20210215, 20210220),
         ])
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         by_year = {r["fromTHRU_DT_YEAR"]: r for r in result}
         assert by_year[2020]["nodeOutVol"] == 1
         assert by_year[2020]["dyadTransferVol"] == 1
@@ -2364,13 +2364,13 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [])
-        assert get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
 
     def test_empty_from_dataframe_yields_no_transfers(self, spark):
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [])
         to_df = self._to_df(spark, [_stay(1, 21, 20200115, 20200120)])
-        assert get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
 
     def test_multi_year_multi_destination_hhi_and_prior_end_to_end(self, spark):
         # Full real-schema pipeline (raw ipBase -> get_transfers -> add_node_and_dyad_info)
@@ -2397,7 +2397,7 @@ class TestGetTransfersFromSingleProviderStays:
         ], orgnpinm=C_NPI)
         to_df = to_b.unionByName(to_c)
 
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         # one transfer per beneficiary
         assert len(result) == 4
 
@@ -2897,7 +2897,7 @@ class TestEndToEndBaseToTransfersPipeline:
             base_rows=[_ip_base_row(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromed"] == 1
@@ -2934,7 +2934,7 @@ class TestEndToEndBaseToTransfersPipeline:
             base_rows=[_ip_base_row(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # the FINAL (max THRU_DT_DAY) row
@@ -2987,7 +2987,7 @@ class TestEndToEndBaseToTransfersPipeline:
         )
         to_df = to_b.unionByName(to_c)
 
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 4
         for r in result:
             assert r["nodeOutVol"] == 4
@@ -3030,7 +3030,7 @@ class TestEndToEndBaseToTransfersPipeline:
             base_rows=[_ip_base_row(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
@@ -3170,7 +3170,7 @@ class TestSepticShockPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromsepticShock"] == 1
@@ -3213,7 +3213,7 @@ class TestSepticShockPipeline:
                 _ip_rev_row(3, 23, 20200320),
             ],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 3
         for r in result:
             assert r["fromproviderSepticShockAnnualVolume"] == 2
@@ -3250,7 +3250,7 @@ class TestSepticShockPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         # Final row survived the dedup (max THRU_DT_DAY).
@@ -3321,7 +3321,7 @@ class TestIshStrokePipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromishStrokeDgns"] == 1
@@ -3346,7 +3346,7 @@ class TestIshStrokePipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromishStrokeDgns"] == 0
@@ -3383,7 +3383,7 @@ class TestIshStrokePipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
@@ -3465,7 +3465,7 @@ class TestTpaPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromtpaPrcdr"] == 1
@@ -3489,7 +3489,7 @@ class TestTpaPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromtpaPrcdr"] == 0
@@ -3523,7 +3523,7 @@ class TestTpaPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
@@ -3610,7 +3610,7 @@ class TestEvtPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromevtPrcdr"] == 1
@@ -3634,7 +3634,7 @@ class TestEvtPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromevtDrg"] == 1
@@ -3668,7 +3668,7 @@ class TestEvtPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromClaimsDF=from_df, toClaimsDF=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
