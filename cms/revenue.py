@@ -93,36 +93,15 @@ def add_echo(revenueDF, inClaim=False):
 def filter_claims(revenueDF, baseDF):
     '''Keeps only the revenue lines whose claim is present in baseDF.
 
-    Whether this pays for itself depends entirely on how selective baseDF is and on the join strategy:
-      * Against a barely-filtered base (as in cms.utilities.filter_FFS, where nearly every revenue line
-        belongs to some claim in the base) it eliminates almost nothing and only adds work -- this is why
-        the note used to say it "creates significantly more work".
-      * Against a base already cut down to the claims a project actually uses (a diagnosis/provider-type
-        filter, say), it drops most revenue lines before they are ever aggregated, which shrinks the
-        aggregation shuffle, the summary that gets persisted, and the base-to-summary join downstream.
-    The join must be a broadcast hash join to win: a sort-merge join would sort every revenue line in the
-    file, which is the very cost get_revenue_summary avoids. The key set is 3 ints per claim, so the base
-    is wrapped in F.broadcast() here rather than left to Catalyst, whose default 10MB
-    autoBroadcastJoinThreshold the key set easily exceeds. See can_broadcast_claims for when the key set is
-    too large for that to be safe.'''
+    Worth doing against a base already cut down to the claims a project actually uses (a diagnosis/provider-type
+    filter, say): it drops most revenue lines before they are ever aggregated, which shrinks the aggregation
+    shuffle, the summary that gets persisted, and the base-to-summary join downstream. Against a barely-filtered
+    base it eliminates almost nothing and only adds work.'''
     #CLAIMNO resets every year, so I need CLAIMNO, DSYSRTKY and THRU_DT to uniquely link base and revenue files
-    revenueDF = revenueDF.join(F.broadcast(baseDF.select(F.col("CLAIMNO"),F.col("DSYSRTKY"),F.col("THRU_DT"))),
+    revenueDF = revenueDF.join(baseDF.select(F.col("CLAIMNO"),F.col("DSYSRTKY"),F.col("THRU_DT")),
                                on=["CLAIMNO","DSYSRTKY","THRU_DT"],
                                how="left_semi")
     return revenueDF
-
-#a claim key is 3 ints plus row overhead, so ~20M claims is O(100s of MB) collected on the driver
-maxBroadcastClaims = 20_000_000
-
-def can_broadcast_claims(baseDF, maxClaims=maxBroadcastClaims):
-    '''Whether baseDF's claims are few enough to broadcast, i.e. whether filter_claims is safe to use.
-
-    Checked by count() up front rather than by catching a failure later: the broadcast happens at whatever
-    action the caller eventually runs, so a caller cannot catch it inside get_revenue_info anyway, and the
-    worst failure -- the driver running out of memory while collecting the key set -- kills the jvm and is
-    not catchable at all. The count is cheap when baseDF is persisted, which it usually is (it is the base
-    the project has already filtered down and is about to use).'''
-    return baseDF.count() <= maxClaims
 
 def get_revenue_summary(revenueDF):
     '''Collapses the revenue lines to one row per claim, keyed on DSYSRTKY/CLAIMNO/THRU_DT (CLAIMNO resets
@@ -151,24 +130,11 @@ def add_revenue_info(revenueDF, inClaim=True):
     revenueDF = add_icu(revenueDF, inClaim=inClaim)
     return revenueDF
 
-def get_revenue_info(revenueDF, inClaim=True, baseDF=None, maxClaims=maxBroadcastClaims):
+def get_revenue_info(revenueDF, inClaim=True):
     '''inClaim = True will cause the claim summary to be returned, which is what I need almost always...
 
-    baseDF (optional): restrict the revenue lines to the claims of baseDF before the flags are aggregated,
-    see filter_claims. Pass it when the project only ever joins the summary back to a subset of the claims
-    -- the lines of every other claim are then summarized for nothing. Leave it None to summarize the whole
-    revenue file (the previous behavior).
-
-    The restriction is only worth doing as a broadcast hash join, so it is skipped -- and the whole revenue
-    file summarized, as if baseDF had not been passed -- when baseDF has more than maxClaims claims to
-    broadcast (see can_broadcast_claims). Skipping is the right fallback: a non-broadcast restriction would
-    be a sort-merge join, which sorts every revenue line in the file and costs more than the restriction
-    saves. Lower maxClaims for a small driver.'''
-    if baseDF is not None:
-        if can_broadcast_claims(baseDF, maxClaims=maxClaims):
-            revenueDF = filter_claims(revenueDF, baseDF)
-        else:
-            print("Note: too many claims in baseDF to broadcast, summarizing the whole revenue file instead...")
+    Summarizes every revenue line. To restrict the lines to a subset of claims first, filter the revenue
+    file with filter_claims before calling this.'''
     #the summary aggregates the per-line flags to the claim itself, so the xInClaim windows are not computed for it
     revenueDF = add_revenue_info(revenueDF, inClaim=False)
     if inClaim:
