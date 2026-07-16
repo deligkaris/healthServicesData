@@ -217,6 +217,25 @@ def get_stays(baseDF, summaryDF, claimType="op", opBase=None, opRevenue=None):
     staysDF = get_unique_stays(claimsDF, claimType=claimType)
     return staysDF
 
+def get_admittedStays(staysDF, transfersDF):
+    '''Returns staysDF (inpatient) with the transferred-in admissions removed -- the directly-admitted
+    patients, i.e. the ip stays that were NOT the receiving (to) side of any transfer. This is the
+    population add_providerAnnualStays should count so that providerAnnualStays is disjoint from the
+    transfers, which transfersF.add_providerAnnualStays_info / add_nodeProportionTransferred* assume.
+
+    Removal is a left_anti join on the ip stay identity (DSYSRTKY, ORGNPINM, ADMSN_DT_DAY) against the
+    to-prefixed columns of transfersDF (get_transfers prefixes every to-stays column with "to"). For
+    an outpatient->inpatient transfer only the to (receiving) stay is an inpatient admission, so only
+    the to side is matched -- the from side is an op visit with no admission date and is not part of
+    an inpatient stays df. A stay is dropped iff its (DSYSRTKY, ORGNPINM, ADMSN_DT_DAY) equals the
+    receiving admission of some transfer.'''
+    transferStays = transfersDF.select(
+        F.col("toDSYSRTKY").alias("DSYSRTKY"),
+        F.col("toORGNPINM").alias("ORGNPINM"),
+        F.col("toADMSN_DT_DAY").alias("ADMSN_DT_DAY")).distinct()
+    staysDF = staysDF.join(transferStays, on=["DSYSRTKY", "ORGNPINM", "ADMSN_DT_DAY"], how="left_anti")
+    return staysDF
+
 def add_onDayOfFirstStay(staysDF):
     '''Finds the first admission date for each beneficiary in the dataframe.'''
     eachDsysrtky = Window.partitionBy("DSYSRTKY")

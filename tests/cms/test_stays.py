@@ -1,6 +1,6 @@
 import pytest
 import pyspark.sql.functions as F
-from pyspark.sql.types import StructType, StructField, IntegerType
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType
 
 
 # ============================================================
@@ -2334,3 +2334,100 @@ class TestAddSourceAndDestinationInfo:
                                               claimType="op").collect()
         assert out[0]["thruDestination"] == "hosp"
         assert out[0]["admissionSource"] == "home"
+
+
+# ============================================================
+# Tests for get_admittedStays -- left_anti drop of the transferred-in (to)
+# admissions from an inpatient stays df, keyed on (DSYSRTKY, ORGNPINM, ADMSN_DT_DAY).
+# ============================================================
+
+def _admitted_stays_schema():
+    return StructType([
+        StructField("DSYSRTKY",     IntegerType(), True),
+        StructField("ORGNPINM",     IntegerType(), True),
+        StructField("ADMSN_DT_DAY", IntegerType(), True),
+        StructField("tag",          StringType(),  True),  # row marker, must survive
+    ])
+
+
+def make_admitted_stays_df(spark, rows):
+    """rows: list of (DSYSRTKY, ORGNPINM, ADMSN_DT_DAY, tag)."""
+    cols = ["DSYSRTKY", "ORGNPINM", "ADMSN_DT_DAY", "tag"]
+    return spark.createDataFrame([dict(zip(cols, r)) for r in rows], schema=_admitted_stays_schema())
+
+
+def _to_transfers_schema():
+    # Only the to-prefixed identity columns get_admittedStays reads; extras are ignored.
+    return StructType([
+        StructField("toDSYSRTKY",       IntegerType(), True),
+        StructField("toORGNPINM",       IntegerType(), True),
+        StructField("toADMSN_DT_DAY",   IntegerType(), True),
+        StructField("fromDSYSRTKY",     IntegerType(), True),
+        StructField("fromORGNPINM",     IntegerType(), True),
+        StructField("fromADMSN_DT_DAY", IntegerType(), True),
+    ])
+
+
+def make_to_transfers_df(spark, rows):
+    """rows: list of (toDSYSRTKY, toORGNPINM, toADMSN_DT_DAY, fromDSYSRTKY, fromORGNPINM, fromADMSN_DT_DAY)."""
+    cols = ["toDSYSRTKY", "toORGNPINM", "toADMSN_DT_DAY",
+            "fromDSYSRTKY", "fromORGNPINM", "fromADMSN_DT_DAY"]
+    return spark.createDataFrame([dict(zip(cols, r)) for r in rows], schema=_to_transfers_schema())
+
+
+class TestGetAdmittedStays:
+
+    def _tags(self, df):
+        return {r["tag"] for r in df.collect()}
+
+    def test_removes_matching_to_admission(self, spark):
+        from cms.stays import get_admittedStays
+        stays = make_admitted_stays_df(spark, [
+            (1, 100, 50, "keep"),         # direct admission
+            (2, 100, 60, "transferIn"),   # arrived by transfer -> dropped
+        ])
+        transfers = make_to_transfers_df(spark, [(2, 100, 60, 9, 200, 55)])
+        assert self._tags(get_admittedStays(stays, transfers)) == {"keep"}
+
+    def test_all_three_keys_must_match(self, spark):
+        from cms.stays import get_admittedStays
+        # Each of these differs from the transfer's to-key in exactly one field -> none dropped.
+        stays = make_admitted_stays_df(spark, [
+            (2, 100, 60, "exact"),        # will match and drop
+            (2, 100, 61, "otherDay"),     # different ADMSN_DT_DAY
+            (2, 101, 60, "otherOrg"),     # different ORGNPINM
+            (3, 100, 60, "otherBene"),    # different DSYSRTKY
+        ])
+        transfers = make_to_transfers_df(spark, [(2, 100, 60, 9, 200, 55)])
+        assert self._tags(get_admittedStays(stays, transfers)) == {"otherDay", "otherOrg", "otherBene"}
+
+    def test_from_side_is_ignored(self, spark):
+        from cms.stays import get_admittedStays
+        # A stay matching only the FROM (op) side of the transfer must NOT be dropped.
+        stays = make_admitted_stays_df(spark, [(9, 200, 55, "matchesFromOnly")])
+        transfers = make_to_transfers_df(spark, [(2, 100, 60, 9, 200, 55)])
+        assert self._tags(get_admittedStays(stays, transfers)) == {"matchesFromOnly"}
+
+    def test_no_transfers_keeps_everything(self, spark):
+        from cms.stays import get_admittedStays
+        stays = make_admitted_stays_df(spark, [(1, 100, 50, "a"), (2, 100, 60, "b")])
+        transfers = make_to_transfers_df(spark, [])
+        assert self._tags(get_admittedStays(stays, transfers)) == {"a", "b"}
+
+    def test_duplicate_transfer_rows_drop_once(self, spark):
+        from cms.stays import get_admittedStays
+        # The same to-admission appearing on multiple transfer rows still drops the one stay
+        # and leaves the rest intact (distinct() + left_anti).
+        stays = make_admitted_stays_df(spark, [(2, 100, 60, "drop"), (1, 100, 50, "keep")])
+        transfers = make_to_transfers_df(spark, [
+            (2, 100, 60, 9, 200, 55),
+            (2, 100, 60, 8, 300, 58),
+        ])
+        assert self._tags(get_admittedStays(stays, transfers)) == {"keep"}
+
+    def test_input_columns_preserved(self, spark):
+        from cms.stays import get_admittedStays
+        stays = make_admitted_stays_df(spark, [(1, 100, 50, "keep")])
+        transfers = make_to_transfers_df(spark, [(2, 100, 60, 9, 200, 55)])
+        out = get_admittedStays(stays, transfers)
+        assert set(out.columns) == {"DSYSRTKY", "ORGNPINM", "ADMSN_DT_DAY", "tag"}
