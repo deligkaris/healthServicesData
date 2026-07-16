@@ -144,6 +144,48 @@ def add_providerAnnualStays_info(transfersDF, providerYearsDF):
                    .fillna(0, subset=["fromproviderAnnualStays", "toproviderAnnualStays"]))
     return transfersDF
 
+def add_nodeProportionTransferredOut(transfersDF):
+    '''For each sending provider and year, the fraction of that provider's patients who were
+    transferred out: nodeOutVol / (fromproviderAnnualStays + nodeOutVol). The denominator is the
+    provider's total patients that year -- those it admitted/kept (fromproviderAnnualStays) plus those
+    it transferred out (nodeOutVol) -- so a transferred patient counts in the numerator and once in
+    the denominator, never in fromproviderAnnualStays.
+
+    Requires nodeOutVol (add_node_volume_info) and fromproviderAnnualStays
+    (add_providerAnnualStays_info, which 0-fills it). Both are non-null and constant within
+    (fromORGNPINM, fromTHRU_DT_YEAR) -- nodeOutVol is a count >= 1 on every transfer row and
+    fromproviderAnnualStays is 0-filled -- so the denominator is always >= 1 and no divide-by-zero
+    guard is needed. The result is likewise per-(fromORGNPINM, fromTHRU_DT_YEAR), range (0, 1]:
+    > 0 because every such row has >= 1 transfer out, and exactly 1 when the provider admitted no one
+    (fromproviderAnnualStays == 0, the "transferred everyone out" case).
+
+    Assumes fromproviderAnnualStays is disjoint from the transferred-out stays (see
+    add_providerAnnualStays_info); if it already includes them they are double-counted below.'''
+    transfersDF = transfersDF.withColumn(
+        "nodeProportionTransferredOut",
+        F.col("nodeOutVol") / (F.col("fromproviderAnnualStays") + F.col("nodeOutVol")))
+    return transfersDF
+
+def add_nodeProportionTransferredIn(transfersDF):
+    '''For each receiving provider and year, the fraction of that provider's patients who arrived by
+    transfer: nodeInVol / (toproviderAnnualStays + nodeInVol). The to-side mirror of
+    add_nodeProportionTransferredOut.
+
+    Requires nodeInVol (add_node_volume_info) and toproviderAnnualStays
+    (add_providerAnnualStays_info, which 0-fills it). Both are non-null and constant within
+    (toORGNPINM, fromTHRU_DT_YEAR) -- nodeInVol is a count >= 1 on every transfer row and
+    toproviderAnnualStays is 0-filled -- so the denominator is always >= 1 and no guard is needed.
+    Result per-(toORGNPINM, fromTHRU_DT_YEAR), range (0, 1]: exactly 1 when the provider admitted no
+    one directly (toproviderAnnualStays == 0, every patient arrived by transfer).
+
+    Assumes toproviderAnnualStays is disjoint from the transferred-in stays (see
+    add_providerAnnualStays_info); if it already includes those receiving admissions they are
+    double-counted below -- use nodeInVol / toproviderAnnualStays instead in that case.'''
+    transfersDF = transfersDF.withColumn(
+        "nodeProportionTransferredIn",
+        F.col("nodeInVol") / (F.col("toproviderAnnualStays") + F.col("nodeInVol")))
+    return transfersDF
+
 def add_prior_hospitalization_info(transfersDF, ipBaseDF):
     '''Adds columns about prior hospitalizations for each transfer patient.
     baseF.add_prior_hospitalization_info reads its keys by canonical (un-prefixed) name, so we rename only

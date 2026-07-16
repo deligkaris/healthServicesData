@@ -3955,3 +3955,112 @@ class TestAddProviderAnnualStaysInfo:
         by_row = {r["rowId"]: r for r in add_providerAnnualStays_info(transfers, providerYears).collect()}
         assert by_row["t1"]["fromproviderAnnualStays"] == 5 and by_row["t1"]["toproviderAnnualStays"] == 9
         assert by_row["t2"]["fromproviderAnnualStays"] == 7 and by_row["t2"]["toproviderAnnualStays"] == 2
+
+
+# ============================================================
+# Tests for add_nodeProportionTransferredOut / add_nodeProportionTransferredIn --
+# plain (guardless) proportions over admitted + transferred. The stays universe is
+# disjoint from the transfers, so annualStays never includes the transferred patients
+# and the denominator is admissions + transfers (add). Both denominators are >= 1 by
+# construction (count >= 1 on a transfer row, annualStays 0-filled).
+# ============================================================
+
+def _prop_out_schema():
+    return StructType([
+        StructField("rowId",                   StringType(),  True),
+        StructField("nodeOutVol",              IntegerType(), True),
+        StructField("fromproviderAnnualStays", IntegerType(), True),
+    ])
+
+
+def make_prop_out_df(spark, rows):
+    """rows: list of (rowId, nodeOutVol, fromproviderAnnualStays)."""
+    cols = ["rowId", "nodeOutVol", "fromproviderAnnualStays"]
+    return spark.createDataFrame([dict(zip(cols, r)) for r in rows], schema=_prop_out_schema())
+
+
+def _prop_in_schema():
+    return StructType([
+        StructField("rowId",                 StringType(),  True),
+        StructField("nodeInVol",             IntegerType(), True),
+        StructField("toproviderAnnualStays", IntegerType(), True),
+    ])
+
+
+def make_prop_in_df(spark, rows):
+    """rows: list of (rowId, nodeInVol, toproviderAnnualStays)."""
+    cols = ["rowId", "nodeInVol", "toproviderAnnualStays"]
+    return spark.createDataFrame([dict(zip(cols, r)) for r in rows], schema=_prop_in_schema())
+
+
+class TestAddNodeProportionTransferredOut:
+
+    def test_column_added(self, spark):
+        from cms.transfers import add_nodeProportionTransferredOut
+        out = add_nodeProportionTransferredOut(make_prop_out_df(spark, [("r", 3, 7)]))
+        assert "nodeProportionTransferredOut" in out.columns
+
+    def test_basic_ratio(self, spark):
+        # 3 transferred out of 3 + 7 admitted = 10 -> 0.3
+        from cms.transfers import add_nodeProportionTransferredOut
+        r = add_nodeProportionTransferredOut(make_prop_out_df(spark, [("r", 3, 7)])).collect()[0]
+        assert r["nodeProportionTransferredOut"] == pytest.approx(0.3)
+
+    def test_transferred_everyone_is_one(self, spark):
+        # Admitted no one (annualStays 0-filled) -> every patient transferred out -> 1.0
+        from cms.transfers import add_nodeProportionTransferredOut
+        r = add_nodeProportionTransferredOut(make_prop_out_df(spark, [("r", 5, 0)])).collect()[0]
+        assert r["nodeProportionTransferredOut"] == pytest.approx(1.0)
+
+    def test_never_zero_lower_bound(self, spark):
+        # A transfer row always has nodeOutVol >= 1, so the proportion is strictly > 0.
+        from cms.transfers import add_nodeProportionTransferredOut
+        r = add_nodeProportionTransferredOut(make_prop_out_df(spark, [("r", 1, 999)])).collect()[0]
+        assert 0.0 < r["nodeProportionTransferredOut"] == pytest.approx(1 / 1000)
+
+    def test_multiple_rows_in_unit_interval(self, spark):
+        from cms.transfers import add_nodeProportionTransferredOut
+        df = make_prop_out_df(spark, [("a", 3, 7), ("b", 5, 0), ("c", 2, 2)])
+        by = {r["rowId"]: r["nodeProportionTransferredOut"]
+              for r in add_nodeProportionTransferredOut(df).collect()}
+        assert by["a"] == pytest.approx(0.3)
+        assert by["b"] == pytest.approx(1.0)
+        assert by["c"] == pytest.approx(0.5)
+        for v in by.values():
+            assert 0.0 < v <= 1.0
+
+
+class TestAddNodeProportionTransferredIn:
+
+    def test_column_added(self, spark):
+        from cms.transfers import add_nodeProportionTransferredIn
+        out = add_nodeProportionTransferredIn(make_prop_in_df(spark, [("r", 3, 7)]))
+        assert "nodeProportionTransferredIn" in out.columns
+
+    def test_basic_ratio(self, spark):
+        # 3 transferred in of 3 + 7 admitted = 10 -> 0.3
+        from cms.transfers import add_nodeProportionTransferredIn
+        r = add_nodeProportionTransferredIn(make_prop_in_df(spark, [("r", 3, 7)])).collect()[0]
+        assert r["nodeProportionTransferredIn"] == pytest.approx(0.3)
+
+    def test_all_arrived_by_transfer_is_one(self, spark):
+        # Admitted no one directly (annualStays 0-filled) -> every patient arrived by transfer -> 1.0
+        from cms.transfers import add_nodeProportionTransferredIn
+        r = add_nodeProportionTransferredIn(make_prop_in_df(spark, [("r", 4, 0)])).collect()[0]
+        assert r["nodeProportionTransferredIn"] == pytest.approx(1.0)
+
+    def test_never_zero_lower_bound(self, spark):
+        from cms.transfers import add_nodeProportionTransferredIn
+        r = add_nodeProportionTransferredIn(make_prop_in_df(spark, [("r", 1, 999)])).collect()[0]
+        assert 0.0 < r["nodeProportionTransferredIn"] == pytest.approx(1 / 1000)
+
+    def test_multiple_rows_in_unit_interval(self, spark):
+        from cms.transfers import add_nodeProportionTransferredIn
+        df = make_prop_in_df(spark, [("a", 3, 7), ("b", 4, 0), ("c", 2, 2)])
+        by = {r["rowId"]: r["nodeProportionTransferredIn"]
+              for r in add_nodeProportionTransferredIn(df).collect()}
+        assert by["a"] == pytest.approx(0.3)
+        assert by["b"] == pytest.approx(1.0)
+        assert by["c"] == pytest.approx(0.5)
+        for v in by.values():
+            assert 0.0 < v <= 1.0
