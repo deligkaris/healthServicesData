@@ -108,6 +108,42 @@ def add_node_volume_info(transfersDF):
     transfersDF = add_column_prior(transfersDF, column="nodeInVol", who="toORGNPINM", when="fromTHRU_DT_YEAR", gapFill=0)
     return transfersDF
 
+def add_providerAnnualStays_info(transfersDF, providerYearsDF):
+    '''Joins providerAnnualStays onto transfersDF for both the sending (from) and receiving (to)
+    provider, as fromproviderAnnualStays and toproviderAnnualStays.
+
+    providerYearsDF is one row per (ORGNPINM, THRU_DT_YEAR) carrying providerAnnualStays (see
+    staysF.add_providerAnnualStays), already distinct at that grain. It is obtained independently of
+    transfersDF -- this is the post-hoc path, for when the two dataframes were built by different
+    mechanisms and the column cannot ride along through get_transfers' from/to rename.
+
+    Both sides join on fromTHRU_DT_YEAR -- the transfer's single canonical year (see add_dyad /
+    add_node_volume_info, where even the to-side node windows key on fromTHRU_DT_YEAR). The from
+    side's own year IS fromTHRU_DT_YEAR, so that join is exact; the to side is looked up for the
+    transfer's year rather than its own toTHRU_DT_YEAR, which differs only for the rare year-boundary
+    transfer and keeps toproviderAnnualStays on the same year basis as nodeInVol and every other
+    to-side node metric.
+
+    left_outer keeps every transfer row; a provider-year absent from providerYearsDF is then filled
+    with 0 for both fromproviderAnnualStays and toproviderAnnualStays. That 0 is a provably-existing
+    zero, not an unobserved null: the from and to providers both appear in the transfer itself, so
+    they operated that year, and a missing count means they had zero stays in providerYearsDF's
+    universe -- the "transferred everyone out / admitted no one" case -- a real 0 (cf. the gapFill=0
+    rule elsewhere, which likewise treats a provably-present entity's missing count as 0).
+    Assumes providerAnnualStays is disjoint from the transferred stays (it counts admissions, not the
+    from-side stays that became transfers); if it already includes them the join never misses and the
+    fill is moot.'''
+    def lookup(side):
+        return providerYearsDF.select(
+            F.col("ORGNPINM").alias(side + "ORGNPINM"),
+            F.col("THRU_DT_YEAR").alias("fromTHRU_DT_YEAR"),
+            F.col("providerAnnualStays").alias(side + "providerAnnualStays"))
+    transfersDF = (transfersDF
+                   .join(lookup("from"), on=["fromORGNPINM", "fromTHRU_DT_YEAR"], how="left_outer")
+                   .join(lookup("to"),   on=["toORGNPINM",   "fromTHRU_DT_YEAR"], how="left_outer")
+                   .fillna(0, subset=["fromproviderAnnualStays", "toproviderAnnualStays"]))
+    return transfersDF
+
 def add_prior_hospitalization_info(transfersDF, ipBaseDF):
     '''Adds columns about prior hospitalizations for each transfer patient.
     baseF.add_prior_hospitalization_info reads its keys by canonical (un-prefixed) name, so we rename only

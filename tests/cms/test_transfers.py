@@ -3829,3 +3829,129 @@ class TestGetNodeListWithAddress:
         nodes = {(r["ORGNPINM"], r["providerAddress"]) for r in get_nodeListWithAddress(df).collect()}
         assert (100, "addrA") in nodes
         assert (100, "addrA2") in nodes
+
+
+# ============================================================
+# Tests for add_providerAnnualStays_info -- post-hoc join of providerAnnualStays
+# onto both the from and to provider, both keyed on fromTHRU_DT_YEAR, with a 0-fill
+# for provider-years absent from providerYearsDF.
+# ============================================================
+
+def _transfers_keys_schema():
+    return StructType([
+        StructField("rowId",            StringType(),  True),
+        StructField("fromORGNPINM",     IntegerType(), True),
+        StructField("fromTHRU_DT_YEAR", IntegerType(), True),
+        StructField("toORGNPINM",       IntegerType(), True),
+        StructField("toTHRU_DT_YEAR",   IntegerType(), True),
+    ])
+
+
+def make_transfers_keys_df(spark, rows):
+    """rows: list of (rowId, fromORGNPINM, fromTHRU_DT_YEAR, toORGNPINM, toTHRU_DT_YEAR)."""
+    cols = ["rowId", "fromORGNPINM", "fromTHRU_DT_YEAR", "toORGNPINM", "toTHRU_DT_YEAR"]
+    data = [dict(zip(cols, r)) for r in rows]
+    return spark.createDataFrame(data, schema=_transfers_keys_schema())
+
+
+def _provider_years_schema():
+    return StructType([
+        StructField("ORGNPINM",            IntegerType(), True),
+        StructField("THRU_DT_YEAR",        IntegerType(), True),
+        StructField("providerAnnualStays", IntegerType(), True),
+    ])
+
+
+def make_provider_years_df(spark, rows):
+    """rows: list of (ORGNPINM, THRU_DT_YEAR, providerAnnualStays)."""
+    cols = ["ORGNPINM", "THRU_DT_YEAR", "providerAnnualStays"]
+    data = [dict(zip(cols, r)) for r in rows]
+    return spark.createDataFrame(data, schema=_provider_years_schema())
+
+
+class TestAddProviderAnnualStaysInfo:
+
+    def test_columns_added(self, spark):
+        from cms.transfers import add_providerAnnualStays_info
+        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
+        providerYears = make_provider_years_df(spark, [(100, 2020, 5), (200, 2020, 9)])
+        out = add_providerAnnualStays_info(transfers, providerYears)
+        assert "fromproviderAnnualStays" in out.columns
+        assert "toproviderAnnualStays" in out.columns
+
+    def test_from_and_to_values_attached(self, spark):
+        from cms.transfers import add_providerAnnualStays_info
+        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
+        providerYears = make_provider_years_df(spark, [(100, 2020, 5), (200, 2020, 9)])
+        r = add_providerAnnualStays_info(transfers, providerYears).collect()[0]
+        assert r["fromproviderAnnualStays"] == 5
+        assert r["toproviderAnnualStays"] == 9
+
+    def test_missing_from_filled_zero(self, spark):
+        # From provider 100/2020 absent from providerYears -> transferred everyone out, admitted 0.
+        from cms.transfers import add_providerAnnualStays_info
+        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
+        providerYears = make_provider_years_df(spark, [(200, 2020, 9)])
+        r = add_providerAnnualStays_info(transfers, providerYears).collect()[0]
+        assert r["fromproviderAnnualStays"] == 0
+        assert r["toproviderAnnualStays"] == 9
+
+    def test_missing_to_filled_zero(self, spark):
+        from cms.transfers import add_providerAnnualStays_info
+        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
+        providerYears = make_provider_years_df(spark, [(100, 2020, 5)])
+        r = add_providerAnnualStays_info(transfers, providerYears).collect()[0]
+        assert r["fromproviderAnnualStays"] == 5
+        assert r["toproviderAnnualStays"] == 0
+
+    def test_both_missing_filled_zero(self, spark):
+        from cms.transfers import add_providerAnnualStays_info
+        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
+        providerYears = make_provider_years_df(spark, [(300, 2020, 3)])
+        r = add_providerAnnualStays_info(transfers, providerYears).collect()[0]
+        assert r["fromproviderAnnualStays"] == 0
+        assert r["toproviderAnnualStays"] == 0
+
+    def test_no_transfer_rows_dropped(self, spark):
+        # left_outer: every transfer row survives even with an empty providerYears.
+        from cms.transfers import add_providerAnnualStays_info
+        transfers = make_transfers_keys_df(spark, [
+            ("t1", 100, 2020, 200, 2020),
+            ("t2", 101, 2020, 201, 2020),
+            ("t3", 102, 2021, 202, 2021),
+        ])
+        providerYears = make_provider_years_df(spark, [])
+        out = add_providerAnnualStays_info(transfers, providerYears)
+        assert out.count() == 3
+        assert {r["rowId"] for r in out.collect()} == {"t1", "t2", "t3"}
+        for r in out.collect():
+            assert r["fromproviderAnnualStays"] == 0
+            assert r["toproviderAnnualStays"] == 0
+
+    def test_to_side_keyed_on_from_year_not_to_year(self, spark):
+        # Year-boundary transfer: to stay's own year is 2021, but the join uses
+        # fromTHRU_DT_YEAR=2020, so the to provider's 2020 count is what attaches.
+        from cms.transfers import add_providerAnnualStays_info
+        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2021)])
+        providerYears = make_provider_years_df(spark, [
+            (100, 2020, 5),
+            (200, 2020, 8),   # matched: to provider, transfer's canonical year
+            (200, 2021, 99),  # NOT matched, despite toTHRU_DT_YEAR == 2021
+        ])
+        r = add_providerAnnualStays_info(transfers, providerYears).collect()[0]
+        assert r["fromproviderAnnualStays"] == 5
+        assert r["toproviderAnnualStays"] == 8
+
+    def test_partition_independent_per_provider_year(self, spark):
+        from cms.transfers import add_providerAnnualStays_info
+        transfers = make_transfers_keys_df(spark, [
+            ("t1", 100, 2020, 200, 2020),
+            ("t2", 100, 2021, 200, 2021),
+        ])
+        providerYears = make_provider_years_df(spark, [
+            (100, 2020, 5), (100, 2021, 7),
+            (200, 2020, 9), (200, 2021, 2),
+        ])
+        by_row = {r["rowId"]: r for r in add_providerAnnualStays_info(transfers, providerYears).collect()}
+        assert by_row["t1"]["fromproviderAnnualStays"] == 5 and by_row["t1"]["toproviderAnnualStays"] == 9
+        assert by_row["t2"]["fromproviderAnnualStays"] == 7 and by_row["t2"]["toproviderAnnualStays"] == 2
