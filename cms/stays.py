@@ -66,6 +66,17 @@ def add_provider_stroke_info(staysDF, inpatient=True, stroke="anyStroke"):
     staysDF = add_providerAnnualVolume(staysDF, col=stroke)
     return staysDF
 
+def add_provider_capability_and_volume_info(staysDF, col="imv"):
+    '''Adds the three provider-level columns for `col` (a per-stay binary flag), for each hospital
+    and year: provider<Col>AnnualCapability (per-year, does not carry forward),
+    provider<Col>EverCapability (cumulative, once-capable-always-capable) and
+    provider<Col>AnnualVolume (per-year count). E.g. col="evt" -> providerEvtAnnualCapability,
+    providerEvtEverCapability, providerEvtAnnualVolume.'''
+    staysDF = add_providerAnnualCapability(staysDF, col=col)
+    staysDF = add_providerEverCapability(staysDF, col=col)
+    staysDF = add_providerAnnualVolume(staysDF, col=col)
+    return staysDF
+
 def add_provider_septic_shock_info(staysDF):
     '''Adds columns about septic shock for each hospital and year. The volume column is
     providerSepticShockAnnualVolume, added via add_providerAnnualVolume(col="septicShock").'''

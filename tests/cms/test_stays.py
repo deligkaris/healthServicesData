@@ -784,6 +784,44 @@ class TestAddProviderSepticShockInfo:
 
 
 # ============================================================
+# End-to-end tests for add_provider_capability_and_volume_info (thin wrapper)
+# ============================================================
+
+class TestAddProviderCapabilityAndVolumeInfo:
+
+    def test_adds_all_three_columns_with_correct_values(self, spark):
+        # Provider 100 is capable in 2019 but not 2020; provider 200 is never capable.
+        # This separates the three columns: AnnualCapability is per-year, EverCapability
+        # propagates forward, AnnualVolume is the per-year count.
+        from cms.stays import add_provider_capability_and_volume_info
+        rows = [
+            _cap_row(1, 100, 20190115, "imv", True),
+            _cap_row(2, 100, 20200115, "imv", False),
+            _cap_row(3, 200, 20190115, "imv", False),
+        ]
+        df = _run_capability_pipeline(
+            spark, rows, "imv", capability_fn=add_provider_capability_and_volume_info
+        )
+        for col in ("providerImvAnnualCapability",
+                    "providerImvEverCapability",
+                    "providerImvAnnualVolume"):
+            assert col in df.columns
+        by_claim = {r["CLAIMNO"]: r for r in df.collect()}
+        # provider 100, 2019: capable this year, ever capable, one EVT
+        assert by_claim[1]["providerImvAnnualCapability"] == 1
+        assert by_claim[1]["providerImvEverCapability"] == 1
+        assert by_claim[1]["providerImvAnnualVolume"] == 1
+        # provider 100, 2020: not capable this year, but ever capable carries forward
+        assert by_claim[2]["providerImvAnnualCapability"] == 0
+        assert by_claim[2]["providerImvEverCapability"] == 1
+        assert by_claim[2]["providerImvAnnualVolume"] == 0
+        # provider 200: never capable
+        assert by_claim[3]["providerImvAnnualCapability"] == 0
+        assert by_claim[3]["providerImvEverCapability"] == 0
+        assert by_claim[3]["providerImvAnnualVolume"] == 0
+
+
+# ============================================================
 # End-to-end pipeline helper for add_provider_revenue_info:
 # build opBase + opRevenue, summarize revenue, join with claims, and
 # then compute provider-level ed/ct/mri means and volumes.
