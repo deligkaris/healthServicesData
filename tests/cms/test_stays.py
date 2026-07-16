@@ -626,6 +626,63 @@ class TestAddProviderStrokeAnnualVolume:
 
 
 # ============================================================
+# Tests for add_providerAnnualStays -- a plain row count per
+# ORGNPINM x THRU_DT_YEAR (staysDF is one row per stay post
+# get_unique_stays, so the count is the number of stays).
+# ============================================================
+
+def _stays_df(spark, rows):
+    """rows: list of (CLAIMNO, ORGNPINM, THRU_DT_YEAR). CLAIMNO is only a row id."""
+    schema = StructType([
+        StructField("CLAIMNO", IntegerType()),
+        StructField("ORGNPINM", IntegerType()),
+        StructField("THRU_DT_YEAR", IntegerType()),
+    ])
+    return spark.createDataFrame(rows, schema=schema)
+
+
+class TestAddProviderAnnualStays:
+
+    def test_column_added_named_by_convention(self, spark):
+        from cms.stays import add_providerAnnualStays
+        df = add_providerAnnualStays(_stays_df(spark, [(1, 100, 2020)]))
+        assert "providerAnnualStays" in df.columns
+
+    def test_counts_stays_per_provider_year(self, spark):
+        from cms.stays import add_providerAnnualStays
+        rows = [(1, 100, 2020), (2, 100, 2020), (3, 100, 2020)]
+        df = add_providerAnnualStays(_stays_df(spark, rows))
+        for r in df.collect():
+            assert r["providerAnnualStays"] == 3
+
+    def test_partition_independent_per_provider_and_year(self, spark):
+        from cms.stays import add_providerAnnualStays
+        # 100/2020 -> 2 stays; 100/2021 -> 1; 200/2020 -> 3.
+        rows = [
+            (1, 100, 2020), (2, 100, 2020),
+            (3, 100, 2021),
+            (4, 200, 2020), (5, 200, 2020), (6, 200, 2020),
+        ]
+        df = add_providerAnnualStays(_stays_df(spark, rows))
+        by_claim = {r["CLAIMNO"]: r["providerAnnualStays"] for r in df.collect()}
+        assert by_claim[1] == 2 and by_claim[2] == 2
+        assert by_claim[3] == 1
+        assert by_claim[4] == 3 and by_claim[5] == 3 and by_claim[6] == 3
+
+    def test_single_stay_counts_one(self, spark):
+        from cms.stays import add_providerAnnualStays
+        df = add_providerAnnualStays(_stays_df(spark, [(1, 100, 2020)]))
+        assert df.collect()[0]["providerAnnualStays"] == 1
+
+    def test_value_broadcast_to_every_row_in_partition(self, spark):
+        from cms.stays import add_providerAnnualStays
+        # Window count attaches to every row in the partition, not just one.
+        rows = [(1, 100, 2020), (2, 100, 2020), (3, 100, 2020), (4, 100, 2020)]
+        df = add_providerAnnualStays(_stays_df(spark, rows))
+        assert [r["providerAnnualStays"] for r in df.collect()] == [4, 4, 4, 4]
+
+
+# ============================================================
 # End-to-end tests for add_provider_stroke_treatment_info
 # ============================================================
 
