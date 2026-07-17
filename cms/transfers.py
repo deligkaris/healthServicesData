@@ -1,8 +1,17 @@
+from enum import IntEnum
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import cms.base as baseF
 import cms.stays as staysF
 import utilities as utilitiesF
+
+class TransferType(IntEnum):
+    '''Origin->destination setting of a transfer. The destination is always an inpatient admission (the
+    to stay); the members distinguish the sending setting. Stored as the integer transferType column
+    (see add_transferType) -- IntEnum so the column holds a plain int for Spark comparison/grouping
+    while call sites and downstream logic use the named members.'''
+    edToInpatient = 1
+    inpatientToInpatient = 2
 
 def _rename_columns(df, mapping):
     '''Single-projection rename: aliases each column named in mapping to its target and passes the
@@ -44,9 +53,12 @@ def get_clean_transfers(transfersDF):
     transfersDF = remove_uncertain_transfers(transfersDF)
     return transfersDF
 
-def get_transfers(*, fromStaysDf, toStaysDf):
+def get_transfers(*, fromStaysDf, toStaysDf, transferType):
     '''Takes two dataframes, one that represents stays in the from provider and another one that represents stays in the to provider.
-    Merges the two dataframes to create transfers from the from provider to the to provider.'''
+    Merges the two dataframes to create transfers from the from provider to the to provider.
+    transferType is a TransferType member describing the origin->destination setting of this whole
+    dataframe -- it is a property of fromStaysDf (all-OP-ED vs all-IP), known here to the caller, not
+    derivable per row -- and is stamped on every transfer (see add_transferType).'''
     # rename the dataframe columns because pandas cannot handle two columns with the same name, just in case pd is used in analysis
     toStaysDf = toStaysDf.toDF(*("to"+c for c in toStaysDf.columns))
     fromStaysDf = fromStaysDf.toDF(*("from"+c for c in fromStaysDf.columns))
@@ -57,9 +69,17 @@ def get_transfers(*, fromStaysDf, toStaysDf):
                                    (F.col("fromORGNPINM") != F.col("toORGNPINM"))],
                              how = "inner") #drop any claims that do not match
     transfersDF = get_clean_transfers(transfersDF)
+    transfersDF = add_transferType(transfersDF, transferType)
     transfersDF = add_firstTransfer(transfersDF)
     transfersDF = add_node_and_dyad_info(transfersDF)
     return transfersDF
+
+def add_transferType(transfersDF, transferType):
+    '''Stamps transferType (a TransferType member) as the integer transferType column on every row.
+    The origin setting is a property of the fromStaysDf these transfers were built from (all-OP-ED vs
+    all-IP, see get_transfers), constant across the dataframe and known to the caller, not derivable
+    per row.'''
+    return transfersDF.withColumn("transferType", F.lit(int(transferType)))
 
 def add_transfertpa(transfersDF):
     return transfersDF.withColumn("transfertpa", F.when( (F.col("totpa")==1) | (F.col("fromtpa")==1), 1).otherwise(0))
@@ -74,11 +94,18 @@ def add_transfernihss(transfersDF):
     return transfersDF.withColumn("transfernihss", F.when( F.col("fromnihss").isNull(), F.col("tonihss")).otherwise(F.col("fromnihss")))
 
 def add_transfernihssGroup(transfersDF):
-    return transfersDF.withColumn("transfernihssGroup", F.when( F.col("fromnihssGroup").isNull(), F.col("tonihssGroup")).otherwise(F.col("fromnihssGroup")))   
+    return transfersDF.withColumn("transfernihssGroup", F.when( F.col("fromnihssGroup").isNull(), F.col("tonihssGroup")).otherwise(F.col("fromnihssGroup")))
+
+def add_transferEvtOrTpa(transfersDF):
+    '''Flags transfers that received EVT or tPA. Uses toevt (the receiving stay's EVT flag, the same
+    column summed in add_node_stroke_treatment_info) and transfertpa (add_transfertpa). Requires both.'''
+    return transfersDF.withColumn("transferEvtOrTpa", F.when( (F.col("toevt")==1) | (F.col("transfertpa")==1), 1).otherwise(0))
+
 def add_stroke_info(transfersDF):
     transfersDF = add_transferct(transfersDF)
     transfersDF = add_transfermri(transfersDF)
     transfersDF = add_transfertpa(transfersDF)
+    transfersDF = add_transferEvtOrTpa(transfersDF)
     transfersDF = add_transfernihss(transfersDF)
     transfersDF = add_transfernihssGroup(transfersDF)
     transfersDF = add_node_stroke_treatment_info(transfersDF)
@@ -184,6 +211,27 @@ def add_nodeProportionTransferredIn(transfersDF):
     transfersDF = transfersDF.withColumn(
         "nodeProportionTransferredIn",
         F.col("nodeInVol") / (F.col("toproviderAnnualStays") + F.col("nodeInVol")))
+    return transfersDF
+
+def add_nodeToProportionFromEd(transfersDF):
+    '''For each receiving provider and year, the fraction of transfers it received that came from the ED
+    (edToInpatient) out of those from either setting (edToInpatient + inpatientToInpatient):
+    count(transferType == edToInpatient) / count(transferType in {edToInpatient, inpatientToInpatient}).
+
+    Requires transferType (add_transferType / get_transfers) and assumes the edToInpatient and
+    inpatientToInpatient transfers have been unioned into one dataframe -- a single transfersDF carries
+    one constant transferType, so before the union either the numerator or denominator is degenerate.
+    Windowed on (toORGNPINM, fromTHRU_DT_YEAR), the to-side / transfer-year basis every other node
+    metric uses (see add_node_volume_info). With only these two members present the denominator equals
+    nodeInVol, but it is counted explicitly so a future third TransferType member is excluded rather
+    than silently folded into the denominator. Returns null for a receiver-year with no
+    ed/inpatient-origin transfers (denominator 0) -- an undefined proportion, not a zero.'''
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
+    edVol = F.sum(F.when(F.col("transferType")==int(TransferType.edToInpatient), 1).otherwise(0)).over(eachToProvider)
+    edOrIpVol = F.sum(F.when(F.col("transferType").isin(int(TransferType.edToInpatient), int(TransferType.inpatientToInpatient)), 1).otherwise(0)).over(eachToProvider)
+    transfersDF = transfersDF.withColumn(
+        "nodeToProportionFromEd",
+        F.when(edOrIpVol != 0, edVol / edOrIpVol).otherwise(F.lit(None)))
     return transfersDF
 
 def add_prior_hospitalization_info(transfersDF, ipBaseDF):
@@ -365,8 +413,21 @@ def add_node_stroke_treatment_info(transfersDF):
                               .withColumn("nodeToTpaVol", F.sum( F.col("transfertpa") ).over(eachToProvider))
                               .withColumn("nodeToEvtMean", F.mean( F.col("toevt")).over(eachToProvider))
                               .withColumn("nodeToTpaMean", F.mean( F.col("transfertpa")).over(eachToProvider)))
+    transfersDF = add_node_evtOrTpa_info(transfersDF)
     return transfersDF
- 
+
+def add_node_evtOrTpa_info(transfersDF):
+    '''Adds per-node (provider-year) volume and mean of transfers that received EVT or tPA.
+    Requires transferEvtOrTpa (add_transferEvtOrTpa). Mirrors add_node_stroke_treatment_info: the to-side
+    window keys on fromTHRU_DT_YEAR for year-basis consistency with the dyad (see add_dyad).'''
+    eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
+    transfersDF = (transfersDF.withColumn("nodeFromEvtOrTpaVol", F.sum( F.col("transferEvtOrTpa") ).over(eachFromProvider))
+                              .withColumn("nodeFromEvtOrTpaMean", F.mean( F.col("transferEvtOrTpa") ).over(eachFromProvider))
+                              .withColumn("nodeToEvtOrTpaVol", F.sum( F.col("transferEvtOrTpa") ).over(eachToProvider))
+                              .withColumn("nodeToEvtOrTpaMean", F.mean( F.col("transferEvtOrTpa") ).over(eachToProvider)))
+    return transfersDF
+
 def add_node_revenue_info(transfersDF):
     '''Revenue info refers to the ed, ct, mri columns, adds revenue info volume and mean for both from and to nodes.
     The to-side window keys on fromTHRU_DT_YEAR for year-basis consistency with the dyad (see add_dyad).'''

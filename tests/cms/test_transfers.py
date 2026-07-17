@@ -1,6 +1,7 @@
 import pytest
 import pyspark.sql.functions as F
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
+from cms.transfers import TransferType
 
 
 # ============================================================
@@ -755,6 +756,59 @@ class TestAddTransfermri:
         assert "transfermri" in add_transfermri(df).columns
 
 
+class TestAddTransferEvtOrTpa:
+
+    def test_either_side_one_returns_1(self, spark):
+        # toevt==1 OR transfertpa==1 -> 1
+        from cms.transfers import add_transferEvtOrTpa
+        df = make_two_flag_df(spark, [(1, 0), (0, 1), (1, 1)], "toevt", "transfertpa")
+        results = [r["transferEvtOrTpa"] for r in add_transferEvtOrTpa(df).collect()]
+        assert results == [1, 1, 1]
+
+    def test_both_zero_returns_0(self, spark):
+        from cms.transfers import add_transferEvtOrTpa
+        df = make_two_flag_df(spark, [(0, 0)], "toevt", "transfertpa")
+        assert add_transferEvtOrTpa(df).collect()[0]["transferEvtOrTpa"] == 0
+
+    def test_null_treated_as_not_one(self, spark):
+        # NULL OR 0 -> falls through to .otherwise(0)
+        from cms.transfers import add_transferEvtOrTpa
+        df = make_two_flag_df(spark, [(None, 0), (0, None), (None, None)], "toevt", "transfertpa")
+        results = [r["transferEvtOrTpa"] for r in add_transferEvtOrTpa(df).collect()]
+        assert results == [0, 0, 0]
+
+    def test_column_added(self, spark):
+        from cms.transfers import add_transferEvtOrTpa
+        df = make_two_flag_df(spark, [(1, 0)], "toevt", "transfertpa")
+        assert "transferEvtOrTpa" in add_transferEvtOrTpa(df).columns
+
+
+class TestAddTransferType:
+
+    def test_column_added(self, spark):
+        from cms.transfers import add_transferType, TransferType
+        df = spark.createDataFrame([{"x": 1}])
+        assert "transferType" in add_transferType(df, TransferType.edToInpatient).columns
+
+    def test_stamps_code_on_every_row(self, spark):
+        from cms.transfers import add_transferType, TransferType
+        df = spark.createDataFrame([{"x": 1}, {"x": 2}, {"x": 3}])
+        out = add_transferType(df, TransferType.edToInpatient).collect()
+        assert [r["transferType"] for r in out] == [1, 1, 1]
+
+    def test_inpatient_code_is_two(self, spark):
+        from cms.transfers import add_transferType, TransferType
+        df = spark.createDataFrame([{"x": 1}])
+        assert add_transferType(df, TransferType.inpatientToInpatient).collect()[0]["transferType"] == 2
+
+    def test_stored_as_plain_int_not_enum(self, spark):
+        # The IntEnum member must land as a Spark integer, not an enum object.
+        from cms.transfers import add_transferType, TransferType
+        df = spark.createDataFrame([{"x": 1}])
+        v = add_transferType(df, TransferType.edToInpatient).collect()[0]["transferType"]
+        assert v == 1 and type(v) is int
+
+
 class TestAddTransfernihss:
 
     def test_from_null_falls_back_to_to(self, spark):
@@ -1418,29 +1472,35 @@ def _node_stroke_schema():
         StructField("toTHRU_DT_YEAR", IntegerType(), True),
         StructField("toevt", IntegerType(), True),
         StructField("transfertpa", IntegerType(), True),
+        # add_node_stroke_treatment_info calls add_node_evtOrTpa_info, which reads this flag
+        # (built upstream by add_transferEvtOrTpa: 1 iff toevt==1 or transfertpa==1).
+        StructField("transferEvtOrTpa", IntegerType(), True),
     ])
 
 
 class TestAddNodeStrokeTreatmentInfo:
 
-    def test_adds_eight_columns(self, spark):
+    def test_adds_twelve_columns(self, spark):
         from cms.transfers import add_node_stroke_treatment_info
         rows = [{"fromORGNPINM": 100, "toORGNPINM": 200,
                  "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020,
-                 "toevt": 1, "transfertpa": 0}]
+                 "toevt": 1, "transfertpa": 0, "transferEvtOrTpa": 1}]
         df = spark.createDataFrame(rows, schema=_node_stroke_schema())
         result = add_node_stroke_treatment_info(df)
         for c in ("nodeFromEvtVol", "nodeFromTpaVol", "nodeFromEvtMean", "nodeFromTpaMean",
-                  "nodeToEvtVol", "nodeToTpaVol", "nodeToEvtMean", "nodeToTpaMean"):
+                  "nodeToEvtVol", "nodeToTpaVol", "nodeToEvtMean", "nodeToTpaMean",
+                  "nodeFromEvtOrTpaVol", "nodeFromEvtOrTpaMean",
+                  "nodeToEvtOrTpaVol", "nodeToEvtOrTpaMean"):
             assert c in result.columns
 
     def test_aggregations_per_provider(self, spark):
-        # From-provider 100 in 2020 sends 3 transfers: toevt = [1, 0, 1], transfertpa = [1, 1, 0]
+        # From-provider 100 in 2020 sends 3 transfers: toevt = [1, 0, 1], transfertpa = [1, 1, 0],
+        # so transferEvtOrTpa = [1, 1, 1] (every transfer got evt or tpa).
         from cms.transfers import add_node_stroke_treatment_info
         rows = [
-            {"fromORGNPINM": 100, "toORGNPINM": 200, "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020, "toevt": 1, "transfertpa": 1},
-            {"fromORGNPINM": 100, "toORGNPINM": 200, "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020, "toevt": 0, "transfertpa": 1},
-            {"fromORGNPINM": 100, "toORGNPINM": 300, "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020, "toevt": 1, "transfertpa": 0},
+            {"fromORGNPINM": 100, "toORGNPINM": 200, "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020, "toevt": 1, "transfertpa": 1, "transferEvtOrTpa": 1},
+            {"fromORGNPINM": 100, "toORGNPINM": 200, "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020, "toevt": 0, "transfertpa": 1, "transferEvtOrTpa": 1},
+            {"fromORGNPINM": 100, "toORGNPINM": 300, "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020, "toevt": 1, "transfertpa": 0, "transferEvtOrTpa": 1},
         ]
         df = spark.createDataFrame(rows, schema=_node_stroke_schema())
         result = add_node_stroke_treatment_info(df).collect()
@@ -1449,6 +1509,64 @@ class TestAddNodeStrokeTreatmentInfo:
             assert r["nodeFromTpaVol"] == 2
             assert r["nodeFromEvtMean"] == pytest.approx(2.0 / 3.0)
             assert r["nodeFromTpaMean"] == pytest.approx(2.0 / 3.0)
+            assert r["nodeFromEvtOrTpaVol"] == 3
+            assert r["nodeFromEvtOrTpaMean"] == pytest.approx(1.0)
+
+
+# ============================================================
+# Tests for add_node_evtOrTpa_info.
+# ============================================================
+
+def _node_evtortpa_schema():
+    return StructType([
+        StructField("fromORGNPINM",     IntegerType(), True),
+        StructField("toORGNPINM",       IntegerType(), True),
+        StructField("fromTHRU_DT_YEAR", IntegerType(), True),
+        StructField("transferEvtOrTpa", IntegerType(), True),
+    ])
+
+
+def make_node_evtortpa_df(spark, rows):
+    """rows: list of (fromORGNPINM, toORGNPINM, fromTHRU_DT_YEAR, transferEvtOrTpa)."""
+    cols = ["fromORGNPINM", "toORGNPINM", "fromTHRU_DT_YEAR", "transferEvtOrTpa"]
+    return spark.createDataFrame([dict(zip(cols, r)) for r in rows], schema=_node_evtortpa_schema())
+
+
+class TestAddNodeEvtOrTpaInfo:
+
+    def test_adds_four_columns(self, spark):
+        from cms.transfers import add_node_evtOrTpa_info
+        out = add_node_evtOrTpa_info(make_node_evtortpa_df(spark, [(100, 200, 2020, 1)]))
+        for c in ("nodeFromEvtOrTpaVol", "nodeFromEvtOrTpaMean",
+                  "nodeToEvtOrTpaVol", "nodeToEvtOrTpaMean"):
+            assert c in out.columns
+
+    def test_from_side_aggregation(self, spark):
+        # From-provider 100 in 2020: transferEvtOrTpa = [1, 0, 1] -> vol 2, mean 2/3.
+        from cms.transfers import add_node_evtOrTpa_info
+        df = make_node_evtortpa_df(spark, [
+            (100, 200, 2020, 1),
+            (100, 200, 2020, 0),
+            (100, 300, 2020, 1),
+        ])
+        for r in add_node_evtOrTpa_info(df).collect():
+            assert r["nodeFromEvtOrTpaVol"] == 2
+            assert r["nodeFromEvtOrTpaMean"] == pytest.approx(2.0 / 3.0)
+
+    def test_to_side_aggregation(self, spark):
+        # Receiver 200 gets 2 transfers in 2020 (evtOrTpa 1, 0) -> vol 1, mean 0.5;
+        # receiver 300 gets 1 (evtOrTpa 1) -> vol 1, mean 1.0. Distinct senders so the
+        # to-side window is exercised independently of the from-side window.
+        from cms.transfers import add_node_evtOrTpa_info
+        df = make_node_evtortpa_df(spark, [
+            (100, 200, 2020, 1),
+            (101, 200, 2020, 0),
+            (100, 300, 2020, 1),
+        ])
+        by = {r["toORGNPINM"]: (r["nodeToEvtOrTpaVol"], r["nodeToEvtOrTpaMean"])
+              for r in add_node_evtOrTpa_info(df).collect()}
+        assert by[200] == (1, pytest.approx(0.5))
+        assert by[300] == (1, pytest.approx(1.0))
 
 
 # ============================================================
@@ -2190,7 +2308,7 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115, ed=1)])
         to_df = self._to_df(spark, [_stay(1, 21, 20200115, 20200120, ct=1, mri=1)])
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         row = result[0]
         assert row["fromDSYSRTKY"] == 1
@@ -2206,7 +2324,7 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [_stay(1, 21, 20200116, 20200120)])
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         assert result[0]["toCLAIMNO"] == 21
 
@@ -2215,14 +2333,14 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [_stay(1, 21, 20200117, 20200120)])
-        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).count() == 0
 
     def test_different_beneficiaries_do_not_transfer(self, spark):
         # The join requires fromDSYSRTKY == toDSYSRTKY.
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [_stay(2, 21, 20200115, 20200120)])
-        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).count() == 0
 
     def test_same_provider_on_both_sides_yields_no_transfers(self, spark):
         # If both stays DFs are at the same provider, the fromORGNPINM!=toORGNPINM
@@ -2233,7 +2351,7 @@ class TestGetTransfersFromSingleProviderStays:
             spark, [_stay(1, 21, 20200115, 20200120)],
             orgnpinm=self.FROM_NPI,  # both sides at provider 100
         )
-        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).count() == 0
 
     def test_multiple_candidate_to_stays_keeps_closest(self, spark):
         # Beneficiary 1 discharges from A on 2020-01-15; two candidate stays
@@ -2245,7 +2363,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(1, 21, 20200115, 20200120),  # earlier admission - kept
             _stay(1, 22, 20200116, 20200121),  # later admission   - dropped
         ])
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         assert result[0]["toCLAIMNO"] == 21
 
@@ -2259,7 +2377,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(1, 12, 20200111, 20200115),  # latest discharge
         ])
         to_df = self._to_df(spark, [_stay(1, 21, 20200115, 20200120)])
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         # After get_closest_from_claim, fromCLAIMNO=12 is the closest; the
         # f1->t1 row survives because each side now has a unique partner.
         assert len(result) == 1
@@ -2277,7 +2395,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(1, 21, 20200115, 20200120),
             _stay(1, 22, 20200215, 20200220),
         ])
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         by_claim = {r["fromCLAIMNO"]: r["firstTransfer"] for r in result}
         assert by_claim == {11: 1, 12: 0}
 
@@ -2295,7 +2413,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(2, 22, 20200215, 20200220),
             _stay(3, 23, 20200315, 20200320),
         ])
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 3
         for r in result:
             assert r["nodeOutVol"] == 3
@@ -2312,7 +2430,7 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [_stay(1, 21, 20200115, 20200120)])
-        row = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()[0]
+        row = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()[0]
         # Same system flag: FROM_SYS=7, TO_SYS=8 -> not same system
         assert row["dyadVi"] == 0
         # Counties differ (01001 vs 01003)
@@ -2330,7 +2448,7 @@ class TestGetTransfersFromSingleProviderStays:
             fips=self.FROM_FIPS,
             state=self.FROM_STATE,
         )
-        row = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()[0]
+        row = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()[0]
         assert row["dyadVi"] == 1
         assert row["dyadAcrossCounties"] == 0
         assert row["dyadAcrossStates"] == 0
@@ -2349,7 +2467,7 @@ class TestGetTransfersFromSingleProviderStays:
             _stay(2, 22, 20210115, 20210120),
             _stay(3, 23, 20210215, 20210220),
         ])
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         by_year = {r["fromTHRU_DT_YEAR"]: r for r in result}
         assert by_year[2020]["nodeOutVol"] == 1
         assert by_year[2020]["dyadTransferVol"] == 1
@@ -2364,13 +2482,13 @@ class TestGetTransfersFromSingleProviderStays:
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [_stay(1, 11, 20200110, 20200115)])
         to_df = self._to_df(spark, [])
-        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).count() == 0
 
     def test_empty_from_dataframe_yields_no_transfers(self, spark):
         from cms.transfers import get_transfers
         from_df = self._from_df(spark, [])
         to_df = self._to_df(spark, [_stay(1, 21, 20200115, 20200120)])
-        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df).count() == 0
+        assert get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).count() == 0
 
     def test_multi_year_multi_destination_hhi_and_prior_end_to_end(self, spark):
         # Full real-schema pipeline (raw ipBase -> get_transfers -> add_node_and_dyad_info)
@@ -2397,7 +2515,7 @@ class TestGetTransfersFromSingleProviderStays:
         ], orgnpinm=C_NPI)
         to_df = to_b.unionByName(to_c)
 
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         # one transfer per beneficiary
         assert len(result) == 4
 
@@ -2897,7 +3015,7 @@ class TestEndToEndBaseToTransfersPipeline:
             base_rows=[_ip_base_row(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromed"] == 1
@@ -2934,7 +3052,7 @@ class TestEndToEndBaseToTransfersPipeline:
             base_rows=[_ip_base_row(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # the FINAL (max THRU_DT_DAY) row
@@ -2987,7 +3105,7 @@ class TestEndToEndBaseToTransfersPipeline:
         )
         to_df = to_b.unionByName(to_c)
 
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 4
         for r in result:
             assert r["nodeOutVol"] == 4
@@ -3030,7 +3148,7 @@ class TestEndToEndBaseToTransfersPipeline:
             base_rows=[_ip_base_row(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
@@ -3170,7 +3288,7 @@ class TestSepticShockPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromsepticShock"] == 1
@@ -3213,7 +3331,7 @@ class TestSepticShockPipeline:
                 _ip_rev_row(3, 23, 20200320),
             ],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 3
         for r in result:
             assert r["fromproviderSepticShockAnnualVolume"] == 2
@@ -3250,7 +3368,7 @@ class TestSepticShockPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         # Final row survived the dedup (max THRU_DT_DAY).
@@ -3321,7 +3439,7 @@ class TestIshStrokePipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromishStrokeDgns"] == 1
@@ -3346,7 +3464,7 @@ class TestIshStrokePipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromishStrokeDgns"] == 0
@@ -3383,7 +3501,7 @@ class TestIshStrokePipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
@@ -3465,7 +3583,7 @@ class TestTpaPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromtpaPrcdr"] == 1
@@ -3489,7 +3607,7 @@ class TestTpaPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromtpaPrcdr"] == 0
@@ -3523,7 +3641,7 @@ class TestTpaPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
@@ -3610,7 +3728,7 @@ class TestEvtPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromevtPrcdr"] == 1
@@ -3634,7 +3752,7 @@ class TestEvtPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200115, 20200120)],
             rev_rows=[_ip_rev_row(1, 21, 20200120)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromevtDrg"] == 1
@@ -3668,7 +3786,7 @@ class TestEvtPipeline:
             base_rows=[_ip_base_row_with_codes(1, 21, 20200121, 20200125)],
             rev_rows=[_ip_rev_row(1, 21, 20200125)],
         )
-        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df).collect()
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         assert len(result) == 1
         r = result[0]
         assert r["fromCLAIMNO"] == 9999  # final row survived the dedup
@@ -4064,3 +4182,72 @@ class TestAddNodeProportionTransferredIn:
         assert by["c"] == pytest.approx(0.5)
         for v in by.values():
             assert 0.0 < v <= 1.0
+
+
+# ============================================================
+# Tests for add_nodeToProportionFromEd.
+# ============================================================
+
+def _node_from_ed_schema():
+    return StructType([
+        StructField("toORGNPINM",       IntegerType(), True),
+        StructField("fromTHRU_DT_YEAR", IntegerType(), True),
+        StructField("transferType",     IntegerType(), True),
+    ])
+
+
+def make_node_from_ed_df(spark, rows):
+    """rows: list of (toORGNPINM, fromTHRU_DT_YEAR, transferType)."""
+    cols = ["toORGNPINM", "fromTHRU_DT_YEAR", "transferType"]
+    return spark.createDataFrame([dict(zip(cols, r)) for r in rows], schema=_node_from_ed_schema())
+
+
+class TestAddNodeToProportionFromEd:
+
+    def test_column_added(self, spark):
+        from cms.transfers import add_nodeToProportionFromEd, TransferType
+        df = make_node_from_ed_df(spark, [(200, 2020, int(TransferType.edToInpatient))])
+        assert "nodeToProportionFromEd" in add_nodeToProportionFromEd(df).columns
+
+    def test_basic_ratio(self, spark):
+        # Receiver 200 in 2020: 3 ED + 1 inpatient -> 3/4 = 0.75.
+        from cms.transfers import add_nodeToProportionFromEd, TransferType
+        ed, ip = int(TransferType.edToInpatient), int(TransferType.inpatientToInpatient)
+        df = make_node_from_ed_df(spark, [(200, 2020, ed), (200, 2020, ed), (200, 2020, ed), (200, 2020, ip)])
+        for r in add_nodeToProportionFromEd(df).collect():
+            assert r["nodeToProportionFromEd"] == pytest.approx(0.75)
+
+    def test_all_ed_is_one(self, spark):
+        from cms.transfers import add_nodeToProportionFromEd, TransferType
+        ed = int(TransferType.edToInpatient)
+        df = make_node_from_ed_df(spark, [(200, 2020, ed), (200, 2020, ed)])
+        assert add_nodeToProportionFromEd(df).collect()[0]["nodeToProportionFromEd"] == pytest.approx(1.0)
+
+    def test_all_inpatient_is_zero(self, spark):
+        from cms.transfers import add_nodeToProportionFromEd, TransferType
+        ip = int(TransferType.inpatientToInpatient)
+        df = make_node_from_ed_df(spark, [(200, 2020, ip), (200, 2020, ip)])
+        assert add_nodeToProportionFromEd(df).collect()[0]["nodeToProportionFromEd"] == pytest.approx(0.0)
+
+    def test_per_receiver_year(self, spark):
+        # Each (toORGNPINM, fromTHRU_DT_YEAR) group computes independently.
+        from cms.transfers import add_nodeToProportionFromEd, TransferType
+        ed, ip = int(TransferType.edToInpatient), int(TransferType.inpatientToInpatient)
+        df = make_node_from_ed_df(spark, [
+            (200, 2020, ed), (200, 2020, ip),   # 1/2
+            (200, 2021, ed), (200, 2021, ed),   # 2/2
+            (300, 2020, ip),                     # 0/1
+        ])
+        by = {(r["toORGNPINM"], r["fromTHRU_DT_YEAR"]): r["nodeToProportionFromEd"]
+              for r in add_nodeToProportionFromEd(df).collect()}
+        assert by[(200, 2020)] == pytest.approx(0.5)
+        assert by[(200, 2021)] == pytest.approx(1.0)
+        assert by[(300, 2020)] == pytest.approx(0.0)
+
+    def test_denominator_excludes_other_types_and_nulls_when_empty(self, spark):
+        # A receiver-year whose only transfers are neither ED nor inpatient (a hypothetical future
+        # TransferType member) has denominator 0 -> null, rather than folding that type into the ratio.
+        from cms.transfers import add_nodeToProportionFromEd
+        other = 99  # not in {edToInpatient=1, inpatientToInpatient=2}
+        df = make_node_from_ed_df(spark, [(200, 2020, other)])
+        assert add_nodeToProportionFromEd(df).collect()[0]["nodeToProportionFromEd"] is None
