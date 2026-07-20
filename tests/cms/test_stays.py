@@ -2431,3 +2431,93 @@ class TestGetAdmittedStays:
         transfers = make_to_transfers_df(spark, [(2, 100, 60, 9, 200, 55)])
         out = get_admittedStays(stays, transfers)
         assert set(out.columns) == {"DSYSRTKY", "ORGNPINM", "ADMSN_DT_DAY", "tag"}
+
+
+# ============================================================
+# drop_unused_columns: removes raw CMS base columns and intermediate
+# enricher columns, plus the stay source/destination arrays
+# (otherStays / otherStaysOnAdmission / otherStaysOnThru) once
+# add_source_and_destination_info has derived admissionSource /
+# thruDestination from them. drop() is name-based and ignores absent
+# columns, so the same function is safe on base claims or on stays,
+# regardless of which columns a given pipeline created.
+# ============================================================
+
+def _drop_test_df(spark):
+    """One-row DF mixing columns drop_unused_columns must remove with columns
+    it must keep. Column types are illustrative only -- drop() is by name."""
+    from pyspark.sql.types import ArrayType
+    schema = StructType([
+        # kept: identity + enricher outputs downstream code still needs
+        StructField("DSYSRTKY", IntegerType()),
+        StructField("ORGNPINM", StringType()),
+        StructField("admissionSource", StringType()),
+        StructField("thruDestination", StringType()),
+        StructField("ed", IntegerType()),
+        StructField("anyStroke", IntegerType()),
+        # dropped: raw CMS base columns
+        StructField("ICD_DGNS_CD1", StringType()),
+        StructField("CLM_POA_IND_SW1", StringType()),
+        StructField("ICD_PRCDR_CD1", StringType()),
+        StructField("PRCDR_DT1", StringType()),
+        StructField("RFR_PHYSN_NPI", StringType()),
+        # dropped: intermediate enricher columns
+        StructField("prcdrCodeAll", ArrayType(StringType())),
+        StructField("dgnsCodeAll", ArrayType(StringType())),
+        StructField("ishStrokeDgns", IntegerType()),
+        StructField("tpaPrcdr", IntegerType()),
+        StructField("losDays", ArrayType(IntegerType())),
+        # dropped: stay source/destination arrays (the focus of this change)
+        StructField("otherStays", ArrayType(StringType())),
+        StructField("otherStaysOnAdmission", ArrayType(StringType())),
+        StructField("otherStaysOnThru", ArrayType(StringType())),
+    ])
+    row = {f.name: None for f in schema.fields}
+    return spark.createDataFrame([row], schema=schema)
+
+
+class TestDropUnusedColumns:
+
+    _KEEP = {"DSYSRTKY", "ORGNPINM", "admissionSource", "thruDestination", "ed", "anyStroke"}
+    _DROP = {"ICD_DGNS_CD1", "CLM_POA_IND_SW1", "ICD_PRCDR_CD1", "PRCDR_DT1", "RFR_PHYSN_NPI",
+             "prcdrCodeAll", "dgnsCodeAll", "ishStrokeDgns", "tpaPrcdr", "losDays",
+             "otherStays", "otherStaysOnAdmission", "otherStaysOnThru"}
+
+    def test_drops_unused_and_keeps_the_rest(self, spark):
+        from cms.stays import drop_unused_columns
+        out = drop_unused_columns(_drop_test_df(spark))
+        assert self._DROP.isdisjoint(out.columns)
+        assert set(out.columns) == self._KEEP
+
+    def test_drops_the_otherStays_arrays(self, spark):
+        # The reason drop_unused_columns moved to stays.py: these arrays are
+        # dead weight once admissionSource/thruDestination exist, and surface as
+        # arrow_list columns in R if they reach the written transfers parquet.
+        from cms.stays import drop_unused_columns
+        out = drop_unused_columns(_drop_test_df(spark))
+        for col in ("otherStays", "otherStaysOnAdmission", "otherStaysOnThru"):
+            assert col not in out.columns
+
+    def test_drops_every_index_of_the_generated_families(self, spark):
+        # ICD_DGNS_CD/CLM_POA_IND_SW/ICD_PRCDR_CD/PRCDR_DT are generated 1..25;
+        # confirm every index is dropped, not just the first one.
+        from cms.stays import drop_unused_columns
+        cols = ([f"ICD_DGNS_CD{i}" for i in range(1, 26)] +
+                [f"CLM_POA_IND_SW{i}" for i in range(1, 26)] +
+                [f"ICD_PRCDR_CD{i}" for i in range(1, 26)] +
+                [f"PRCDR_DT{i}" for i in range(1, 26)] + ["DSYSRTKY"])
+        schema = StructType([StructField(c, StringType()) for c in cols])
+        df = spark.createDataFrame([{c: None for c in cols}], schema=schema)
+        out = drop_unused_columns(df)
+        assert out.columns == ["DSYSRTKY"]
+
+    def test_ignores_absent_columns(self, spark):
+        # drop() is name-based and ignores names a pipeline never created; the
+        # single-late-call design relies on this (a stays DF carries the
+        # otherStays arrays but not, say, every raw base column).
+        from cms.stays import drop_unused_columns
+        schema = StructType([StructField("DSYSRTKY", IntegerType()),
+                             StructField("admissionSource", StringType())])
+        df = spark.createDataFrame([{"DSYSRTKY": 1, "admissionSource": "home"}], schema=schema)
+        out = drop_unused_columns(df)
+        assert set(out.columns) == {"DSYSRTKY", "admissionSource"}
