@@ -464,3 +464,35 @@ class TestAddThroughDateInfo:
         result = add_through_date_info(df)
         rows = {r["THRU_DT"]: r for r in result.collect()}
         assert rows[20180101]["THRU_DT_DAY"] - rows[20171231]["THRU_DT_DAY"] == 1
+
+
+class TestPrepAhaDF:
+    # AHA CSVs are read with no inferSchema, so every raw column arrives as a string.
+    # prep_ahaDF must cast the numeric ones back; ahaBedsIcu had no cast and leaked out as a
+    # string, forcing downstream R scripts to as.double() it. These tests lock in the int cast.
+
+    # All raw columns prep_ahaDF references on the year<=2016 path, supplied as strings like the CSV read.
+    AHA_COLS = ["MAPP3", "MAPP5", "MAPP8", "MAPP18", "BDH", "HOSPBD",
+                "FTERES", "LAT", "LONG", "MSICBD", "CBSATYPE", "CNTRL", "MHSMEMB"]
+
+    def _row(self, msicbd):
+        # Representative string values; only MSICBD varies across tests.
+        return [("1", "1", "1", "1", "150", "200", "10", "40.0", "-83.0",
+                 msicbd, "Metro", "23", "1")]
+
+    def test_ahaBedsIcu_is_int_not_string(self, spark):
+        from utilities import prep_ahaDF
+        df = spark.createDataFrame(self._row("20"), self.AHA_COLS)
+        result = prep_ahaDF(df, "FY2016 ASDB")
+        assert dict(result.dtypes)["ahaBedsIcu"] == "int"
+        assert result.collect()[0]["ahaBedsIcu"] == 20
+
+    def test_ahaBedsIcu_casts_multiple_rows(self, spark):
+        from utilities import prep_ahaDF
+        df = spark.createDataFrame(
+            self._row("20") + self._row("305") + self._row("0"),
+            self.AHA_COLS,
+        )
+        result = prep_ahaDF(df, "FY2016 ASDB")
+        assert dict(result.dtypes)["ahaBedsIcu"] == "int"
+        assert sorted(r["ahaBedsIcu"] for r in result.collect()) == [0, 20, 305]
