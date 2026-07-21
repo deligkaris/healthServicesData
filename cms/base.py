@@ -1395,7 +1395,14 @@ def add_provider_cost_report_info(baseDF,costReportDF):
     return baseDF
 
 def add_transferToIn(baseDF):
-    '''visits that resulted in a discharge to short term hospital (code 2) or other IPT care (code 5)'''
+    '''visits that resulted in a discharge to short term hospital (code 2) or other IPT care (code 5)
+
+    Added to both ip and op claims by cms.utilities.add_preliminary_info, since STUS_CD is in both
+    schemas. Trust it far less on op than on ip though: on ip claims the discharge status drives
+    transfer payment policy and is coded carefully, whereas op claims are frequently left at code 1
+    (discharged home) even when the visit did end in a transfer, so filtering op visits on this flag
+    drops real transfers. transfers.get_transfers does not use it -- it establishes a transfer from
+    the temporal join of the two stays instead, which is the more reliable route for op.'''
     baseDF = baseDF.withColumn( "transferToIn", F.when( F.col("STUS_CD").isin([2,5]), 1).otherwise(0))
     return baseDF
 
@@ -2119,12 +2126,13 @@ def get_shortTermInpatientOrganizationClaims(baseDF):
     columns that identified them (shortTermInpatientOrganization is constant 1 after the filter, and the
     excluded facility types are constant 0).
 
-    Requires add_shortTermInpatientOrganization to have been called first, cms.utilities.add_columns does
-    this for ip claims. The gach/rach/cah flags are kept, they distinguish facility types among the short
+    Requires add_shortTermInpatientOrganization to have been called first, cms.utilities.add_preliminary_info
+    does this for ip and op claims (an op claim can also be at a short term inpatient organization, eg an ED
+    visit at a GACH). The gach/rach/cah flags are kept, they distinguish facility types among the short
     term inpatient organizations that survive the filter.
 
     The facility type columns are dropped here rather than in add_shortTermInpatientOrganization, which is
-    what consumes them, because add_columns adds that flag to every ip claim: dropping there would take
+    what consumes them, because add_preliminary_info adds that flag to every ip claim: dropping there would take
     rehabilitation and ltcHospital off cmsDFS["ipBase"], and stays.get_otherStays reads both of them from
     it to split ip stays into ipRehab/ipLtc/ipOther. Here the drops are scoped to the filtered dataframe.'''
     baseDF = (baseDF.filter(F.col("shortTermInpatientOrganization")==1)

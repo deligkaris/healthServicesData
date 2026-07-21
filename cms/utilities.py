@@ -203,7 +203,9 @@ def add_preliminary_info(dataframes, data, lastObservableDay, runTests=False):
                  dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
                  dataframes[claimTypePart] = baseF.add_dgnsCodeAll(dataframes[claimTypePart])
                  dataframes[claimTypePart] = baseF.add_provider_info(dataframes[claimTypePart], data)
-        elif (claimPart=="Line"): 
+                 dataframes[claimTypePart] = baseF.add_shortTermInpatientOrganization(dataframes[claimTypePart])
+                 dataframes[claimTypePart] = baseF.add_transferToIn(dataframes[claimTypePart])
+        elif (claimPart=="Line"):
             dataframes[claimTypePart] = lineF.add_level1HCPCS_CD(dataframes[claimTypePart])
             dataframes[claimTypePart] = lineF.add_allowed(dataframes[claimTypePart])
             dataframes[claimTypePart] = add_through_date_info(dataframes[claimTypePart])
