@@ -2327,3 +2327,71 @@ class TestGetCleanThroughDates:
         from cms.base import get_clean_through_dates
         df = _make_clean_dates_df(spark, [(1, 5, 9), (2, -2, 4), (3, 3, -1), (4, None, None), (5, 0, 0)])
         assert sorted(r["CLAIMNO"] for r in get_clean_through_dates(df).collect()) == [1, 4, 5]
+
+
+# ============================================================
+# get_shortTermInpatientOrganizationClaims
+# ============================================================
+
+_FACILITY_COLUMNS = ["gachAll", "rachAll", "cahAll", "rehabilitation", "rehabilitationFromTaxonomyAll",
+                     "rehabilitationFromTaxonomyPrimary", "rehabilitationFromCCN", "pediatricHospital",
+                     "psychiatricHospital", "ltcHospital"]
+
+_DROPPED_COLUMNS = ["shortTermInpatientOrganization", "rehabilitation", "rehabilitationFromTaxonomyAll",
+                    "rehabilitationFromTaxonomyPrimary", "rehabilitationFromCCN", "pediatricHospital",
+                    "psychiatricHospital", "ltcHospital"]
+
+
+def _make_facility_df(spark, rows):
+    """rows: list of (CLAIMNO, gachAll, rachAll, cahAll, rehabilitation, pediatricHospital,
+    psychiatricHospital, ltcHospital) tuples. The remaining rehabilitation* columns are filled with 0,
+    they play no role in the filter but must exist for the drop to be exercised."""
+    fields = ([StructField("CLAIMNO", IntegerType(), True)] +
+              [StructField(c, IntegerType(), True) for c in _FACILITY_COLUMNS])
+    data = [(claimno, gach, rach, cah, rehab, 0, 0, 0, ped, psych, ltc)
+            for (claimno, gach, rach, cah, rehab, ped, psych, ltc) in rows]
+    return spark.createDataFrame(data, schema=StructType(fields))
+
+
+class TestGetShortTermInpatientOrganizationClaims:
+
+    def _run(self, spark, rows):
+        from cms.base import add_shortTermInpatientOrganization, get_shortTermInpatientOrganizationClaims
+        df = add_shortTermInpatientOrganization(_make_facility_df(spark, rows))
+        return get_shortTermInpatientOrganizationClaims(df)
+
+    def test_keeps_each_short_term_facility_type(self, spark):
+        # gach, rach and cah each qualify on their own.
+        rows = [(1, 1, 0, 0, 0, 0, 0, 0), (2, 0, 1, 0, 0, 0, 0, 0), (3, 0, 0, 1, 0, 0, 0, 0)]
+        assert sorted(r["CLAIMNO"] for r in self._run(spark, rows).collect()) == [1, 2, 3]
+
+    def test_drops_claim_with_no_short_term_facility_type(self, spark):
+        assert self._run(spark, [(1, 0, 0, 0, 0, 0, 0, 0)]).count() == 0
+
+    @pytest.mark.parametrize("excluded", ["rehabilitation", "pediatricHospital", "psychiatricHospital",
+                                          "ltcHospital"])
+    def test_drops_excluded_facility_type_even_when_short_term(self, spark, excluded):
+        # A gach that is also flagged as one of the excluded types is not a short term adult facility.
+        flags = {"rehabilitation": 0, "pediatricHospital": 0, "psychiatricHospital": 0, "ltcHospital": 0}
+        flags[excluded] = 1
+        rows = [(1, 1, 0, 0, flags["rehabilitation"], flags["pediatricHospital"],
+                 flags["psychiatricHospital"], flags["ltcHospital"])]
+        assert self._run(spark, rows).count() == 0
+
+    def test_drops_facility_type_columns(self, spark):
+        result = self._run(spark, [(1, 1, 0, 0, 0, 0, 0, 0)])
+        for c in _DROPPED_COLUMNS:
+            assert c not in result.columns, f"{c} should have been dropped"
+
+    def test_keeps_gach_rach_cah_and_other_columns(self, spark):
+        result = self._run(spark, [(1, 1, 0, 0, 0, 0, 0, 0)])
+        for c in ("CLAIMNO", "gachAll", "rachAll", "cahAll"):
+            assert c in result.columns
+
+    def test_mixed_rows(self, spark):
+        rows = [(1, 1, 0, 0, 0, 0, 0, 0),   # gach, keep
+                (2, 0, 0, 0, 0, 0, 0, 0),   # no short term type, drop
+                (3, 0, 1, 0, 1, 0, 0, 0),   # rach but rehabilitation, drop
+                (4, 0, 0, 1, 0, 0, 0, 0),   # cah, keep
+                (5, 1, 0, 0, 0, 0, 0, 1)]   # gach but ltc, drop
+        assert sorted(r["CLAIMNO"] for r in self._run(spark, rows).collect()) == [1, 4]

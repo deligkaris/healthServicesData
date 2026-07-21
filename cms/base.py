@@ -2098,6 +2098,20 @@ def add_shortTermInpatientOrganization(baseDF):
                                        (F.col("psychiatricHospital")==0) & (F.col("ltcHospital")==0), F.lit(1)).otherwise(F.lit(0)))
     return baseDF
 
+def get_shortTermInpatientOrganizationClaims(baseDF):
+    '''Keeps only the claims of short term inpatient care facilities for adults, and drops the facility type
+    columns that identified them (shortTermInpatientOrganization is constant 1 after the filter, and the
+    excluded facility types are constant 0).
+
+    Requires add_shortTermInpatientOrganization to have been called first, cms.utilities.add_columns does
+    this for ip claims. The gach/rach/cah flags are kept, they distinguish facility types among the short
+    term inpatient organizations that survive the filter.'''
+    baseDF = (baseDF.filter(F.col("shortTermInpatientOrganization")==1)
+                    .drop("shortTermInpatientOrganization",
+                          "rehabilitation", "rehabilitationFromTaxonomyAll", "rehabilitationFromTaxonomyPrimary",
+                          "rehabilitationFromCCN", "pediatricHospital", "psychiatricHospital", "ltcHospital"))
+    return baseDF
+
 
 
 
