@@ -2105,7 +2105,12 @@ def get_shortTermInpatientOrganizationClaims(baseDF):
 
     Requires add_shortTermInpatientOrganization to have been called first, cms.utilities.add_columns does
     this for ip claims. The gach/rach/cah flags are kept, they distinguish facility types among the short
-    term inpatient organizations that survive the filter.'''
+    term inpatient organizations that survive the filter.
+
+    The facility type columns are dropped here rather than in add_shortTermInpatientOrganization, which is
+    what consumes them, because add_columns adds that flag to every ip claim: dropping there would take
+    rehabilitation and ltcHospital off cmsDFS["ipBase"], and stays.get_otherStays reads both of them from
+    it to split ip stays into ipRehab/ipLtc/ipOther. Here the drops are scoped to the filtered dataframe.'''
     baseDF = (baseDF.filter(F.col("shortTermInpatientOrganization")==1)
                     .drop("shortTermInpatientOrganization",
                           "rehabilitation", "rehabilitationFromTaxonomyAll", "rehabilitationFromTaxonomyPrimary",
