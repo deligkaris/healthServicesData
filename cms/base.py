@@ -657,6 +657,22 @@ def add_peg(baseDF):
     baseDF = baseDF.withColumn("peg", F.when( F.col("pegPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
+def add_lifeSustainingTreatment(baseDF):
+    '''Any life sustaining treatment: intubation, tracheostomy, or peg.'''
+    baseDF = baseDF.withColumn("lifeSustainingTreatment",
+                               F.when(
+                                   F.col("intubation")+F.col("tracheostomy")+F.col("peg")>0, F.lit(1))
+                                .otherwise(F.lit(0)))
+    return baseDF
+
+def add_life_sustaining_treatment_info(baseDF):
+    '''Adds various columns related to life sustaining treatments'''
+    baseDF = add_intubation(baseDF)
+    baseDF = add_tracheostomy(baseDF)
+    baseDF = add_peg(baseDF)
+    baseDF = add_lifeSustainingTreatment(baseDF)
+    return baseDF
+
 def add_ohProvider(baseDF):
     # keep providers in OH (PRSTATE)
     # ohio is code 36, SSA code, https://resdac.org/cms-data/variables/state-code-claim-ssa
