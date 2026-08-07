@@ -146,25 +146,20 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #  https://www.census.gov/geographies/reference-files/time-series/geo/gazetteer-files.2020.html
     filenames["gazetteer2020"] = [pathToData + "/CENSUS/2020_Gaz_counties_national.csv"] 
 
-    # these data were obtained from CMS, for now just use the latest data available
-    # https://www.cms.gov/Research-Statistics-Data-and-Systems/Downloadable-Public-Use-Files/Cost-Reports/Hospital-2010-form
-    # https://data.cms.gov/provider-compliance/cost-report/hospital-provider-cost-report
-    # https://data.cms.gov/resources/hospital-provider-cost-report-data-dictionary
-    filenames["hospGme2021"] = [pathToData + '/HOSP10-REPORTS/IME_GME/IME_GME2021.CSV']
-    filenames["hospCost2018"] = [pathToData + '/HOSP10-REPORTS/COST-REPORTS/2018_CSV_2.csv']
-
-    #beds, staffing and rural/urban status per hospital per year, built once by get_hcrisDF below from the
+    #beds, resident counts and rural/urban status per hospital per year, built once by get_hcrisDF below from the
     #raw HCRIS 2552-10 files that sit next to it in the same folder (the HOSP10FY{year} folders) -- see that
     #docstring for the form worksheet each measure comes from and for how a cost reporting period is mapped
     #to a calendar year.
     #this is a parquet rather than a csv because the raw files it is built from are ~8GB of csv per release,
     #which is why read_and_prep_dataframe reads this one key differently
     #CMS publishes its own year by year summary of these same cost reports, the hospital provider cost report
-    #public use file that hospCost2018 above is one year of, and that file is NOT enough here: it reports a
-    #single Number of Beds and never breaks the beds out by unit, so hcrisBedsIcu and hcrisBedsCriticalCare
-    #exist only in the raw worksheet cells. The measures the two do share were checked against each other and
-    #agree exactly on every cost report both contain (2015-2023, ~35k reports), so this parquet loses nothing
-    #by not being built from the public use file. Where they differ is vintage: the public use file is rebuilt
+    #public use file, and that file is NOT enough here: it reports a single Number of Beds and never breaks
+    #the beds out by unit, so hcrisBedsIcu and hcrisBedsCriticalCare exist only in the raw worksheet cells.
+    #this parquet replaced the 2018 public use file the code used to read as hospCost2018, which supplied one
+    #year of beds, residents and rural/urban status to claims of every year. The measures the two share were
+    #checked against each other and agree exactly on every cost report both contain (2015-2023, ~35k reports),
+    #so this parquet loses nothing by not being built from the public use file, and gains every other year.
+    #Where they differ is vintage: the public use file is rebuilt
     #from a later HCRIS release, so for the most recent years it carries amended refilings of periods this
     #parquet holds under the original report number
     #the public use file is one zip per year at
@@ -275,8 +270,6 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_npiProvidersDF(df)
     elif file=="maPenetration":
         df = prep_maPenetrationDF(df)
-    elif file=="hospCost2018":
-        df = prep_hospCostDF(df)
     elif file=="pos":
         df = prep_posDF(df)
     elif file=="acgmeSites":
@@ -533,21 +526,8 @@ def prep_maPenetrationDF(maPenetrationDF):
                                       .withColumn("Year", F.col("Year").cast('int')))
     return maPenetrationDF
 
-def prep_hospCostDF(hospCostDF):
-    eachCCN = Window.partitionBy("Provider CCN")
-    hospCostDF = (hospCostDF.withColumn("maxTotalBedDaysAvailable", F.max(F.col("Total Bed Days Available").cast('int')).over(eachCCN))
-                            .filter(F.col("maxTotalBedDaysAvailable")==(F.col("Total Bed Days Available").cast('int')))
-                            .drop("maxTotalBedDaysAvailable")
-                            #the rural vs urban column is categorical with 2 categories, 'R' and 'U', for analyses, I need a boolean so convert it here
-                            .withColumn("providerRuralVersusUrbanIsRural", (F.col("Rural Versus Urban")=="R").cast('int'))
-                            .withColumn("numberOfBeds", F.col("Number of Beds").cast('double'))
-                            .withColumn("numberOfBedsGroup", F.when( F.col("numberOfBeds")<100, F.lit(0) ) #in analyses a categorical variable can be helpful
-                                                              .when( F.col("numberOfBeds")<400, F.lit(1) )
-                                                              .when( F.col("numberOfBeds")>=400, F.lit(2) )))
-    return hospCostDF
-
 def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=None):
-    '''Bed counts, teaching intensity, staffing and rural/urban status per hospital per year from the
+    '''Bed counts, number of interns and residents, and rural/urban status per hospital per year from the
     CMS HCRIS hospital 2552-10 cost report files.
 
     pathToHcris holds one folder per federal fiscal year, HOSP10FY{year}, each containing the three
@@ -571,18 +551,18 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     whole block is summed. LINE_NUM and CLMN_NUM are fixed-width zero-padded strings, which is why the
     ranges can be expressed as string comparisons.
 
-    Three single cells are read besides the bed blocks: interns and residents (FTE) on S-3 Part I line
-    27 column 9, employees on payroll (FTE) on S-3 Part I line 14 column 10, and the urban/rural
+    Two single cells are read besides the bed blocks: hcrisResidents, the number of interns and residents
+    the facility employed stated as an FTE count, on S-3 Part I line 27 column 9, and the urban/rural
     geographic classification on Worksheet S-2 Part I (WKSHT_CD S200001) line 26 column 1, coded 1 for
     urban and 2 for rural. Line 27 of S-3 Part I is the whole facility, subproviders included, while
     line 14 is the hospital component alone. All of these positions were confirmed against CMS's own
     Cost Report public use file (CostReport_2019_Final.csv), which carries rpt_rec_num and so joins to
     the raw files report by report: across the 2039 reports it shares with HOSP10FY2019 its Number of
-    Beds, Total Bed Days Available, FTE - Employees on Payroll and Rural Versus Urban agree with these
-    cells on every report, and its Number of Interns and Residents (FTE) agrees with line 27 on all 170
-    teaching hospitals while line 14 disagrees on 31 of them. That public use file is therefore no
+    Beds, Total Bed Days Available and Rural Versus Urban agree with these cells on every report, and
+    its Number of Interns and Residents (FTE) agrees with line 27 on all 170 teaching hospitals while
+    line 14 disagrees on 31 of them. That public use file is therefore no
     longer needed for these measures: the columns here are the same numbers for every year of HCRIS
-    rather than the single 2018 snapshot of hospCost2018.
+    rather than the single 2018 snapshot the code used to read as hospCost2018.
 
     hcrisYear is the calendar year containing the midpoint of the cost reporting period, not the fiscal
     year of the folder the report came from: the HOSP10FY{year} file groups reports by the federal fiscal
@@ -593,20 +573,19 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     the most recent fiscal years are still being filed, so their calendar years are incomplete.
 
     About 1.4% of (PRVDR_NUM, hcrisYear) pairs have more than one report, from a change of ownership or
-    a change of fiscal year splitting the year into two short periods. The longest period wins, matching
-    how prep_hospCostDF keeps the report with the most bed days available, with the highest RPT_REC_NUM
-    breaking ties so the choice is deterministic. hcrisReportDays is kept so a caller can drop the reports
+    a change of fiscal year splitting the year into two short periods. The longest period wins, with the
+    highest RPT_REC_NUM breaking ties so the choice is deterministic. hcrisReportDays is kept so a caller can drop the reports
     covering well under a year.
 
     A report that filed S-3 Part I but no intensive care line reported no intensive care unit, so
     hcrisBedsIcu and hcrisBedsCriticalCare are 0 rather than null there. hcrisResidents is 0 on the same
     reasoning: a hospital with no teaching program leaves the cell empty, which is how the public use
-    file leaves it too, but 0 residents is the real value. hcrisBedsTotal and hcrisEmployees are left
-    null when their cell is absent, since neither zero total beds nor zero employees is a real value,
-    and so is hcrisIsRural when the report filed no S-2 Part I line 26. Reports that filed no S-3 Part I
+    file leaves it too, but no residents is the real value. hcrisBedsTotal is left null when its cell is
+    absent, since zero total beds is not a real value, and so is hcrisIsRural when the report filed no
+    S-2 Part I line 26. Reports that filed no S-3 Part I
     bed cell at all (about 1% per year) are dropped rather than recorded as having no beds, which is why
     the bed columns, not the mere presence of a row in the aggregation, decide what the result keeps: a
-    report can file the S-2 and staffing cells while filing no bed cell.'''
+    report can file the S-2 and resident cells while filing no bed cell.'''
 
     rptFiles = [pathToHcris + f"/HOSP10FY{year}/HOSP10_{year}_rpt.csv" for year in range(yearInitial, yearFinal+1)]
     nmrcFiles = [pathToHcris + f"/HOSP10FY{year}/HOSP10_{year}_nmrc.csv" for year in range(yearInitial, yearFinal+1)]
@@ -627,11 +606,10 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
                  (F.col("CLMN_NUM")=="00200") &
                  (F.col("LINE_NUM").between("00800","01299") | (F.col("LINE_NUM")=="01400")))
     isResidentsCell = ((F.col("WKSHT_CD")=="S300001") & (F.col("LINE_NUM")=="02700") & (F.col("CLMN_NUM")=="00900"))
-    isEmployeesCell = ((F.col("WKSHT_CD")=="S300001") & (F.col("LINE_NUM")=="01400") & (F.col("CLMN_NUM")=="01000"))
     isRuralCell = ((F.col("WKSHT_CD")=="S200001") & (F.col("LINE_NUM")=="02600") & (F.col("CLMN_NUM")=="00100"))
 
     cellsDF = (spark.read.schema(hcrisNmrcSchema).csv(nmrcFiles)
-                    .filter(isBedCell | isResidentsCell | isEmployeesCell | isRuralCell)
+                    .filter(isBedCell | isResidentsCell | isRuralCell)
                     .groupBy("RPT_REC_NUM")
                     .agg(F.sum(F.when(isBedCell & F.col("LINE_NUM").between("00800","00899"),
                                       F.col("ITM_VAL_NUM"))).cast('int').alias("hcrisBedsIcu"),
@@ -640,7 +618,6 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
                          F.sum(F.when(isBedCell & (F.col("LINE_NUM")=="01400"),
                                       F.col("ITM_VAL_NUM"))).cast('int').alias("hcrisBedsTotal"),
                          F.max(F.when(isResidentsCell, F.col("ITM_VAL_NUM"))).alias("hcrisResidents"),
-                         F.max(F.when(isEmployeesCell, F.col("ITM_VAL_NUM"))).alias("hcrisEmployees"),
                          (F.max(F.when(isRuralCell, F.col("ITM_VAL_NUM")))==2).cast('int').alias("hcrisIsRural")))
 
     hcrisDF = (rptDF.join(cellsDF, on="RPT_REC_NUM", how="inner")

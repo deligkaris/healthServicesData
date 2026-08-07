@@ -793,7 +793,7 @@ def add_provider_npi_info(baseDF, npiProviderDF):
 
 def add_providerCountyName(baseDF,cbsaDF): #assumes providerFIPS
 
-    #if ever run into problems, eg a lot of nulls, the CMS hospital cost report (hospCost2018) also have the county of providers
+    #if ever run into problems, eg a lot of nulls, the CMS hospital cost reports also have the county of providers
 
     #medicareHospitalInfo works well for inpatient claims, but is less complete for outpatient claims
     #baseDF = baseDF.join(medicareHospitalInfoDF
@@ -920,7 +920,6 @@ def add_provider_info(baseDF, data):
     baseDF = add_providerMaPenetration(baseDF, data["maPenetration"])
     #right now I prefer cost report data because they seem to be about 99.5% complete, vs 80% complete for cbi
     #baseDF = add_cbi_info(baseDF, cbiDF)
-    baseDF = add_provider_cost_report_info(baseDF, data["hospCost2018"])
     baseDF = add_aha_info(baseDF, data["aha"])
     baseDF = add_hcris_info(baseDF, data["hcris"])
     baseDF = add_provider_system_info(baseDF, data["chspHosp"])
@@ -1380,21 +1379,6 @@ def add_cbi_info(baseDF,cbiDF):
 
     return baseDF
 
-def add_provider_cost_report_info(baseDF,costReportDF):
-    baseDF = baseDF.join(costReportDF
-                           .select(
-                               F.col("Provider CCN").alias("Provider"),
-                               #F.col("Rural Versus Urban").alias("providerRuralVersusUrban"), #replace this with the boolean variable below
-                               F.col("providerRuralVersusUrbanIsRural"),
-                               F.col("numberOfBeds").alias("providerNumberOfBeds"),
-                               F.col("numberOfBedsGroup").alias("providerNumberOfBedsGroup"),
-                               F.col("Number of Interns and Residents (FTE)").alias("providerNumberOfResidents")),
-                         #see note on add_cbi_info on why I am not using ORGNPINM for the join
-                         #hospital cost report files include only the CMS Certification Number (Provider ID, CCN), they do not include NPI
-                         on=["Provider"],
-                         how="left_outer")
-    return baseDF
-
 def add_transferToIn(baseDF):
     '''visits that resulted in a discharge to short term hospital (code 2) or other IPT care (code 5)
 
@@ -1617,8 +1601,8 @@ def add_cothMember(baseDF, teachingHospitalsDF):
 
 def add_rbr(baseDF, teachingHospitalsDF): # resident to bed ratio
 
-    #I tried using hospGme2021 data to find the RBR but that ended up being much more incomplete than the AAMC data
-    #so I am now using AAMC data
+    #I tried using the CMS IME/GME public use file to find the RBR but that ended up being much more incomplete
+    #than the AAMC data so I am now using AAMC data
 
     baseDF = baseDF.join(teachingHospitalsDF
                             .select(
@@ -1758,18 +1742,6 @@ def add_strokeCenterCamargo(baseDF,strokeCentersCamargoDF):
                     .drop("CCN"))
     return baseDF    
 
-def add_numberOfResidents(baseDF, hospCostDF):
-
-    baseDF = baseDF.join(hospCostDF
-                          .select( F.col("Number of Interns and Residents (FTE)").alias("numberOfResidents"),
-                                   F.col("Provider CCN")),
-                         on=[F.col("Provider CCN")==F.col("PROVIDER")],
-                         how="left_outer")
-
-    baseDF = baseDF.drop("Provider CCN")
-
-    return baseDF
-
 def add_numberOfClaims(baseDF):
     eachDsysrtky = Window.partitionBy("DSYSRTKY")
     baseDF = baseDF.withColumn("numberOfClaims", F.size(F.collect_set(F.col("CLAIMNO")).over(eachDsysrtky)))
@@ -1836,16 +1808,20 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
 def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provider characteristics
     '''Adds what a hospital reported on its Medicare cost report: the Worksheet S-3 Part I bed counts
     hcrisBedsIcu (intensive care), hcrisBedsCriticalCare (intensive plus coronary, burn, surgical and
-    other special care) and hcrisBedsTotal (all hospital beds), the staffing hcrisResidents (interns
-    and residents, FTE) and hcrisEmployees (employees on payroll, FTE), and hcrisIsRural from the
+    other special care) and hcrisBedsTotal (all hospital beds), hcrisResidents (the number of interns
+    and residents the facility employed, stated as an FTE count), and hcrisIsRural from the
     urban/rural classification on Worksheet S-2 Part I. See utilities.get_hcrisDF, which builds
     hcrisDF, for where on the form each one comes from. That function has already reduced the cost
     reports to one row per provider-year, so this join cannot multiply the claims.
 
-    hcrisResidents, hcrisEmployees and hcrisIsRural are the cost report source of providerNumberOfResidents,
-    providerRuralVersusUrbanIsRural and their kin from add_provider_cost_report_info, which reads CMS's
-    derived public use file for 2018 only and applies that one year to every claim. These are the same
-    numbers taken per year, so prefer them.
+    hcrisBedsTotalGroup is the only column not taken from the form: it is hcrisBedsTotal cut into the
+    three sizes analyses tend to want, 0 for under 100 beds, 1 for 100-399 and 2 for 400 and over, the
+    same cut ahaSize uses so the two are directly comparable.
+
+    These columns replaced providerNumberOfBeds, providerNumberOfBedsGroup, providerNumberOfResidents
+    and providerRuralVersusUrbanIsRural, which came from CMS's derived public use file for 2018 alone
+    and applied that one year to claims of every year. The numbers are the same where the two overlap,
+    so the rename is the only thing to carry over to analysis code.
 
     The join is on CCN and year, so a null here means the hospital filed no cost report covering that
     year, whereas a 0 means it filed one and reported no unit of that kind. That distinction matters:
@@ -1855,15 +1831,17 @@ def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provi
     hcrisBedsIcu is the closest analogue to ahaBedsIcu from add_aha_info and the two are worth comparing
     before either is used, since they come from different surveys with different response universes.'''
     baseDF = baseDF.join(hcrisDF.select(F.col("PRVDR_NUM").alias("PROVIDER"),
-                                            F.col("hcrisYear").alias("THRU_DT_YEAR"),
-                                            F.col("hcrisBedsIcu"),
-                                            F.col("hcrisBedsCriticalCare"),
-                                            F.col("hcrisBedsTotal"),
-                                            F.col("hcrisResidents"),
-                                            F.col("hcrisEmployees"),
-                                            F.col("hcrisIsRural")),
+                                        F.col("hcrisYear").alias("THRU_DT_YEAR"),
+                                        F.col("hcrisBedsIcu"),
+                                        F.col("hcrisBedsCriticalCare"),
+                                        F.col("hcrisBedsTotal"),
+                                        F.col("hcrisResidents"),
+                                        F.col("hcrisIsRural")),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
+    baseDF = baseDF.withColumn("hcrisBedsTotalGroup", F.when( F.col("hcrisBedsTotal")<100, F.lit(0) )
+                                                       .when( F.col("hcrisBedsTotal")<400, F.lit(1) )
+                                                       .when( F.col("hcrisBedsTotal")>=400, F.lit(2) ))
     return baseDF
 
 #inputs: baseDF is probably an inpatient or outpatient claims DF, XDF is probably hosp, hha, snf, or ip claims, X specifies claim type
