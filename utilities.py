@@ -169,6 +169,8 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #parquet holds under the original report number
     #the public use file is one zip per year at
     #https://data.cms.gov/provider-compliance/cost-reports/hospital-provider-cost-report/data
+    #while the detailed files this parquet is built from, one zip per federal fiscal year, are at
+    #https://www.cms.gov/data-research/statistics-trends-and-reports/cost-reports/cost-reports-fiscal-year
     filenames["hcris"] = [pathToData + '/HCRIS-COST-REPORTS/COST-REPORTS/hcris.parquet']
 
     # a CSV file that JB scraped from the CBI website: https://www.communitybenefitinsight.org
