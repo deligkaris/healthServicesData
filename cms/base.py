@@ -1807,14 +1807,14 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
 
 def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provider characteristics
     '''Adds what a hospital reported on its Medicare cost report: the Worksheet S-3 Part I bed counts
-    hcrisBedsIcu (intensive care), hcrisBedsCriticalCare (intensive plus coronary, burn, surgical and
-    other special care) and hcrisBedsTotal (all hospital beds), hcrisResidents (the number of interns
-    and residents the facility employed, stated as an FTE count), and hcrisIsRural from the
+    providerHcrisBedsIcu (intensive care), providerHcrisBedsCriticalCare (intensive plus coronary, burn, surgical and
+    other special care) and providerHcrisBedsTotal (all hospital beds), providerHcrisResidents (the number of interns
+    and residents the facility employed, stated as an FTE count), and providerHcrisIsRural from the
     urban/rural classification on Worksheet S-2 Part I. See utilities.get_hcrisDF, which builds
     hcrisDF, for where on the form each one comes from. That function has already reduced the cost
     reports to one row per provider-year, so this join cannot multiply the claims.
 
-    hcrisBedsTotalGroup is the only column not taken from the form: it is hcrisBedsTotal cut into the
+    providerHcrisBedsTotalGroup is the only column not taken from the form: it is providerHcrisBedsTotal cut into the
     three sizes analyses tend to want, 0 for under 100 beds, 1 for 100-399 and 2 for 400 and over, the
     same cut ahaSize uses so the two are directly comparable.
 
@@ -1828,20 +1828,20 @@ def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provi
     roughly half of the hospitals in any year are critical access, psychiatric, rehabilitation or long
     term care facilities that genuinely have no intensive care beds, so do NOT fill the nulls with 0.
 
-    hcrisBedsIcu is the closest analogue to ahaBedsIcu from add_aha_info and the two are worth comparing
+    providerHcrisBedsIcu is the closest analogue to ahaBedsIcu from add_aha_info and the two are worth comparing
     before either is used, since they come from different surveys with different response universes.'''
     baseDF = baseDF.join(hcrisDF.select(F.col("PRVDR_NUM").alias("PROVIDER"),
                                         F.col("hcrisYear").alias("THRU_DT_YEAR"),
-                                        F.col("hcrisBedsIcu"),
-                                        F.col("hcrisBedsCriticalCare"),
-                                        F.col("hcrisBedsTotal"),
-                                        F.col("hcrisResidents"),
-                                        F.col("hcrisIsRural")),
+                                        F.col("providerHcrisBedsIcu"),
+                                        F.col("providerHcrisBedsCriticalCare"),
+                                        F.col("providerHcrisBedsTotal"),
+                                        F.col("providerHcrisResidents"),
+                                        F.col("providerHcrisIsRural")),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
-    baseDF = baseDF.withColumn("hcrisBedsTotalGroup", F.when( F.col("hcrisBedsTotal")<100, F.lit(0) )
-                                                       .when( F.col("hcrisBedsTotal")<400, F.lit(1) )
-                                                       .when( F.col("hcrisBedsTotal")>=400, F.lit(2) ))
+    baseDF = baseDF.withColumn("providerHcrisBedsTotalGroup", F.when( F.col("providerHcrisBedsTotal")<100, F.lit(0) )
+                                                       .when( F.col("providerHcrisBedsTotal")<400, F.lit(1) )
+                                                       .when( F.col("providerHcrisBedsTotal")>=400, F.lit(2) ))
     return baseDF
 
 #inputs: baseDF is probably an inpatient or outpatient claims DF, XDF is probably hosp, hha, snf, or ip claims, X specifies claim type

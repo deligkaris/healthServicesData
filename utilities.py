@@ -154,7 +154,7 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #which is why read_and_prep_dataframe reads this one key differently
     #CMS publishes its own year by year summary of these same cost reports, the hospital provider cost report
     #public use file, and that file is NOT enough here: it reports a single Number of Beds and never breaks
-    #the beds out by unit, so hcrisBedsIcu and hcrisBedsCriticalCare exist only in the raw worksheet cells.
+    #the beds out by unit, so providerHcrisBedsIcu and providerHcrisBedsCriticalCare exist only in the raw worksheet cells.
     #this parquet replaced the 2018 public use file the code used to read as hospCost2018, which supplied one
     #year of beds, residents and rural/urban status to claims of every year. The measures the two share were
     #checked against each other and agree exactly on every cost report both contain (2015-2023, ~35k reports),
@@ -551,7 +551,7 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     whole block is summed. LINE_NUM and CLMN_NUM are fixed-width zero-padded strings, which is why the
     ranges can be expressed as string comparisons.
 
-    Two single cells are read besides the bed blocks: hcrisResidents, the number of interns and residents
+    Two single cells are read besides the bed blocks: providerHcrisResidents, the number of interns and residents
     the facility employed stated as an FTE count, on S-3 Part I line 27 column 9, and the urban/rural
     geographic classification on Worksheet S-2 Part I (WKSHT_CD S200001) line 26 column 1, coded 1 for
     urban and 2 for rural. Line 27 of S-3 Part I is the whole facility, subproviders included, while
@@ -578,10 +578,10 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     covering well under a year.
 
     A report that filed S-3 Part I but no intensive care line reported no intensive care unit, so
-    hcrisBedsIcu and hcrisBedsCriticalCare are 0 rather than null there. hcrisResidents is 0 on the same
+    providerHcrisBedsIcu and providerHcrisBedsCriticalCare are 0 rather than null there. providerHcrisResidents is 0 on the same
     reasoning: a hospital with no teaching program leaves the cell empty, which is how the public use
-    file leaves it too, but no residents is the real value. hcrisBedsTotal is left null when its cell is
-    absent, since zero total beds is not a real value, and so is hcrisIsRural when the report filed no
+    file leaves it too, but no residents is the real value. providerHcrisBedsTotal is left null when its cell is
+    absent, since zero total beds is not a real value, and so is providerHcrisIsRural when the report filed no
     S-2 Part I line 26. Reports that filed no S-3 Part I
     bed cell at all (about 1% per year) are dropped rather than recorded as having no beds, which is why
     the bed columns, not the mere presence of a row in the aggregation, decide what the result keeps: a
@@ -612,17 +612,17 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
                     .filter(isBedCell | isResidentsCell | isRuralCell)
                     .groupBy("RPT_REC_NUM")
                     .agg(F.sum(F.when(isBedCell & F.col("LINE_NUM").between("00800","00899"),
-                                      F.col("ITM_VAL_NUM"))).cast('int').alias("hcrisBedsIcu"),
+                                      F.col("ITM_VAL_NUM"))).cast('int').alias("providerHcrisBedsIcu"),
                          F.sum(F.when(isBedCell & F.col("LINE_NUM").between("00800","01299"),
-                                      F.col("ITM_VAL_NUM"))).cast('int').alias("hcrisBedsCriticalCare"),
+                                      F.col("ITM_VAL_NUM"))).cast('int').alias("providerHcrisBedsCriticalCare"),
                          F.sum(F.when(isBedCell & (F.col("LINE_NUM")=="01400"),
-                                      F.col("ITM_VAL_NUM"))).cast('int').alias("hcrisBedsTotal"),
-                         F.max(F.when(isResidentsCell, F.col("ITM_VAL_NUM"))).alias("hcrisResidents"),
-                         (F.max(F.when(isRuralCell, F.col("ITM_VAL_NUM")))==2).cast('int').alias("hcrisIsRural")))
+                                      F.col("ITM_VAL_NUM"))).cast('int').alias("providerHcrisBedsTotal"),
+                         F.max(F.when(isResidentsCell, F.col("ITM_VAL_NUM"))).alias("providerHcrisResidents"),
+                         (F.max(F.when(isRuralCell, F.col("ITM_VAL_NUM")))==2).cast('int').alias("providerHcrisIsRural")))
 
     hcrisDF = (rptDF.join(cellsDF, on="RPT_REC_NUM", how="inner")
-                    .filter(F.col("hcrisBedsCriticalCare").isNotNull() | F.col("hcrisBedsTotal").isNotNull())
-                    .fillna(0, subset=["hcrisBedsIcu","hcrisBedsCriticalCare","hcrisResidents"]))
+                    .filter(F.col("providerHcrisBedsCriticalCare").isNotNull() | F.col("providerHcrisBedsTotal").isNotNull())
+                    .fillna(0, subset=["providerHcrisBedsIcu","providerHcrisBedsCriticalCare","providerHcrisResidents"]))
 
     eachProviderYear = (Window.partitionBy("PRVDR_NUM","hcrisYear")
                               .orderBy(F.col("hcrisReportDays").desc(), F.col("RPT_REC_NUM").desc()))
