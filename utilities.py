@@ -159,6 +159,14 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #to a calendar year.
     #this is a parquet rather than a csv because the raw files it is built from are ~8GB of csv per release,
     #which is why read_and_prep_dataframe reads this one key differently
+    #CMS publishes its own year by year summary of these same cost reports, the hospital provider cost report
+    #public use file that hospCost2018 above is one year of, and that file is NOT enough here: it reports a
+    #single Number of Beds and never breaks the beds out by unit, so hcrisBedsIcu and hcrisBedsCriticalCare
+    #exist only in the raw worksheet cells. The measures the two do share were checked against each other and
+    #agree exactly on every cost report both contain (2015-2023, ~35k reports), so this parquet loses nothing
+    #by not being built from the public use file. Where they differ is vintage: the public use file is rebuilt
+    #from a later HCRIS release, so for the most recent years it carries amended refilings of periods this
+    #parquet holds under the original report number
     filenames["hcris"] = [pathToData + '/HCRIS-COST-REPORTS/COST-REPORTS/hcris.parquet']
 
     # a CSV file that JB scraped from the CBI website: https://www.communitybenefitinsight.org
