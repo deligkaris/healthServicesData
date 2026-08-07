@@ -167,6 +167,8 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #by not being built from the public use file. Where they differ is vintage: the public use file is rebuilt
     #from a later HCRIS release, so for the most recent years it carries amended refilings of periods this
     #parquet holds under the original report number
+    #the public use file is one zip per year at
+    #https://data.cms.gov/provider-compliance/cost-reports/hospital-provider-cost-report/data
     filenames["hcris"] = [pathToData + '/HCRIS-COST-REPORTS/COST-REPORTS/hcris.parquet']
 
     # a CSV file that JB scraped from the CBI website: https://www.communitybenefitinsight.org
