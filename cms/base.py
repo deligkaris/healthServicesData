@@ -922,7 +922,7 @@ def add_provider_info(baseDF, data):
     #baseDF = add_cbi_info(baseDF, cbiDF)
     baseDF = add_provider_cost_report_info(baseDF, data["hospCost2018"])
     baseDF = add_aha_info(baseDF, data["aha"])
-    baseDF = add_hcris_info(baseDF, data["hcrisBeds"])
+    baseDF = add_hcris_info(baseDF, data["hcris"])
     baseDF = add_provider_system_info(baseDF, data["chspHosp"])
     baseDF = add_providerCmi(baseDF, data["cmi"])
     baseDF = add_providerIn50StatesOrDc(baseDF)
@@ -1833,12 +1833,19 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                          how="left_outer")
     return baseDF
 
-def add_hcris_info(baseDF, hcrisBedsDF): #medicare cost report (HCRIS 2552-10) bed counts
-    '''Adds the bed counts a hospital reported on Worksheet S-3 Part I of its Medicare cost report:
+def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provider characteristics
+    '''Adds what a hospital reported on its Medicare cost report: the Worksheet S-3 Part I bed counts
     hcrisBedsIcu (intensive care), hcrisBedsCriticalCare (intensive plus coronary, burn, surgical and
-    other special care) and hcrisBedsTotal (all hospital beds). See utilities.get_hcrisBedsDF, which
-    builds hcrisBedsDF, for where on the form each one comes from. That function has already reduced
-    the cost reports to one row per provider-year, so this join cannot multiply the claims.
+    other special care) and hcrisBedsTotal (all hospital beds), the staffing hcrisResidents (interns
+    and residents, FTE) and hcrisEmployees (employees on payroll, FTE), and hcrisIsRural from the
+    urban/rural classification on Worksheet S-2 Part I. See utilities.get_hcrisDF, which builds
+    hcrisDF, for where on the form each one comes from. That function has already reduced the cost
+    reports to one row per provider-year, so this join cannot multiply the claims.
+
+    hcrisResidents, hcrisEmployees and hcrisIsRural are the cost report source of providerNumberOfResidents,
+    providerRuralVersusUrbanIsRural and their kin from add_provider_cost_report_info, which reads CMS's
+    derived public use file for 2018 only and applies that one year to every claim. These are the same
+    numbers taken per year, so prefer them.
 
     The join is on CCN and year, so a null here means the hospital filed no cost report covering that
     year, whereas a 0 means it filed one and reported no unit of that kind. That distinction matters:
@@ -1847,11 +1854,14 @@ def add_hcris_info(baseDF, hcrisBedsDF): #medicare cost report (HCRIS 2552-10) b
 
     hcrisBedsIcu is the closest analogue to ahaBedsIcu from add_aha_info and the two are worth comparing
     before either is used, since they come from different surveys with different response universes.'''
-    baseDF = baseDF.join(hcrisBedsDF.select(F.col("PRVDR_NUM").alias("PROVIDER"),
+    baseDF = baseDF.join(hcrisDF.select(F.col("PRVDR_NUM").alias("PROVIDER"),
                                             F.col("hcrisYear").alias("THRU_DT_YEAR"),
                                             F.col("hcrisBedsIcu"),
                                             F.col("hcrisBedsCriticalCare"),
-                                            F.col("hcrisBedsTotal")),
+                                            F.col("hcrisBedsTotal"),
+                                            F.col("hcrisResidents"),
+                                            F.col("hcrisEmployees"),
+                                            F.col("hcrisIsRural")),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
     return baseDF
