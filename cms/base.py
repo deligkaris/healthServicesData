@@ -922,6 +922,7 @@ def add_provider_info(baseDF, data):
     #baseDF = add_cbi_info(baseDF, cbiDF)
     baseDF = add_provider_cost_report_info(baseDF, data["hospCost2018"])
     baseDF = add_aha_info(baseDF, data["aha"])
+    baseDF = add_hcris_info(baseDF, data["hcrisBeds"])
     baseDF = add_provider_system_info(baseDF, data["chspHosp"])
     baseDF = add_providerCmi(baseDF, data["cmi"])
     baseDF = add_providerIn50StatesOrDc(baseDF)
@@ -1828,6 +1829,29 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                ("SYSID","ahaSystemMemberId")]                     #member health system ID
     selectCols = [(F.col(src) if src in ahaDF.columns else F.lit(None)).alias(alias) for (src,alias) in ahaCols]
     baseDF = baseDF.join(ahaDF.select(selectCols),
+                         on=["PROVIDER","THRU_DT_YEAR"],
+                         how="left_outer")
+    return baseDF
+
+def add_hcris_info(baseDF, hcrisBedsDF): #medicare cost report (HCRIS 2552-10) bed counts
+    '''Adds the bed counts a hospital reported on Worksheet S-3 Part I of its Medicare cost report:
+    hcrisBedsIcu (intensive care), hcrisBedsCriticalCare (intensive plus coronary, burn, surgical and
+    other special care) and hcrisBedsTotal (all hospital beds). See utilities.get_hcrisBedsDF, which
+    builds hcrisBedsDF, for where on the form each one comes from. That function has already reduced
+    the cost reports to one row per provider-year, so this join cannot multiply the claims.
+
+    The join is on CCN and year, so a null here means the hospital filed no cost report covering that
+    year, whereas a 0 means it filed one and reported no unit of that kind. That distinction matters:
+    roughly half of the hospitals in any year are critical access, psychiatric, rehabilitation or long
+    term care facilities that genuinely have no intensive care beds, so do NOT fill the nulls with 0.
+
+    hcrisBedsIcu is the closest analogue to ahaBedsIcu from add_aha_info and the two are worth comparing
+    before either is used, since they come from different surveys with different response universes.'''
+    baseDF = baseDF.join(hcrisBedsDF.select(F.col("PRVDR_NUM").alias("PROVIDER"),
+                                            F.col("hcrisYear").alias("THRU_DT_YEAR"),
+                                            F.col("hcrisBedsIcu"),
+                                            F.col("hcrisBedsCriticalCare"),
+                                            F.col("hcrisBedsTotal")),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
     return baseDF
