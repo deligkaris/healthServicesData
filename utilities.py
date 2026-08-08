@@ -549,7 +549,30 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     single lines because a hospital with more than one unit of a kind subscripts the line (00801, 00802,
     ... up to 00850 has been observed), so the beds of a multi-ICU hospital are only complete when the
     whole block is summed. LINE_NUM and CLMN_NUM are fixed-width zero-padded strings, which is why the
-    ranges can be expressed as string comparisons.
+    ranges can be expressed as string comparisons. providerHcrisBedsIcu is the 00800-00899 block alone
+    while providerHcrisBedsCriticalCare is all five blocks, so the first is a subset of the second rather
+    than a category beside it. The critical care range ends at 01299 because line 13 is the nursery,
+    which is not special care, and providerHcrisBedsTotal is read from line 01400, the form's own Total,
+    rather than derived by summing the unit lines.
+
+    The lines and columns are those of the blank worksheets and their line by line instructions in the
+    Provider Reimbursement Manual Part 2 (CMS Pub. 15-2) chapter 40
+    (https://www.cms.gov/regulations-and-guidance/guidance/manuals/paper-based-manuals-items/cms021935).
+    The blank worksheets are section 4090, https://www.cms.gov/files/document/r23p240f.pdf as of
+    transmittal 23, with S-3 Part I on page 40-511 and S-2 Part I line 26 on page 40-504. The line by
+    line instructions are https://www.cms.gov/files/document/r18p240ipdf.pdf as of transmittal 18, S-3
+    Part I at section 4005.1 starting on page 40-53 with the instructions for lines 8 through 14 on page
+    40-57, and S-2 Part I at section 4004.1. Those page numbers are the 40-NNN printed in the corner of
+    the page, which is what the manual cross references and what survives a change of transmittal, not
+    the position in the pdf. S-3 Part I column 2 is No. of
+    Beds, defined there as the beds available for use by patients at the end of the cost reporting period
+    per 42 CFR 412.105(b); lines 8 through 13 are intensive care, coronary care, burn intensive care,
+    surgical intensive care, other special care and nursery; and line 14, Total, is instructed to be the
+    sum of lines 7 through 13 in columns 2 through 8, so it also counts the adults and pediatrics of line
+    7 and the nursery of line 13. Column 9 is Interns & Residents FTEs and line 27 is Total, the sum of
+    lines 14 through 26. S-2 Part I line 26 is the standard geographic classification, not the wage one,
+    at the BEGINNING of the cost reporting period, 1 for urban and 2 for rural; line 27 is the same
+    classification at the end of the period and is not read here.
 
     Two single cells are read besides the bed blocks: providerHcrisResidents, the number of interns and residents
     the facility employed stated as an FTE count, on S-3 Part I line 27 column 9, and the urban/rural
@@ -578,7 +601,8 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     covering well under a year.
 
     A report that filed S-3 Part I but no intensive care line reported no intensive care unit, so
-    providerHcrisBedsIcu and providerHcrisBedsCriticalCare are 0 rather than null there. providerHcrisResidents is 0 on the same
+    providerHcrisBedsIcu and providerHcrisBedsCriticalCare are 0 rather than null there, the null being
+    what summing a block none of whose lines the report filed returns. providerHcrisResidents is 0 on the same
     reasoning: a hospital with no teaching program leaves the cell empty, which is how the public use
     file leaves it too, but no residents is the real value. providerHcrisBedsTotal is left null when its cell is
     absent, since zero total beds is not a real value, and so is providerHcrisIsRural when the report filed no
