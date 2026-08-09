@@ -555,6 +555,49 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     which is not special care, and providerHcrisBedsTotal is read from line 01400, the form's own Total,
     rather than derived by summing the unit lines.
 
+    Column 3 of the same lines is Bed Days Available, the beds of column 2 multiplied by the days in the
+    cost reporting period. It is summed over the same three line groups into providerHcrisBedDaysIcu,
+    providerHcrisBedDaysCriticalCare and providerHcrisBedDaysTotal, and it is also what column 2 is checked
+    against: a bed count is replaced by the bed days divided by hcrisReportDays, rounded to a whole bed,
+    whenever the count filed is more than 5 times that. Bed days are the beds a hospital had times the days
+    it had them, so they measure a whole year of capacity where the bed counts measure the single day the
+    period ends on, which is why they are worth carrying and not only worth checking against. They are long
+    rather than int because a garbage cell in this column is 365 times larger than a garbage bed count, and
+    one provider has already filed a value a third of the way to the int limit.
+
+    The check is needed because nothing validates column 2 at filing time and some
+    providers put a number in it that is not a bed count at all, which nothing downstream of them catches
+    either -- CMS's own cost report public use file reads the same cell and carries the same values, so
+    this is what the hospital filed rather than a misread of the file. Every
+    such report has a sane bed days cell beside the wrong count and a sane count in the provider's own
+    other years: 360044 filed 1594784 beds for FY2020 against 14640 bed days, 40 beds, and filed 36 to 63
+    every other year; 131316 filed 52913 for FY2019 against 7665 bed days, 21 beds, and 21 every other
+    year; 370215, 223300, 310028, 050179, 521357, 391300 and 493033 are the same story. Building the
+    2015-2024 parquet, the check replaces a count on 26 of its 59553 reports, 0.04%: 22 totals, 12 of them
+    in the thousands, and 4 reports whose total was sound while an intensive or special care line was not,
+    among them a 56 bed intensive care unit against bed days for 8 filed by a hospital that files 8 in
+    every other year, and a coronary care line reading 2191 beds against bed days for 10. The replacement
+    is rare, then, but it is the whole of the tail: these are the reports a comparison against the AHA bed
+    counts turns up first.
+
+    The check is deliberately one sided and its threshold deliberately loose. It is one sided because
+    a count far BELOW its bed days is the other cell being wrong, not this one: those reports file a bed
+    days cell 5 to 10 times too large beside a count that is stable across the provider's other years, and
+    replacing the good count with the bad bed days would be the error. It is 5 times rather than something
+    tighter because the two cells legitimately disagree by a factor of about 2: column 2 is the beds
+    available at the END of the period while bed days accumulate over it, so a hospital that adds or closes
+    beds partway through the year has a real, correctly filed gap between them (100079 filed 524 beds for a
+    period whose bed days imply 325, then 524 against 524 the following year).
+
+    The check also refuses to fire when the bed days cell implies less than one bed, that is when it is
+    absent, zero, or smaller than the days in the period, because a bed days cell that small is itself
+    not a credible number and the check would then be correcting the sound cell with the broken one:
+    040011 filed 41 beds for FY2016 against 6 bed days, a hospital open six bed days in a year, and its
+    41 is the more believable of the two. This is also what keeps a replacement from ever coming out as
+    0, which would be read downstream as the hospital having no unit of that kind rather than as a count
+    that could not be trusted -- 020026 files 1 other special care bed against 1 bed day every year and
+    keeps its 1.
+
     The lines and columns are those of the blank worksheets and their line by line instructions in the
     Provider Reimbursement Manual Part 2 (CMS Pub. 15-2) chapter 40
     (https://www.cms.gov/regulations-and-guidance/guidance/manuals/paper-based-manuals-items/cms021935).
@@ -566,7 +609,9 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     the page, which is what the manual cross references and what survives a change of transmittal, not
     the position in the pdf. S-3 Part I column 2 is No. of
     Beds, defined there as the beds available for use by patients at the end of the cost reporting period
-    per 42 CFR 412.105(b); lines 8 through 13 are intensive care, coronary care, burn intensive care,
+    per 42 CFR 412.105(b), and column 3 is Bed Days Available, instructed to be that count multiplied by
+    the number of days in the cost reporting period, which is what makes the two checkable against each
+    other; lines 8 through 13 are intensive care, coronary care, burn intensive care,
     surgical intensive care, other special care and nursery; and line 14, Total, is instructed to be the
     sum of lines 7 through 13 in columns 2 through 8, so it also counts the adults and pediatrics of line
     7 and the nursery of line 13. Column 9 is Interns & Residents FTEs and line 27 is Total, the sum of
@@ -602,11 +647,14 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
 
     A report that filed S-3 Part I but no intensive care line reported no intensive care unit, so
     providerHcrisBedsIcu and providerHcrisBedsCriticalCare are 0 rather than null there, the null being
-    what summing a block none of whose lines the report filed returns. providerHcrisResidents is 0 on the same
+    what summing a block none of whose lines the report filed returns, and providerHcrisBedDaysIcu and
+    providerHcrisBedDaysCriticalCare are 0 for the same reason and in the same rows. providerHcrisResidents is 0 on the same
     reasoning: a hospital with no teaching program leaves the cell empty, which is how the public use
     file leaves it too, but no residents is the real value. providerHcrisBedsTotal is left null when its cell is
-    absent, since zero total beds is not a real value, and so is providerHcrisIsRural when the report filed no
-    S-2 Part I line 26. Reports that filed no S-3 Part I
+    absent, since zero total beds is not a real value, as is providerHcrisBedDaysTotal when its own cell is
+    absent, and providerHcrisIsRural when the report filed no
+    S-2 Part I line 26. The bed and bed days columns are filled independently of each other, so a report can
+    carry a count with no bed days beside it, which is the 040011 case above. Reports that filed no S-3 Part I
     bed cell at all (about 1% per year) are dropped rather than recorded as having no beds, which is why
     the bed columns, not the mere presence of a row in the aggregation, decide what the result keeps: a
     report can file the S-2 and resident cells while filing no bed cell.'''
@@ -626,27 +674,47 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
                               F.year(F.date_add(F.col("FY_BGN_DT"),
                                                 (F.datediff(F.col("FY_END_DT"), F.col("FY_BGN_DT"))/2).cast('int')))))
 
-    isBedCell = ((F.col("WKSHT_CD")=="S300001") &
-                 (F.col("CLMN_NUM")=="00200") &
+    isBedLine = ((F.col("WKSHT_CD")=="S300001") &
                  (F.col("LINE_NUM").between("00800","01299") | (F.col("LINE_NUM")=="01400")))
+    isBedCell = isBedLine & (F.col("CLMN_NUM")=="00200")
+    isBedDaysCell = isBedLine & (F.col("CLMN_NUM")=="00300")
     isResidentsCell = ((F.col("WKSHT_CD")=="S300001") & (F.col("LINE_NUM")=="02700") & (F.col("CLMN_NUM")=="00900"))
     isRuralCell = ((F.col("WKSHT_CD")=="S200001") & (F.col("LINE_NUM")=="02600") & (F.col("CLMN_NUM")=="00100"))
 
+    icuBlock = F.col("LINE_NUM").between("00800","00899")
+    criticalCareBlock = F.col("LINE_NUM").between("00800","01299")
+    totalLine = (F.col("LINE_NUM")=="01400")
+
+    def sum_cells(cell, block):
+        return F.sum(F.when(cell & block, F.col("ITM_VAL_NUM")))
+
     cellsDF = (spark.read.schema(hcrisNmrcSchema).csv(nmrcFiles)
-                    .filter(isBedCell | isResidentsCell | isRuralCell)
+                    .filter(isBedCell | isBedDaysCell | isResidentsCell | isRuralCell)
                     .groupBy("RPT_REC_NUM")
-                    .agg(F.sum(F.when(isBedCell & F.col("LINE_NUM").between("00800","00899"),
-                                      F.col("ITM_VAL_NUM"))).cast('int').alias("providerHcrisBedsIcu"),
-                         F.sum(F.when(isBedCell & F.col("LINE_NUM").between("00800","01299"),
-                                      F.col("ITM_VAL_NUM"))).cast('int').alias("providerHcrisBedsCriticalCare"),
-                         F.sum(F.when(isBedCell & (F.col("LINE_NUM")=="01400"),
-                                      F.col("ITM_VAL_NUM"))).cast('int').alias("providerHcrisBedsTotal"),
+                    .agg(sum_cells(isBedCell, icuBlock).cast('int').alias("providerHcrisBedsIcu"),
+                         sum_cells(isBedCell, criticalCareBlock).cast('int').alias("providerHcrisBedsCriticalCare"),
+                         sum_cells(isBedCell, totalLine).cast('int').alias("providerHcrisBedsTotal"),
+                         sum_cells(isBedDaysCell, icuBlock).cast('long').alias("providerHcrisBedDaysIcu"),
+                         sum_cells(isBedDaysCell, criticalCareBlock).cast('long').alias("providerHcrisBedDaysCriticalCare"),
+                         sum_cells(isBedDaysCell, totalLine).cast('long').alias("providerHcrisBedDaysTotal"),
                          F.max(F.when(isResidentsCell, F.col("ITM_VAL_NUM"))).alias("providerHcrisResidents"),
                          (F.max(F.when(isRuralCell, F.col("ITM_VAL_NUM")))==2).cast('int').alias("providerHcrisIsRural")))
 
+    def beds_checked_against_bed_days(beds, bedDays):
+        impliedBeds = F.col(bedDays)/F.col("hcrisReportDays")
+        return (F.when((impliedBeds>=1) & (F.col(beds) > 5*impliedBeds), F.round(impliedBeds))
+                 .otherwise(F.col(beds)).cast('int'))
+
     hcrisDF = (rptDF.join(cellsDF, on="RPT_REC_NUM", how="inner")
+                    .withColumn("providerHcrisBedsIcu",
+                                beds_checked_against_bed_days("providerHcrisBedsIcu","providerHcrisBedDaysIcu"))
+                    .withColumn("providerHcrisBedsCriticalCare",
+                                beds_checked_against_bed_days("providerHcrisBedsCriticalCare","providerHcrisBedDaysCriticalCare"))
+                    .withColumn("providerHcrisBedsTotal",
+                                beds_checked_against_bed_days("providerHcrisBedsTotal","providerHcrisBedDaysTotal"))
                     .filter(F.col("providerHcrisBedsCriticalCare").isNotNull() | F.col("providerHcrisBedsTotal").isNotNull())
-                    .fillna(0, subset=["providerHcrisBedsIcu","providerHcrisBedsCriticalCare","providerHcrisResidents"]))
+                    .fillna(0, subset=["providerHcrisBedsIcu","providerHcrisBedsCriticalCare","providerHcrisResidents",
+                                       "providerHcrisBedDaysIcu","providerHcrisBedDaysCriticalCare"]))
 
     eachProviderYear = (Window.partitionBy("PRVDR_NUM","hcrisYear")
                               .orderBy(F.col("hcrisReportDays").desc(), F.col("RPT_REC_NUM").desc()))

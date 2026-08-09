@@ -1808,7 +1808,9 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
 def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provider characteristics
     '''Adds what a hospital reported on its Medicare cost report: the Worksheet S-3 Part I bed counts
     providerHcrisBedsIcu (intensive care), providerHcrisBedsCriticalCare (intensive plus coronary, burn, surgical and
-    other special care) and providerHcrisBedsTotal (all hospital beds), providerHcrisResidents (the number of interns
+    other special care) and providerHcrisBedsTotal (all hospital beds), the bed days available
+    providerHcrisBedDaysIcu, providerHcrisBedDaysCriticalCare and providerHcrisBedDaysTotal that go with
+    them, providerHcrisResidents (the number of interns
     and residents the facility employed, stated as an FTE count), and providerHcrisIsRural from the
     urban/rural classification on Worksheet S-2 Part I. See utilities.get_hcrisDF, which builds
     hcrisDF, for where on the form each one comes from. That function has already reduced the cost
@@ -1829,12 +1831,34 @@ def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provi
     term care facilities that genuinely have no intensive care beds, so do NOT fill the nulls with 0.
 
     providerHcrisBedsIcu is the closest analogue to ahaBedsIcu from add_aha_info and the two are worth comparing
-    before either is used, since they come from different surveys with different response universes.'''
+    before either is used, since they come from different surveys with different response universes.
+
+    A bed days column is the beds of the count beside it multiplied by the days the hospital had them, so
+    it says how much capacity stood available across the whole reporting period where the count says what
+    stood available on the last day of it. Divided by the days in that period it is the average bed count
+    over the year, which is what a hospital resizing partway through the year makes different from the
+    filed count, and divided into patient days it is an occupancy. The length of the period is NOT carried
+    onto the claims: it is hcrisReportDays on hcrisDF, and it is a full year for all but the few percent of
+    reports covering a change of ownership or of fiscal year, so treat a bed days column here as a year of
+    capacity and go back to hcrisDF when the exact denominator matters.
+
+    The bed counts a handful of providers file are not bed counts at all, so get_hcrisDF replaces one that
+    its own Bed Days Available cell contradicts by more than 5 times. What that check does NOT touch, and
+    what a comparison against the AHA bed counts still turns up, is a hospital whose cost report is
+    internally consistent and several times larger than its AHA record anyway: the cost report counts the
+    beds available for use at the end of the reporting period per 42 CFR 412.105(b), which is close to the
+    licensed count and is often left unchanged for years, while AHA's ahaTotalHospitalBeds counts the beds
+    set up and staffed. A hospital that shrank keeps filing the old count (490117 filed 56 beds in a year
+    it had 2143 patient days, an average daily census of 6, and AHA said 4), so the two disagreeing by a
+    factor of ten is a real difference between the sources rather than a bad cell.'''
     baseDF = baseDF.join(hcrisDF.select(F.col("PRVDR_NUM").alias("PROVIDER"),
                                         F.col("hcrisYear").alias("THRU_DT_YEAR"),
                                         F.col("providerHcrisBedsIcu"),
                                         F.col("providerHcrisBedsCriticalCare"),
                                         F.col("providerHcrisBedsTotal"),
+                                        F.col("providerHcrisBedDaysIcu"),
+                                        F.col("providerHcrisBedDaysCriticalCare"),
+                                        F.col("providerHcrisBedDaysTotal"),
                                         F.col("providerHcrisResidents"),
                                         F.col("providerHcrisIsRural")),
                          on=["PROVIDER","THRU_DT_YEAR"],

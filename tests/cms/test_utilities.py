@@ -496,3 +496,93 @@ class TestPrepAhaDF:
         result = prep_ahaDF(df, "FY2016 ASDB")
         assert dict(result.dtypes)["ahaBedsIcu"] == "int"
         assert sorted(r["ahaBedsIcu"] for r in result.collect()) == [0, 20, 305]
+
+
+class TestGetHcrisDF:
+    # A few providers fill the Worksheet S-3 Part I bed count cell with a number that is not a bed
+    # count (360044 filed 1594784 beds for FY2020), so get_hcrisDF checks that cell against the Bed
+    # Days Available cell beside it and replaces a count more than 5 times too large. These tests
+    # build a one year HOSP10FY2019 tree of the two headerless CSVs the function reads.
+
+    YEAR = 2019
+    # 01/01/2019-12/31/2019, so hcrisReportDays is 365 and every bed days cell below is beds x 365.
+    RPT_FIELDS = ["{rec}", "9", "{prov}", "", "2", "01/01/2019", "12/31/2019", "08/31/2021",
+                  "N", "N", "M", "02001", "4", "08/26/2021", "F", "08/26/2021", "", "04/29/2020"]
+
+    def _build(self, spark, tmp_path, reports):
+        # reports: {provider: [(bedsCell, bedDaysCell), ...]} as filed on line 14 column 2 and 3,
+        # a None meaning the provider filed no such cell.
+        folder = tmp_path / f"HOSP10FY{self.YEAR}"
+        folder.mkdir()
+        rptRows, nmrcRows = [], []
+        for rec, (prov, cells) in enumerate(reports.items(), start=600000):
+            rptRows.append(",".join(f.format(rec=rec, prov=prov) for f in self.RPT_FIELDS))
+            beds, bedDays = cells
+            if beds is not None:
+                nmrcRows.append(f"{rec},S300001,01400,00200,{beds}")
+            if bedDays is not None:
+                nmrcRows.append(f"{rec},S300001,01400,00300,{bedDays}")
+        (folder / f"HOSP10_{self.YEAR}_rpt.csv").write_text("\n".join(rptRows) + "\n")
+        (folder / f"HOSP10_{self.YEAR}_nmrc.csv").write_text("\n".join(nmrcRows) + "\n")
+
+        from utilities import get_hcrisDF
+        df = get_hcrisDF(spark, str(tmp_path), yearInitial=self.YEAR, yearFinal=self.YEAR)
+        self.rows = {r["PRVDR_NUM"]: r for r in df.collect()}
+        return {prov: r["providerHcrisBedsTotal"] for prov, r in self.rows.items()}
+
+    def test_count_consistent_with_bed_days_is_kept(self, spark, tmp_path):
+        beds = self._build(spark, tmp_path, {"131316": (21, 7665)})
+        assert beds["131316"] == 21
+
+    def test_count_far_above_bed_days_is_replaced(self, spark, tmp_path):
+        # 131316 as it actually filed FY2019: 52913 beds beside the 7665 bed days of a 21 bed hospital.
+        beds = self._build(spark, tmp_path, {"131316": (52913, 7665)})
+        assert beds["131316"] == 21
+
+    def test_count_far_below_bed_days_is_kept(self, spark, tmp_path):
+        # The other direction is the bed days cell being wrong, so the count must survive it.
+        beds = self._build(spark, tmp_path, {"050058": (38, 98915)})
+        assert beds["050058"] == 38
+
+    def test_count_within_five_times_bed_days_is_kept(self, spark, tmp_path):
+        # 100079 opened beds partway through the year: 524 at the end against bed days implying 325.
+        beds = self._build(spark, tmp_path, {"100079": (524, 118660)})
+        assert beds["100079"] == 524
+
+    def test_count_without_bed_days_is_kept(self, spark, tmp_path):
+        beds = self._build(spark, tmp_path, {"360044": (40, None)})
+        assert beds["360044"] == 40
+
+    def test_count_with_zero_bed_days_is_kept(self, spark, tmp_path):
+        beds = self._build(spark, tmp_path, {"040011": (41, 0)})
+        assert beds["040011"] == 41
+
+    def test_count_is_kept_when_bed_days_imply_less_than_one_bed(self, spark, tmp_path):
+        # 040011 as it filed FY2016: 41 beds against 6 bed days for the year. A hospital open six bed
+        # days is the less believable of the two cells, so the count stands rather than becoming 0 or 1.
+        beds = self._build(spark, tmp_path, {"040011": (41, 6)})
+        assert beds["040011"] == 41
+
+    def test_replacement_never_comes_out_as_no_beds(self, spark, tmp_path):
+        # 020026 files 1 bed against 1 bed day every year; 0 is reserved for filing no such line at all.
+        beds = self._build(spark, tmp_path, {"020026": (1, 1)})
+        assert beds["020026"] == 1
+
+    def test_replacement_is_rounded_to_a_whole_bed(self, spark, tmp_path):
+        # 36135 bed days over 365 days is 99.0, and a count is only ever a whole number of beds.
+        beds = self._build(spark, tmp_path, {"370215": (28401, 36135)})
+        assert beds["370215"] == 99
+
+    def test_bed_days_alone_does_not_invent_a_count(self, spark, tmp_path):
+        beds = self._build(spark, tmp_path, {"131316": (21, 7665), "370215": (None, 36135)})
+        assert beds == {"131316": 21}
+
+    def test_bed_days_are_kept_as_a_column(self, spark, tmp_path):
+        self._build(spark, tmp_path, {"131316": (52913, 7665)})
+        assert self.rows["131316"]["providerHcrisBedDaysTotal"] == 7665
+
+    def test_bed_days_are_long_not_int(self, spark, tmp_path):
+        # A garbage bed days cell is 365 times a garbage bed count, so this column must not overflow:
+        # 364036 filed 1098010950 for FY2016, half the int limit already.
+        self._build(spark, tmp_path, {"364036": (30, 1098010950)})
+        assert self.rows["364036"]["providerHcrisBedDaysTotal"] == 1098010950
