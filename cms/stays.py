@@ -315,30 +315,50 @@ def _per_stay_index(baseDF, claimType, label):
                           F.lit(label).alias("claimType")))
 
 
-_SOURCE_DEST_PRIORITY = ("hosp", "ipRehab", "snf", "ipLtc", "ipOther", "hha")
+_SOURCE_DEST_PRIORITY = ("hosp", "ipRehab", "snf", "ipLtc", "ipOther")
+
+
+def _has_setting(otherCol):
+    '''True when the overlap array for a day holds at least one setting. Kept separate from
+    _resolve_setting because add_source_and_destination_info tests the same arrays twice: once
+    to pick a label and once to decide which day the destination came from.'''
+    return F.col(otherCol).isNotNull() & (F.size(F.col(otherCol)) > 0)
 
 
 def _resolve_setting(otherCol):
     '''Reduces the array of overlapping claim-type labels to a single label using the
     fixed priority order in _SOURCE_DEST_PRIORITY. Returns "home" when no other stay
-    overlaps the day.'''
-    expr = F.when((F.col(otherCol).isNull()) | (F.size(F.col(otherCol)) == 0), F.lit("home"))
+    overlaps the day, and also when the array holds only labels outside the priority order,
+    so a label that get_otherStays indexes but the priority order omits degrades to "home"
+    rather than to a null setting.'''
+    expr = F.when(~_has_setting(otherCol), F.lit("home"))
     for label in _SOURCE_DEST_PRIORITY:
         expr = expr.when(F.array_contains(F.col(otherCol), label), F.lit(label))
-    return expr
+    return expr.otherwise(F.lit("home"))
 
 
 def get_otherStays(cmsDFS, persistFlag=False, persistLocation=StorageLevel.MEMORY_AND_DISK):
     '''Returns one row per beneficiary with an otherStays array holding every stay they had in any
     setting: cmsDFS["ipBase"] (split into ipRehab / ipLtc / ipOther by the rehabilitation and
-    ltcHospital flags), cmsDFS["snfBase"], cmsDFS["hhaBase"] and cmsDFS["hospBase"] (hospice). Each
-    source is collapsed to one row per stay via _per_stay_index, so every entry carries its own stay
-    identity (otherStayKey) and the days it covered (losDays).
+    ltcHospital flags), cmsDFS["snfBase"] and cmsDFS["hospBase"] (hospice). Each source is collapsed
+    to one row per stay via _per_stay_index, so every entry carries its own stay identity
+    (otherStayKey) and the days it covered (losDays).
+
+    Home health is deliberately NOT indexed. HHA claims carry no admission date of their own -- the
+    only start date on the file is HHSTRTDT, which add_admission_date_info aliases into ADMSN_DT --
+    and that field is unpopulated on essentially every claim in our extract (16,869,931 of
+    16,869,987). add_losDays then falls to its single-day branch and an HHA stay collapses to one
+    day, the claim's billing-period end, rather than spanning the episode. An hha label would
+    therefore be reachable only when a discharge happened to land on a period end, which is
+    coincidence rather than measurement. Should HHSTRTDT ever be populated in a future extract,
+    restoring hha means adding the source back here AND adding it back to _SOURCE_DEST_PRIORITY;
+    see add_source_and_destination_info for why home health also does not fit the day-overlap
+    model that the other settings use.
 
     This is the index add_source_and_destination_info probes to decide what a stay was admitted from
     and discharged to. It depends only on cmsDFS -- not on staysDF and not on claimType -- so it is
     the same index for every stays dataframe of a project. Building it aggregates the whole ip + snf +
-    hha + hospice base, so a project that calls add_source_and_destination_info more than once (e.g.
+    hospice base, so a project that calls add_source_and_destination_info more than once (e.g.
     once for the sending stays and once for the receiving stays of a transfer) should build it once
     here and pass it to each call as otherStaysDF rather than have every call rebuild it.
 
@@ -349,8 +369,9 @@ def get_otherStays(cmsDFS, persistFlag=False, persistLocation=StorageLevel.MEMOR
     covered, so it is wider than its row count suggests; MEMORY_AND_DISK spills rather than fails,
     but check the storage tab if it spills heavily -- the cache can then cost more than the rebuild.
 
-    Assumes every source DF in cmsDFS has losDays (baseF.add_losDays), and that cmsDFS["ipBase"] has
-    the rehabilitation and ltcHospital flags.'''
+    Assumes cmsDFS["ipBase"], cmsDFS["snfBase"] and cmsDFS["hospBase"] have losDays
+    (baseF.add_losDays), and that cmsDFS["ipBase"] has the rehabilitation and ltcHospital flags.
+    cmsDFS["hhaBase"] is not read.'''
     ip = cmsDFS["ipBase"]
     sources = [
         _per_stay_index(ip.filter(F.col("rehabilitation") == 1), "ip", "ipRehab"),
@@ -358,7 +379,6 @@ def get_otherStays(cmsDFS, persistFlag=False, persistLocation=StorageLevel.MEMOR
         _per_stay_index(ip.filter((F.col("rehabilitation") == 0) &
                                   (F.col("ltcHospital") == 0)),  "ip", "ipOther"),
         _per_stay_index(cmsDFS["snfBase"],  "snf",  "snf"),
-        _per_stay_index(cmsDFS["hhaBase"],  "hha",  "hha"),
         _per_stay_index(cmsDFS["hospBase"], "hosp", "hosp"),
     ]
     otherStaysDF = (reduce(lambda x, y: x.unionByName(y), sources)
@@ -371,14 +391,19 @@ def get_otherStays(cmsDFS, persistFlag=False, persistLocation=StorageLevel.MEMOR
 
 
 def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysDF=None):
-    '''Adds admissionSource and thruDestination to staysDF by checking, per stay,
+    '''Adds admissionSource, thruDestination and thruDestinationLag to staysDF by checking, per stay,
     whether the beneficiary has any OTHER stay whose days cover the stay's source
     window or its destination window.
 
     The rule depends on claimType:
-      * ip (and any type with a real admission date): source = the single day ADMSN_DT_DAY, destination =
-        the single day THRU_DT_DAY. An other stay counts when its losDays contains that day. This is the
-        original behavior.
+      * ip (and any type with a real admission date): source = the single day ADMSN_DT_DAY,
+        destination = THRU_DT_DAY or the day after it. An other stay counts when its losDays contains
+        the day being tested. The destination window is two days because a post-acute stay is
+        routinely dated the day after the acute discharge rather than the discharge day itself, and a
+        one-day window scored those discharges as "home" -- the fallback -- which is indistinguishable
+        from a genuine discharge home. The source side is still a single day; widening it too would
+        keep admissionSource and thruDestination consistent on a transfer and is worth doing, but is
+        not done here.
       * op: a visit is a single day (its through date, THRU_DT_DAY) with no admission date. An other stay
         counts as the source only if its losDays contains BOTH THRU_DT_DAY - 1 AND THRU_DT_DAY -- i.e. it
         spans continuously from the day before into the ED day, so the patient was in that setting right up
@@ -395,10 +420,30 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
     the index, so an op staysDF never self-collides; the exclusion still matters when staysDF is one of
     the indexed types.)
 
-    Resolution priority when multiple settings overlap a day (see
+    The destination is resolved a day at a time, not over the pooled two-day window: whatever
+    settings cover THRU_DT_DAY decide it, and the day after is consulted only when nothing covers the
+    discharge day. Chronology therefore outranks _SOURCE_DEST_PRIORITY, which now breaks ties only
+    among settings sharing a day. Pooling the two days instead would let the priority order pick a
+    setting entered on the second day over one entered on the first -- a hospice election on day+1
+    would outrank a SNF admission on day 0 -- which is not what a discharge destination means.
+
+    thruDestinationLag records which day supplied the answer: 0 for the discharge day, 1 for the day
+    after, null when the destination is "home" and no stay was matched. It is what makes the two-day
+    window auditable after the fact -- the day+1 matches are the ones a narrower definition would
+    drop, and for an acute destination they may be an early readmission rather than a transfer.
+
+    Resolution priority when multiple settings overlap the same day (see
     _SOURCE_DEST_PRIORITY):
-        hosp > ipRehab > snf > ipLtc > ipOther > hha
+        hosp > ipRehab > snf > ipLtc > ipOther
     falling back to "home" when nothing overlaps.
+
+    Home health is not among the settings: see get_otherStays for why it is not indexed. Beyond the
+    missing HHSTRTDT, home health does not fit this model even in principle -- it is a service
+    delivered at home rather than a place a patient is discharged to, so a beneficiary receiving it
+    belongs in "home" here, and whether they received it is a separate question this column does not
+    answer. Nothing in this function may read STUS_CD: thruDestination is the independent measurement
+    that the discharge status code is validated against, and sourcing it from that code would make
+    any agreement between the two circular.
 
     Assumes:
       * staysDF is at stay granularity (post get_unique_stays) and has DSYSRTKY, PROVIDER, ORGNPINM,
@@ -438,13 +483,20 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
     #admission date and is a single-day visit, so a stay qualifies only if it spans continuously across the
     #boundary -- both the day before and the ED day for a source, both the ED day and the day after for a
     #destination (see docstring). everything else tests its single real admission/through day.
+    #op keeps its single-tier destination: its rule already reaches to THRU_DT_DAY + 1, but as a
+    #continuity requirement across the visit day rather than as a second day to fall back on, so a
+    #day-after tier would change what an op destination means. Its onThruNext is a constant false,
+    #which keeps otherStaysOnThruNext in the schema for every claim type and leaves the resolution
+    #below falling straight through to the day-of answer.
     if claimType == "op":
         thru = F.col("THRU_DT_DAY")
         onAdmission = lambda x: F.array_contains(x.losDays, thru - 1) & F.array_contains(x.losDays, thru)
         onThru      = lambda x: F.array_contains(x.losDays, thru) & F.array_contains(x.losDays, thru + 1)
+        onThruNext  = lambda x: F.lit(False)
     else:
         onAdmission = lambda x: F.array_contains(x.losDays, F.col("ADMSN_DT_DAY"))
         onThru      = lambda x: F.array_contains(x.losDays, F.col("THRU_DT_DAY"))
+        onThruNext  = lambda x: F.array_contains(x.losDays, F.col("THRU_DT_DAY") + 1)
 
     staysDF = (staysDF
                .join(otherStaysDF, on="DSYSRTKY", how="left_outer")
@@ -459,7 +511,18 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
                        F.filter(F.col("otherStays"),
                                 lambda x: not_self(x) & onThru(x))
                         .getField("claimType")))
-               .withColumn("thruDestination", _resolve_setting("otherStaysOnThru")))
+               .withColumn("otherStaysOnThruNext",
+                   F.array_distinct(
+                       F.filter(F.col("otherStays"),
+                                lambda x: not_self(x) & onThruNext(x))
+                        .getField("claimType")))
+               .withColumn("thruDestination",
+                   F.when(_has_setting("otherStaysOnThru"), _resolve_setting("otherStaysOnThru"))
+                    .when(_has_setting("otherStaysOnThruNext"), _resolve_setting("otherStaysOnThruNext"))
+                    .otherwise(F.lit("home")))
+               .withColumn("thruDestinationLag",
+                   F.when(_has_setting("otherStaysOnThru"), F.lit(0))
+                    .when(_has_setting("otherStaysOnThruNext"), F.lit(1))))
     return staysDF
 
 
@@ -472,8 +535,9 @@ def drop_unused_columns(staysDF):
       * raw CMS base columns and intermediate enricher columns (ICD_DGNS_CD*, the *Dgns/*Prcdr flag
         inputs, the *All array columns, ...). Present on the base claims, so call this early -- before
         get_stays -- to keep them out of the get_stays join/windows.
-      * the stay source/destination arrays otherStays / otherStaysOnAdmission / otherStaysOnThru.
-        add_source_and_destination_info consumes these into admissionSource / thruDestination, so once
+      * the stay source/destination arrays otherStays / otherStaysOnAdmission / otherStaysOnThru /
+        otherStaysOnThruNext. add_source_and_destination_info consumes these into
+        admissionSource / thruDestination / thruDestinationLag, so once
         that has run they are dead weight; being arrays of structs they also surface as arrow_list
         columns in R. They exist only AFTER add_source_and_destination_info, so drop them with a call
         placed after it (they are still un-prefixed there; get_transfers would later rename them to
@@ -519,8 +583,8 @@ def drop_unused_columns(staysDF):
                 "poaCodeAll", "dgnsPoaCodeAll", "hcpcsCodeAll", "dbsCptCodes",
                 "dgnsList", "parkinsonsList", "losDays",
                 #stay source/destination arrays, consumed by add_source_and_destination_info into
-                #admissionSource/thruDestination; drop after that call (see docstring)
-                "otherStays", "otherStaysOnAdmission", "otherStaysOnThru"])
+                #admissionSource/thruDestination/thruDestinationLag; drop after that call (see docstring)
+                "otherStays", "otherStaysOnAdmission", "otherStaysOnThru", "otherStaysOnThruNext"])
     return staysDF.drop(*dropColumns)
 
 
