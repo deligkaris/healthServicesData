@@ -1847,8 +1847,10 @@ class TestAddSourceAndDestinationInfo:
         staysDF = _ip_staysDF_from(spark, ip_rows)
         cmsDFS = _build_cmsDFS(spark, ip_rows=ip_rows)
         out = add_source_and_destination_info(staysDF, cmsDFS)
-        for col in ("admissionSource", "thruDestination", "thruDestinationLag",
-                    "otherStaysOnAdmission", "otherStaysOnThru", "otherStaysOnThruNext"):
+        for col in ("admissionSource", "admissionSourceLag",
+                    "thruDestination", "thruDestinationLag",
+                    "otherStaysOnAdmission", "otherStaysOnAdmissionPrev",
+                    "otherStaysOnThru", "otherStaysOnThruNext"):
             assert col in out.columns
         for col in ("DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY", "THRU_DT_DAY"):
             assert col in out.columns
@@ -1945,6 +1947,7 @@ class TestAddSourceAndDestinationInfo:
         cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], hha_rows=[hha])
         out = add_source_and_destination_info(staysDF, cmsDFS).collect()
         assert out[0]["admissionSource"] == "home"
+        assert out[0]["admissionSourceLag"] is None
         assert out[0]["thruDestination"] == "home"
         assert out[0]["thruDestinationLag"] is None
 
@@ -2131,9 +2134,22 @@ class TestAddSourceAndDestinationInfo:
         assert out[0]["thruDestination"] == "hosp"
         assert out[0]["thruDestinationLag"] == 1
 
-    def test_admission_source_window_is_still_one_day(self, spark):
-        # The destination window widened; the source window did not. A prior stay
-        # ending the day before the admission is still not a source.
+    def test_admission_source_same_day_has_lag_zero(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        prior = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                  admsn_dt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[prior])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "snf"
+        assert out[0]["admissionSourceLag"] == 0
+
+    def test_admission_source_day_before_is_matched_with_lag_one(self, spark):
+        # The source-side mirror of the destination case: the sending stay ends
+        # the day BEFORE this admission, so its losDays never contains
+        # ADMSN_DT_DAY and the one-day window scored it as "home".
         from cms.stays import add_source_and_destination_info
         cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
                                admsn_dt=20200115, thru_dt=20200120)
@@ -2142,7 +2158,54 @@ class TestAddSourceAndDestinationInfo:
         staysDF = _ip_staysDF_from(spark, [cur])
         cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[prior])
         out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "snf"
+        assert out[0]["admissionSourceLag"] == 1
+
+    def test_admission_source_two_days_before_is_home(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        prior = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                  admsn_dt=20200110, thru_dt=20200113)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[prior])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
         assert out[0]["admissionSource"] == "home"
+        assert out[0]["admissionSourceLag"] is None
+
+    def test_admission_day_outranks_priority_on_the_day_before(self, spark):
+        # Proximity beats _SOURCE_DEST_PRIORITY on the source side too: the SNF
+        # covers the admission day, the hospice ended the day before. Pooling the
+        # two days would return "hosp" (hosp > snf).
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200110, thru_dt=20200115)
+        hosp = _hosp_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                  hspcstrt=20200105, thru_dt=20200114)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[snf], hosp_rows=[hosp])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "snf"
+        assert out[0]["admissionSourceLag"] == 0
+
+    def test_transfer_dated_a_day_apart_agrees_from_both_sides(self, spark):
+        # The reason both windows reach away from their own stay: hospital A
+        # discharges on the 20th, hospital B admits on the 21st. A's destination
+        # and B's source must both find the other at lag 1.
+        from cms.stays import add_source_and_destination_info
+        sending = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                                   admsn_dt=20200115, thru_dt=20200120)
+        receiving = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                     admsn_dt=20200121, thru_dt=20200126)
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[sending, receiving])
+        out = {r["ORGNPINM"]: r for r in add_source_and_destination_info(
+            _ip_staysDF_from(spark, [sending, receiving]), cmsDFS).collect()}
+        assert out[100]["thruDestination"] == "ipOther"
+        assert out[100]["thruDestinationLag"] == 1
+        assert out[200]["admissionSource"] == "ipOther"
+        assert out[200]["admissionSourceLag"] == 1
 
     # ---- F. Priority cascade (adjacent pairs in _SOURCE_DEST_PRIORITY) ----
 
@@ -2517,9 +2580,10 @@ class TestGetAdmittedStays:
 # ============================================================
 # drop_unused_columns: removes raw CMS base columns and intermediate
 # enricher columns, plus the stay source/destination arrays
-# (otherStays / otherStaysOnAdmission / otherStaysOnThru /
-# otherStaysOnThruNext) once add_source_and_destination_info has derived
-# admissionSource / thruDestination / thruDestinationLag from them. drop() is name-based and ignores absent
+# (otherStays / otherStaysOnAdmission / otherStaysOnAdmissionPrev /
+# otherStaysOnThru / otherStaysOnThruNext) once
+# add_source_and_destination_info has derived admissionSource /
+# admissionSourceLag / thruDestination / thruDestinationLag from them. drop() is name-based and ignores absent
 # columns, so the same function is safe on base claims or on stays,
 # regardless of which columns a given pipeline created.
 # ============================================================
@@ -2551,6 +2615,7 @@ def _drop_test_df(spark):
         # dropped: stay source/destination arrays (the focus of this change)
         StructField("otherStays", ArrayType(StringType())),
         StructField("otherStaysOnAdmission", ArrayType(StringType())),
+        StructField("otherStaysOnAdmissionPrev", ArrayType(StringType())),
         StructField("otherStaysOnThru", ArrayType(StringType())),
         StructField("otherStaysOnThruNext", ArrayType(StringType())),
     ])
@@ -2563,7 +2628,8 @@ class TestDropUnusedColumns:
     _KEEP = {"DSYSRTKY", "ORGNPINM", "admissionSource", "thruDestination", "ed", "anyStroke"}
     _DROP = {"ICD_DGNS_CD1", "CLM_POA_IND_SW1", "ICD_PRCDR_CD1", "PRCDR_DT1", "RFR_PHYSN_NPI",
              "prcdrCodeAll", "dgnsCodeAll", "ishStrokeDgns", "tpaPrcdr", "losDays",
-             "otherStays", "otherStaysOnAdmission", "otherStaysOnThru", "otherStaysOnThruNext"}
+             "otherStays", "otherStaysOnAdmission", "otherStaysOnAdmissionPrev",
+             "otherStaysOnThru", "otherStaysOnThruNext"}
 
     def test_drops_unused_and_keeps_the_rest(self, spark):
         from cms.stays import drop_unused_columns
@@ -2577,8 +2643,8 @@ class TestDropUnusedColumns:
         # arrow_list columns in R if they reach the written transfers parquet.
         from cms.stays import drop_unused_columns
         out = drop_unused_columns(_drop_test_df(spark))
-        for col in ("otherStays", "otherStaysOnAdmission", "otherStaysOnThru",
-                    "otherStaysOnThruNext"):
+        for col in ("otherStays", "otherStaysOnAdmission", "otherStaysOnAdmissionPrev",
+                    "otherStaysOnThru", "otherStaysOnThruNext"):
             assert col not in out.columns
 
     def test_drops_every_index_of_the_generated_families(self, spark):
