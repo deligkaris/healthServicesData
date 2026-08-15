@@ -302,7 +302,14 @@ def _per_stay_index(baseDF, claimType, label):
 
     The 4th stay key (ADMSN_DT_DAY for ip, THRU_DT_DAY otherwise) is aliased to a
     uniform "stayDay" field inside otherStayKey so the six per-source indices share a
-    struct schema and can be unionByName'd.'''
+    struct schema and can be unionByName'd.
+
+    otherStayKey also carries the claim type ("ip"/"snf"/"hosp" -- the source type, NOT the
+    ipRehab/ipLtc/ipOther label, so an ip stay is "self" whichever label its hospital earned) as a
+    5th field, because the other four do not always identify a stay uniquely across types: under
+    swing-bed billing a SNF segment can share the beneficiary, provider, NPI AND day with the ip
+    stay it converts to, and without the type field add_source_and_destination_info's
+    self-exclusion discarded that genuine SNF source as "the stay itself".'''
     keys = _stay_keys(claimType)
     return (baseDF.groupBy(*keys)
                   .agg(F.array_distinct(F.flatten(F.collect_list("losDays"))).alias("losDays"))
@@ -310,7 +317,8 @@ def _per_stay_index(baseDF, claimType, label):
                           F.struct(F.col(keys[0]).alias("DSYSRTKY"),
                                    F.col(keys[1]).alias("PROVIDER"),
                                    F.col(keys[2]).alias("ORGNPINM"),
-                                   F.col(keys[3]).alias("stayDay")).alias("otherStayKey"),
+                                   F.col(keys[3]).alias("stayDay"),
+                                   F.lit(claimType).alias("claimType")).alias("otherStayKey"),
                           "losDays",
                           F.lit(label).alias("claimType")))
 
@@ -420,7 +428,10 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
     stay-key struct -- without this, every stay would trivially "overlap itself" and
     admissionSource/thruDestination could never be "home" for the row's own claim type. (op is not in
     the index, so an op staysDF never self-collides; the exclusion still matters when staysDF is one of
-    the indexed types.)
+    the indexed types.) The key includes the claim type, so "self" means a same-type identity match
+    only: a stay of another type sharing the beneficiary, provider, NPI and day -- a swing-bed SNF
+    segment ending the day its ip stay begins, at a facility billing both under the same IDs -- is a
+    genuine neighbouring stay, not this one, and stays matchable (see _per_stay_index).
 
     Each side is resolved a day at a time, not over its pooled two-day window: the day ON the stay's
     own boundary decides, and the day beyond it is consulted only when nothing covers the boundary
@@ -430,8 +441,8 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
     admission on the discharge day -- which is not what a source or a destination means.
 
     admissionSourceLag and thruDestinationLag record which day supplied the answer: 0 for the stay's
-    own boundary day, 1 for the day beyond it, null when the setting is "home" and no stay was
-    matched. Both count days away from the boundary, so neither is signed -- the direction is fixed
+    own boundary day, 1 for the day beyond it, null when no other stay was matched (the setting is
+    then "home", or "died" for thruDestination). Both count days away from the boundary, so neither is signed -- the direction is fixed
     by which column it is. They are what make the two-day windows auditable after the fact: the lag-1
     matches are the ones a narrower definition would drop, and for an acute setting they may be an
     early readmission or bounce-back rather than a transfer.
@@ -441,17 +452,48 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
         hosp > ipRehab > snf > ipLtc > ipOther
     falling back to "home" when nothing overlaps.
 
+    thruDestination has one more fallback before "home": "died", when the beneficiary's death date is
+    on or before the discharge day (DEATH_DT_DAY <= THRU_DT_DAY). Without it an in-hospital death
+    resolved "home" -- indistinguishable from a genuine home discharge, and a structural disagreement
+    with STUS_CD 20 in the very validation this column exists for. The died check deliberately runs
+    AFTER the overlap tiers: a same-day transfer whose patient dies at the receiving hospital is
+    still a transfer for the sending stay, and a discharge to hospice followed by death there is
+    still "hosp". Death on THRU_DT_DAY + 1 stays "home": the patient may genuinely have been
+    discharged home and died there the next day, so "home" is the honest answer and the lag-1 tier
+    does not extend to death. thruDestinationLag is null for "died", like "home". admissionSource
+    has no died analog -- a stay cannot be admitted from death.
+
+    Both fallbacks are censored at the edges of the loaded data. Claims files are organized by
+    through year, so a discharge on the pull's last observable day cannot see a next-day
+    destination claim, and an admission on the first observable day cannot see a prior-day source
+    claim: "home" there would be an artifact of the pull, not a measurement. When the boundary day
+    being tested reaches outside [firstObservableDay, lastObservableDay] -- constant columns stamped
+    on every base claim by utilities.add_preliminary_info from the yearI/yearF of the pull -- the
+    would-be "home" becomes null instead. Only the fallback is censored: a setting matched on the
+    boundary day itself, and a death on it, are actually observed and are kept. The lag columns are
+    null for a censored row, as for any unmatched row. Null observable-day columns disable the
+    censoring. Neighbouring stays that straddle the edge (eg a destination stay admitted before but
+    discharged after lastObservableDay, whose claim is filed in the uncovered year) are a milder,
+    unmarked version of the same censoring that decays with distance from the edge; only the fully
+    censored boundary day is marked.
+
     Home health is not among the settings: see get_otherStays for why it is not indexed. Beyond the
     missing HHSTRTDT, home health does not fit this model even in principle -- it is a service
     delivered at home rather than a place a patient is discharged to, so a beneficiary receiving it
     belongs in "home" here, and whether they received it is a separate question this column does not
     answer. Nothing in this function may read STUS_CD: thruDestination is the independent measurement
     that the discharge status code is validated against, and sourcing it from that code would make
-    any agreement between the two circular.
+    any agreement between the two circular. "died" does not break this: it comes from the MBSF death
+    date (DEATH_DT_DAY, validated V_DOD_SW dates joined by baseF.add_mbsf_info), not from the claim's
+    discharge status, so agreement with STUS_CD 20 remains a real check.
 
     Assumes:
       * staysDF is at stay granularity (post get_unique_stays) and has DSYSRTKY, PROVIDER, ORGNPINM,
         THRU_DT_DAY, and -- for ip -- ADMSN_DT_DAY.
+      * staysDF has DEATH_DT_DAY (joined from the MBSF by baseF.add_mbsf_info; null while the
+        beneficiary is alive, which leaves the died branch false).
+      * staysDF has firstObservableDay and lastObservableDay (stamped by
+        utilities.add_preliminary_info; null disables the edge censoring).
       * Every source DF in cmsDFS has losDays (baseF.add_losDays).
       * cmsDFS["ipBase"] has the rehabilitation and ltcHospital flags.
       * claimType selects the stay key used to identify staysDF rows (and therefore
@@ -483,7 +525,8 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
     current_stay_key = F.struct(F.col(keys[0]).alias("DSYSRTKY"),
                                 F.col(keys[1]).alias("PROVIDER"),
                                 F.col(keys[2]).alias("ORGNPINM"),
-                                F.col(keys[3]).alias("stayDay"))
+                                F.col(keys[3]).alias("stayDay"),
+                                F.lit(claimType).alias("claimType"))
     not_self = lambda x: x.otherStayKey != current_stay_key
 
     #the source (admission) and destination (through) conditions on another stay's losDays. op has no
@@ -501,11 +544,13 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
         onAdmissionPrev = lambda x: F.lit(False)
         onThru          = lambda x: F.array_contains(x.losDays, thru) & F.array_contains(x.losDays, thru + 1)
         onThruNext      = lambda x: F.lit(False)
+        sourceDay       = thru
     else:
         onAdmission     = lambda x: F.array_contains(x.losDays, F.col("ADMSN_DT_DAY"))
         onAdmissionPrev = lambda x: F.array_contains(x.losDays, F.col("ADMSN_DT_DAY") - 1)
         onThru          = lambda x: F.array_contains(x.losDays, F.col("THRU_DT_DAY"))
         onThruNext      = lambda x: F.array_contains(x.losDays, F.col("THRU_DT_DAY") + 1)
+        sourceDay       = F.col("ADMSN_DT_DAY")
 
     staysDF = (staysDF
                .join(otherStaysDF, on="DSYSRTKY", how="left_outer")
@@ -522,6 +567,7 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
                .withColumn("admissionSource",
                    F.when(_has_setting("otherStaysOnAdmission"), _resolve_setting("otherStaysOnAdmission"))
                     .when(_has_setting("otherStaysOnAdmissionPrev"), _resolve_setting("otherStaysOnAdmissionPrev"))
+                    .when(sourceDay <= F.col("firstObservableDay"), F.lit(None))
                     .otherwise(F.lit("home")))
                .withColumn("admissionSourceLag",
                    F.when(_has_setting("otherStaysOnAdmission"), F.lit(0))
@@ -539,6 +585,8 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
                .withColumn("thruDestination",
                    F.when(_has_setting("otherStaysOnThru"), _resolve_setting("otherStaysOnThru"))
                     .when(_has_setting("otherStaysOnThruNext"), _resolve_setting("otherStaysOnThruNext"))
+                    .when(F.col("DEATH_DT_DAY") <= F.col("THRU_DT_DAY"), F.lit("died"))
+                    .when(F.col("THRU_DT_DAY") >= F.col("lastObservableDay"), F.lit(None))
                     .otherwise(F.lit("home")))
                .withColumn("thruDestinationLag",
                    F.when(_has_setting("otherStaysOnThru"), F.lit(0))

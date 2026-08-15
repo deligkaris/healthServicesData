@@ -31,6 +31,15 @@ def get_lastObservableDay(yearF):
        Follow-up beyond this day is administratively right-censored.'''
     return daysInYearsPriorDict[yearF+1]
 
+def get_firstObservableDay(yearI):
+    '''inputs: the initial year of the CMS pull
+       outputs: the absolute day number (same frame as THRU_DT_DAY, see add_through_date_info) of
+       January 1 of yearI. Claims files are organized by through year, so a claim whose through date
+       falls before this day is not in the loaded data: anything reaching earlier (eg the day before
+       an admission on this day, see stays.add_source_and_destination_info) is administratively
+       left-censored.'''
+    return daysInYearsPriorDict[yearI] + 1
+
 def get_claimType_claimPart(claimTypePart):
     '''inputs: claimTypePart eg opBase, snfRevenue etc
        outputs: claimType eg op, snf, etc and claimPart eg Base, Revenue, Line'''
@@ -166,17 +175,26 @@ def enforce_schema(df, claimType, claimPart):
     df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])
     return df
 
-def add_preliminary_info(dataframes, data, lastObservableDay, runTests=False):
+def add_preliminary_info(dataframes, data, lastObservableDay, firstObservableDay=None, runTests=False):
     '''inputs: original CMS dataframes
        outputs: input dataframes with additional columns appended that are needed almost always
        lastObservableDay makes the ip mortality flags NULL rather than 0 for admissions whose follow-up
-       window extends past the end of the loaded data, see base.add_XDaysAfterYDateDead'''
+       window extends past the end of the loaded data, see base.add_XDaysAfterYDateDead.
+       lastObservableDay and firstObservableDay (see get_lastObservableDay / get_firstObservableDay)
+       are also stamped on every Base dataframe as constant columns of the same names, recording the
+       coverage of the loaded data on every claim so downstream code can censor at the data's edges
+       without being handed the year range (stays.add_source_and_destination_info nulls a
+       source/destination whose evidence day falls outside them). firstObservableDay=None stamps a
+       null column, which disables that censoring.'''
     for claimTypePart in list(dataframes.keys()):
         if runTests:
             initialRowCounts = dataframes[claimTypePart].count()
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
         if (claimPart=="Base"):
             dataframes[claimTypePart] = add_through_date_info(dataframes[claimTypePart])
+            dataframes[claimTypePart] = (dataframes[claimTypePart]
+                                         .withColumn("firstObservableDay", F.lit(firstObservableDay).cast('int'))
+                                         .withColumn("lastObservableDay", F.lit(lastObservableDay).cast('int')))
             dataframes[claimTypePart] = baseF.add_ssaCounty(dataframes[claimTypePart])
             if (claimType in ["ip","snf","hosp","hha"]):
                 dataframes[claimTypePart] = baseF.add_admission_date_info(dataframes[claimTypePart],claimType=claimType)
@@ -245,7 +263,8 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, r
         dataframes = read_data(spark, filenames, yearI, yearF)
         if cleanMbsf: #need to clean mbsf prior to using it to add information to base claims in add_preliminary_info
             dataframes["mbsf"] = mbsfF.prep_mbsf(dataframes["mbsf"])
-        dataframes = add_preliminary_info(dataframes, data, get_lastObservableDay(yearF), runTests=runTests)
+        dataframes = add_preliminary_info(dataframes, data, get_lastObservableDay(yearF),
+                                          firstObservableDay=get_firstObservableDay(yearI), runTests=runTests)
         if FFS: 
             dataframes = filter_FFS(dataframes)
         dataframes["mbsf"] = mbsfF.drop_unused_columns(dataframes["mbsf"])

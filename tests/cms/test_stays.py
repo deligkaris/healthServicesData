@@ -1677,7 +1677,8 @@ class TestAddOrgnpinmColumnPriorYear:
 #
 # The function expects:
 #   - staysDF post-get_unique_stays with DSYSRTKY, PROVIDER, ORGNPINM,
-#     ADMSN_DT_DAY, THRU_DT_DAY.
+#     ADMSN_DT_DAY, THRU_DT_DAY, plus DEATH_DT_DAY and the observable-day
+#     bounds (see _add_null_bene_columns).
 #   - cmsDFS dict mapping "ipBase"/"snfBase"/"hhaBase"/"hospBase" to base DFs
 #     with DSYSRTKY, PROVIDER, ORGNPINM, ADMSN_DT_DAY, THRU_DT_DAY, losDays.
 #     cmsDFS["ipBase"] additionally needs rehabilitation and ltcHospital.
@@ -1796,16 +1797,31 @@ def _build_cmsDFS(spark, ip_rows=None, snf_rows=None, hha_rows=None, hosp_rows=N
     }
 
 
+def _add_null_bene_columns(staysDF):
+    """Adds the columns add_source_and_destination_info assumes on staysDF but
+    which the prep chains here do not produce: DEATH_DT_DAY (null = alive, as
+    the MBSF join would leave a living beneficiary) and the observable-day
+    bounds (null = censoring disabled, as add_preliminary_info stamps when not
+    given firstObservableDay). Died/censor tests override them relative to
+    THRU_DT_DAY."""
+    return (staysDF
+            .withColumn("DEATH_DT_DAY", F.lit(None).cast(IntegerType()))
+            .withColumn("firstObservableDay", F.lit(None).cast(IntegerType()))
+            .withColumn("lastObservableDay", F.lit(None).cast(IntegerType())))
+
+
 def _ip_staysDF_from(spark, ip_rows):
     """IP-cohort staysDF: prep ipBase + collapse via get_unique_stays."""
     from cms.stays import get_unique_stays
-    return get_unique_stays(_prep_ipBase(spark, ip_rows), claimType="ip")
+    return _add_null_bene_columns(
+        get_unique_stays(_prep_ipBase(spark, ip_rows), claimType="ip"))
 
 
 def _snf_staysDF_from(spark, snf_rows):
     """SNF-cohort staysDF for the claimType="snf" tests."""
     from cms.stays import get_unique_stays
-    return get_unique_stays(_prep_snfBase(spark, snf_rows), claimType="snf")
+    return _add_null_bene_columns(
+        get_unique_stays(_prep_snfBase(spark, snf_rows), claimType="snf"))
 
 
 def _op_src_dest_row(claimno, *, dsysrtky, orgnpinm, thru_dt, provider=_NON_REHAB_CCN):
@@ -1829,7 +1845,8 @@ def _prep_opBase(spark, rows):
 def _op_staysDF_from(spark, op_rows):
     """OP-cohort staysDF: prep opBase + collapse via get_unique_stays(op)."""
     from cms.stays import get_unique_stays
-    return get_unique_stays(_prep_opBase(spark, op_rows), claimType="op")
+    return _add_null_bene_columns(
+        get_unique_stays(_prep_opBase(spark, op_rows), claimType="op"))
 
 
 # ============================================================
@@ -1903,6 +1920,77 @@ class TestAddSourceAndDestinationInfo:
         staysDF = _ip_staysDF_from(spark, ip_rows)
         cmsDFS = _build_cmsDFS(spark, ip_rows=ip_rows)
         out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert len(out) == 1
+        assert out[0]["admissionSource"] == "home"
+        assert out[0]["thruDestination"] == "home"
+
+    # ---- C2. Self-exclusion is type-aware ----
+    # "Self" means a same-type identity match: the otherStayKey struct carries
+    # the claim type, so a stay of ANOTHER type sharing beneficiary, provider,
+    # NPI and day (swing-bed billing) is a genuine neighbour, while the same
+    # four fields plus the same type still exclude the stay itself whatever
+    # ipRehab/ipLtc/ipOther label it was indexed under.
+
+    def test_swing_bed_snf_with_identical_keys_is_not_self(self, spark):
+        # Single-day SNF segment billed under the SAME provider and NPI,
+        # ending on the ip admission day: its (DSYSRTKY, PROVIDER, ORGNPINM,
+        # day) identity equals the ip stay's. Without the claimType key field
+        # it was excluded as "self", and being single-day the lag-1 tier
+        # could not rescue it: the admission read "home".
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=100,
+                                admsn_dt=20200115, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "snf"
+        assert out[0]["admissionSourceLag"] == 0
+
+    def test_swing_bed_multiday_snf_matches_on_the_day_itself(self, spark):
+        # Multi-day variant: the exclusion removes an entry from BOTH tiers,
+        # so before the claimType key field this also read "home" -- the
+        # day-before tier could not rescue an entry discarded as "self".
+        # The on-the-day match must win with lag 0.
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200120)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=100,
+                                admsn_dt=20200110, thru_dt=20200115)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "snf"
+        assert out[0]["admissionSourceLag"] == 0
+
+    def test_rehab_hospital_stay_still_excludes_itself(self, spark):
+        # The key's claimType field is the source type ("ip"), not the
+        # ipRehab index label: a rehab hospital's own stay must still be
+        # recognized as "self" even though its label differs from anything
+        # named "ip".
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200115,
+                               rehab_taxonomy=1)
+        staysDF = _ip_staysDF_from(spark, [cur])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert len(out) == 1
+        assert out[0]["admissionSource"] == "home"
+        assert out[0]["thruDestination"] == "home"
+
+    def test_snf_cohort_still_excludes_its_own_snf_stay(self, spark):
+        # Same-type identity match for a non-ip cohort: the snf staysDF row
+        # and its own index entry share type "snf" and all four keys, so the
+        # exclusion still applies and both columns fall back to "home".
+        from cms.stays import add_source_and_destination_info
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=100,
+                                admsn_dt=20200110, thru_dt=20200115)
+        staysDF = _snf_staysDF_from(spark, [snf])
+        cmsDFS = _build_cmsDFS(spark, snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="snf").collect()
         assert len(out) == 1
         assert out[0]["admissionSource"] == "home"
         assert out[0]["thruDestination"] == "home"
@@ -2133,6 +2221,201 @@ class TestAddSourceAndDestinationInfo:
         out = add_source_and_destination_info(staysDF, cmsDFS).collect()
         assert out[0]["thruDestination"] == "hosp"
         assert out[0]["thruDestinationLag"] == 1
+
+    # ---- E3. Died fallback (thruDestination) ----
+    # "died" replaces only the "home" fallback: it fires when no other stay
+    # matched either destination tier and DEATH_DT_DAY <= THRU_DT_DAY. The
+    # builders add DEATH_DT_DAY null (alive); these tests override it
+    # relative to THRU_DT_DAY.
+
+    def test_died_in_hospital_is_died_not_home(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200115)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("DEATH_DT_DAY", F.col("THRU_DT_DAY")))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "died"
+        assert out[0]["thruDestinationLag"] is None
+        assert out[0]["admissionSource"] == "home"
+
+    def test_death_before_through_day_is_died(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200115)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("DEATH_DT_DAY", F.col("THRU_DT_DAY") - 2))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "died"
+
+    def test_death_day_after_discharge_is_home(self, spark):
+        # Death on THRU_DT_DAY + 1 is ambiguous -- the patient may genuinely
+        # have gone home and died there -- so the lag-1 tier does not extend
+        # to death and the row stays "home".
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200115)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("DEATH_DT_DAY", F.col("THRU_DT_DAY") + 1))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "home"
+        assert out[0]["thruDestinationLag"] is None
+
+    def test_overlap_on_boundary_day_outranks_died(self, spark):
+        # Same-day transfer where the patient dies at the receiving setting:
+        # the sending stay's destination is still that setting.
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200115)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200115, thru_dt=20200115)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("DEATH_DT_DAY", F.col("THRU_DT_DAY")))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "snf"
+        assert out[0]["thruDestinationLag"] == 0
+
+    def test_day_after_tier_outranks_died(self, spark):
+        # Discharge to hospice dated the day after, death on the discharge
+        # day: both destination tiers precede the died check, so the hospice
+        # election wins with lag 1.
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200110, thru_dt=20200115)
+        hosp = _hosp_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                  hspcstrt=20200116, thru_dt=20200120)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("DEATH_DT_DAY", F.col("THRU_DT_DAY")))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], hosp_rows=[hosp])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "hosp"
+        assert out[0]["thruDestinationLag"] == 1
+
+    def test_op_died_on_visit_day(self, spark):
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        staysDF = (_op_staysDF_from(spark, [op])
+                   .withColumn("DEATH_DT_DAY", F.col("THRU_DT_DAY")))
+        cmsDFS = _build_cmsDFS(spark)
+        out = add_source_and_destination_info(staysDF, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["thruDestination"] == "died"
+        assert out[0]["thruDestinationLag"] is None
+
+    # ---- E4. Edge censoring (firstObservableDay / lastObservableDay) ----
+    # A "home" fallback on the pull's boundary day is an artifact -- the
+    # neighbouring claim would be in an unloaded year -- so it becomes null.
+    # Only the fallback is censored: matches and deaths on the boundary day
+    # are actually observed and are kept. The builders stamp the bounds null
+    # (censoring off); these tests override them relative to the stay's own
+    # boundary day.
+
+    def test_discharge_on_last_observable_day_is_null(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20201220, thru_dt=20201231)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("lastObservableDay", F.col("THRU_DT_DAY")))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] is None
+        assert out[0]["thruDestinationLag"] is None
+        assert out[0]["admissionSource"] == "home"
+
+    def test_discharge_day_before_edge_is_still_home(self, spark):
+        # The day after this discharge is the boundary day itself, which the
+        # pull still covers, so the fallback remains a real "home".
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20201220, thru_dt=20201230)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("lastObservableDay", F.col("THRU_DT_DAY") + 1))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "home"
+
+    def test_same_day_match_kept_on_last_observable_day(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20201220, thru_dt=20201231)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20201231, thru_dt=20201231)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("lastObservableDay", F.col("THRU_DT_DAY")))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "snf"
+        assert out[0]["thruDestinationLag"] == 0
+
+    def test_died_kept_on_last_observable_day(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20201220, thru_dt=20201231)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("lastObservableDay", F.col("THRU_DT_DAY"))
+                   .withColumn("DEATH_DT_DAY", F.col("THRU_DT_DAY")))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["thruDestination"] == "died"
+
+    def test_admission_on_first_observable_day_is_null(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200101, thru_dt=20200110)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("firstObservableDay", F.col("ADMSN_DT_DAY")))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] is None
+        assert out[0]["admissionSourceLag"] is None
+        assert out[0]["thruDestination"] == "home"
+
+    def test_admission_day_after_edge_is_still_home(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200102, thru_dt=20200110)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("firstObservableDay", F.col("ADMSN_DT_DAY") - 1))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "home"
+
+    def test_source_match_kept_on_first_observable_day(self, spark):
+        from cms.stays import add_source_and_destination_info
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200101, thru_dt=20200110)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200101, thru_dt=20200101)
+        staysDF = (_ip_staysDF_from(spark, [cur])
+                   .withColumn("firstObservableDay", F.col("ADMSN_DT_DAY")))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=[cur], snf_rows=[snf])
+        out = add_source_and_destination_info(staysDF, cmsDFS).collect()
+        assert out[0]["admissionSource"] == "snf"
+        assert out[0]["admissionSourceLag"] == 0
+
+    def test_op_visit_on_edges_is_null_on_the_censored_side(self, spark):
+        # op tests both sides from THRU_DT_DAY: on the first observable day
+        # the source window's thru-1 is uncovered, on the last the
+        # destination window's thru+1 is.
+        from cms.stays import add_source_and_destination_info
+        op = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+        cmsDFS = _build_cmsDFS(spark)
+        first = (_op_staysDF_from(spark, [op])
+                 .withColumn("firstObservableDay", F.col("THRU_DT_DAY")))
+        out = add_source_and_destination_info(first, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["admissionSource"] is None
+        assert out[0]["thruDestination"] == "home"
+        last = (_op_staysDF_from(spark, [op])
+                .withColumn("lastObservableDay", F.col("THRU_DT_DAY")))
+        out = add_source_and_destination_info(last, cmsDFS,
+                                              claimType="op").collect()
+        assert out[0]["admissionSource"] == "home"
+        assert out[0]["thruDestination"] is None
 
     def test_admission_source_same_day_has_lag_zero(self, spark):
         from cms.stays import add_source_and_destination_info
