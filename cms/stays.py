@@ -414,14 +414,21 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
         away from its own stay, so they stay consistent across a transfer: the sending stay's
         destination and the receiving stay's source find each other whether the two are dated on the
         same day or a day apart.
-      * op: a visit is a single day (its through date, THRU_DT_DAY) with no admission date. An other stay
-        counts as the source only if its losDays contains BOTH THRU_DT_DAY - 1 AND THRU_DT_DAY -- i.e. it
-        spans continuously from the day before into the ED day, so the patient was in that setting right up
-        to the visit. Symmetrically it counts as the destination only if its losDays contains BOTH
-        THRU_DT_DAY AND THRU_DT_DAY + 1 -- it covers the ED day and continues past it. A stay that merely
-        ends the day before (lacks THRU_DT_DAY) or merely begins the day after (lacks THRU_DT_DAY) is NOT
-        counted. Because the two conditions look in opposite directions, admissionSource and thruDestination
-        can differ for op. op stays need no ADMSN_DT_DAY column.
+      * op: a visit is a single day (its through date, THRU_DT_DAY) with no admission date, so both
+        questions are asked about the same day and bare overlap cannot tell source from destination
+        -- direction comes from which way the other stay extends past the visit day. An other stay
+        counts as the source only if its losDays contains BOTH THRU_DT_DAY - 1 AND THRU_DT_DAY: the
+        patient was in that setting right up to the visit. A stay that ended the day before is NOT a
+        source -- the patient had already left it and came to the ED from home. It counts as the
+        destination when it continues past the visit day (contains THRU_DT_DAY AND THRU_DT_DAY + 1)
+        or STARTS on the visit day (contains THRU_DT_DAY but not THRU_DT_DAY - 1): a stay beginning
+        on the visit day can only be a place the patient went to, never came from, which is what
+        keeps a same-day admission -- even one discharged or dying the same day -- out of the source
+        and in the destination. A stay starting the day after (contains THRU_DT_DAY + 1 but not
+        THRU_DT_DAY, the after-midnight admission) is the destination's fallback tier, with lag 1.
+        A stay that merely ends on the visit day is NOT a destination -- it is the source, seen from
+        the other side. Because the conditions look in opposite directions, admissionSource and
+        thruDestination can differ for op. op stays need no ADMSN_DT_DAY column.
 
     The per-beneficiary index of those other stays comes from get_otherStays (see there for how it is
     built). The current stay is then excluded by comparing otherStayKey against the current row's
@@ -507,7 +514,8 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
 
     Limitation: for ip, day-level overlap is symmetric -- a prior stay that ends on the
     current admission day and a concurrent stay that starts on it are not
-    distinguishable here. op sidesteps this by widening each side toward its own edge.
+    distinguishable here. op sidesteps this by reading direction off the other stay's
+    endpoints relative to the visit day.
     The two-day windows do not change this: they add a second day to test, but the test
     on each day is still bare overlap, so a stay merely running alongside this one counts
     the same as one the patient actually came from or went to.
@@ -530,20 +538,22 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
     not_self = lambda x: x.otherStayKey != current_stay_key
 
     #the source (admission) and destination (through) conditions on another stay's losDays. op has no
-    #admission date and is a single-day visit, so a stay qualifies only if it spans continuously across the
-    #boundary -- both the day before and the ED day for a source, both the ED day and the day after for a
-    #destination (see docstring). everything else tests its single real admission/through day.
-    #op keeps both of its single-tier rules: they already reach to THRU_DT_DAY -/+ 1, but as a
-    #continuity requirement across the visit day rather than as a second day to fall back on, so a
-    #second tier would change what an op source or destination means. Its onAdmissionPrev/onThruNext
-    #are constant false, which keeps the two arrays in the schema for every claim type and leaves the
-    #resolution below falling straight through to the boundary-day answer.
+    #admission date and is a single-day visit: both sides test the same day, so direction comes from
+    #which way the other stay extends past it (see docstring). The op source keeps its single
+    #continuity tier -- a stay ending the day before is home, not a source -- so onAdmissionPrev
+    #stays constant false, which keeps the two arrays in the schema for every claim type and lets
+    #the resolution below fall straight through to the boundary-day answer. The op destination is
+    #tiered like ip: tier 0 is a stay continuing past the visit day or starting on it, tier 1 a
+    #stay starting the day after. onThruNext needs no "lacks THRU_DT_DAY" guard: losDays are
+    #contiguous, so a stay covering both days is already caught by tier 0, and tier 1 is only
+    #consulted when tier 0 is empty. everything else tests its single real admission/through day.
     if claimType == "op":
         thru = F.col("THRU_DT_DAY")
         onAdmission     = lambda x: F.array_contains(x.losDays, thru - 1) & F.array_contains(x.losDays, thru)
         onAdmissionPrev = lambda x: F.lit(False)
-        onThru          = lambda x: F.array_contains(x.losDays, thru) & F.array_contains(x.losDays, thru + 1)
-        onThruNext      = lambda x: F.lit(False)
+        onThru          = lambda x: F.array_contains(x.losDays, thru) & (F.array_contains(x.losDays, thru + 1) |
+                                                                         ~F.array_contains(x.losDays, thru - 1))
+        onThruNext      = lambda x: F.array_contains(x.losDays, thru + 1)
         sourceDay       = thru
     else:
         onAdmission     = lambda x: F.array_contains(x.losDays, F.col("ADMSN_DT_DAY"))
