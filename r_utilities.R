@@ -195,6 +195,17 @@ get_data_dictionary <- function() {
     "transferFromDifferentFacility","Admitted as a transfer from another hospital (SRC_ADMS=4) (0/1)",
     "shortTermInpatientOrganization","Claim organization is a short-term adult inpatient facility (GACH/RACH/CAH and not rehab/pediatric/psychiatric/LTC) (0/1)",
 
+    # ---- stay source / destination (from the beneficiary's other stays; independent of STUS_CD, used to validate it) ----
+    # Setting values: hosp=hospice, ipRehab=inpatient rehab, snf=SNF, ipLtc=long-term-care hospital,
+    # ipOther=other inpatient, home=no qualifying stay. Priority when several match the same day:
+    # hosp > ipRehab > snf > ipLtc > ipOther; the boundary day outranks the day beyond it.
+    "admissionSource", "Setting the stay was admitted from (see values above; NULL = admission on firstObservableDay, the day before is outside the loaded data)",
+    "admissionSourceLag","Which day matched admissionSource: 0=admission day, 1=day before; NULL when no stay matched",
+    "thruDestination", "Setting the stay was discharged to; died = MBSF death date on/before the discharge day and no matching stay; NULL = discharge on lastObservableDay, the day after is outside the loaded data",
+    "thruDestinationLag","Which day matched thruDestination: 0=discharge/visit day, 1=day after; NULL when no stay matched (home/died/censored)",
+    "firstObservableDay","First day covered by the loaded claims (Jan 1 of the first loaded year, cumulative day number)",
+    "lastObservableDay","Last day covered by the loaded claims (Dec 31 of the last loaded year, cumulative day number)",
+
     # ---- provider capability / volume (sepsis-shock cohort) ----
     # AnnualCapability = performed it at least once that year (each year independent, does not carry forward);
     # EverCapability = performed it in any year up to and including this one (never resets, no backfill).
