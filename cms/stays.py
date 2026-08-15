@@ -498,7 +498,9 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
       * staysDF is at stay granularity (post get_unique_stays) and has DSYSRTKY, PROVIDER, ORGNPINM,
         THRU_DT_DAY, and -- for ip -- ADMSN_DT_DAY.
       * staysDF has DEATH_DT_DAY (joined from the MBSF by baseF.add_mbsf_info; null while the
-        beneficiary is alive, which leaves the died branch false).
+        beneficiary is alive, which leaves the died branch false). The standard pipeline
+        (utilities.add_preliminary_info) does that join for both ip and op via
+        baseF.add_beneficiary_info.
       * staysDF has firstObservableDay and lastObservableDay (stamped by
         utilities.add_preliminary_info; null disables the edge censoring).
       * Every source DF in cmsDFS has losDays (baseF.add_losDays).

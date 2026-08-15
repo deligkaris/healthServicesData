@@ -178,8 +178,10 @@ def enforce_schema(df, claimType, claimPart):
 def add_preliminary_info(dataframes, data, lastObservableDay, firstObservableDay=None, runTests=False):
     '''inputs: original CMS dataframes
        outputs: input dataframes with additional columns appended that are needed almost always
-       lastObservableDay makes the ip mortality flags NULL rather than 0 for admissions whose follow-up
-       window extends past the end of the loaded data, see base.add_XDaysAfterYDateDead.
+       lastObservableDay makes the ip and op mortality flags NULL rather than 0 for claims whose
+       follow-up window extends past the end of the loaded data, see base.add_XDaysAfterYDateDead.
+       ip and op both get baseF.add_beneficiary_info (MBSF demographics, DEATH_DT_DAY and the
+       through-date mortality flags); the admission-date mortality flags are ip-only.
        lastObservableDay and firstObservableDay (see get_lastObservableDay / get_firstObservableDay)
        are also stamped on every Base dataframe as constant columns of the same names, recording the
        coverage of the loaded data on every claim so downstream code can censor at the data's edges
@@ -221,6 +223,8 @@ def add_preliminary_info(dataframes, data, lastObservableDay, firstObservableDay
                  dataframes[claimTypePart] = baseF.add_prcdrCodeAll(dataframes[claimTypePart])
                  dataframes[claimTypePart] = baseF.add_dgnsCodeAll(dataframes[claimTypePart])
                  dataframes[claimTypePart] = baseF.add_provider_info(dataframes[claimTypePart], data)
+                 dataframes[claimTypePart] = baseF.add_beneficiary_info(dataframes[claimTypePart], dataframes["mbsf"], data,
+                                                                        lastObservableDay, claimType="op")
                  dataframes[claimTypePart] = baseF.add_shortTermInpatientOrganization(dataframes[claimTypePart])
                  dataframes[claimTypePart] = baseF.add_transferToIn(dataframes[claimTypePart])
         elif (claimPart=="Line"):
@@ -246,7 +250,7 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, r
     """The FFS flag is here to prevent unintended errors.
     If the project requires FFS data, then all dataframes must be filtered for FFS.
     data is a dictionary of spark dataframes with supporting information, eg provider of services, NPI, etc
-    The ip mortality flags are NULL, not 0, for admissions whose follow-up window extends past December 31 of
+    The ip and op mortality flags are NULL, not 0, for claims whose follow-up window extends past December 31 of
     yearF, because a death after that day is not in the loaded mbsf files, see base.add_XDaysAfterYDateDead."""
     if ( years_within_code_limits(yearI, yearF)==False ):
         raise ValueError("code was not designed to operate for the years provided")

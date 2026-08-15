@@ -2395,3 +2395,98 @@ class TestGetShortTermInpatientOrganizationClaims:
                 (4, 0, 0, 1, 0, 0, 0, 0),   # cah, keep
                 (5, 1, 0, 0, 0, 0, 0, 1)]   # gach but ltc, drop
         assert sorted(r["CLAIMNO"] for r in self._run(spark, rows).collect()) == [1, 4]
+
+
+# ============================================================
+# Tests for add_beneficiary_info
+# ============================================================
+
+def _bene_mbsf_df(spark, rows):
+    """Simulates the mbsf DF post mbsf.add_beneficiary_info with the columns
+    base.add_mbsf_info reads: the per-year demographics of the first join and
+    the validated death columns of the second."""
+    schema = ("DSYSRTKY int, RFRNC_YR int, fipsCounty string, AGE int, ffsFirstMonth int, "
+              "anyEsrd int, medicaidEver int, SEX int, RACE int, rucc int, region int, "
+              "maPenetration double, meanContinuousFfsAndRfrncYrForCountyYear double, "
+              "medianHhIncome double, medianHhIncomeAdjusted double, medianDistanceEd double, "
+              "medianDistanceIcu double, medianDistanceTrauma double, "
+              "V_DOD_SW string, DEATH_DT_YEAR int, DEATH_DT_DAY int, DEATH_DT long")
+    return spark.createDataFrame(rows, schema)
+
+
+def _bene_mbsf_row(dsysrtky, rfrnc_yr, v_dod_sw=None, death_dt_day=None):
+    death_year = 2020 if v_dod_sw == "V" else None
+    death_dt = 20200415 if v_dod_sw == "V" else None
+    return (dsysrtky, rfrnc_yr, "39001", 70, 1, 0, 0, 1, 1, 5, 2,
+            0.3, 10.0, 60000.0, 60000.0, 5.0, 10.0, 20.0,
+            v_dod_sw, death_year, death_dt_day, death_dt)
+
+
+def _bene_data(spark):
+    return {"cbsa": spark.createDataFrame([("36001", "39001")], "ssaCounty string, fipsCounty string"),
+            "ersRucc": spark.createDataFrame([("39001", 5)], "FIPS string, RUCC_2013 int")}
+
+
+class TestAddBeneficiaryInfo:
+    """add_beneficiary_info is what utilities.add_preliminary_info runs on both
+    the ip and the op base; op has no admission date, so claimType="op" must
+    work on a DF without ADMSN_DT_DAY and must not add the admission-date
+    mortality flags."""
+
+    _LAST_OBSERVABLE_DAY = 10000
+
+    def _op_base(self, spark, thru_dt_day=100):
+        return spark.createDataFrame([(1, 2020, thru_dt_day, "36001")],
+                                     "DSYSRTKY int, THRU_DT_YEAR int, THRU_DT_DAY int, ssaCounty string")
+
+    def _run_op(self, spark, mbsf_rows, thru_dt_day=100):
+        from cms.base import add_beneficiary_info
+        return add_beneficiary_info(self._op_base(spark, thru_dt_day), _bene_mbsf_df(spark, mbsf_rows),
+                                    _bene_data(spark), self._LAST_OBSERVABLE_DAY, claimType="op").collect()[0]
+
+    def test_op_dead_beneficiary(self, spark):
+        out = self._run_op(spark, [_bene_mbsf_row(1, 2020, v_dod_sw="V", death_dt_day=105)])
+        assert out["DEATH_DT_DAY"] == 105
+        assert out["daysDeadAfterThroughDate"] == 5
+        assert out["90DaysAfterThroughDateDead"] == 1
+        assert out["365DaysAfterThroughDateDead"] == 1
+
+    def test_op_alive_beneficiary(self, spark):
+        out = self._run_op(spark, [_bene_mbsf_row(1, 2020)])
+        assert out["DEATH_DT_DAY"] is None
+        assert out["daysDeadAfterThroughDate"] is None
+        assert out["90DaysAfterThroughDateDead"] == 0
+
+    def test_op_censored_window_is_null(self, spark):
+        out = self._run_op(spark, [_bene_mbsf_row(1, 2020)],
+                           thru_dt_day=self._LAST_OBSERVABLE_DAY - 30)
+        assert out["90DaysAfterThroughDateDead"] is None
+
+    def test_op_has_no_admission_date_flags(self, spark):
+        from cms.base import add_beneficiary_info
+        df = add_beneficiary_info(self._op_base(spark), _bene_mbsf_df(spark, [_bene_mbsf_row(1, 2020)]),
+                                  _bene_data(spark), self._LAST_OBSERVABLE_DAY, claimType="op")
+        for c in ("daysDeadAfterAdmissionDate", "30DaysAfterAdmissionDateDead",
+                  "90DaysAfterAdmissionDateDead", "365DaysAfterAdmissionDateDead"):
+            assert c not in df.columns
+
+    def test_op_demographics_and_geography(self, spark):
+        out = self._run_op(spark, [_bene_mbsf_row(1, 2020)])
+        assert out["mbsfAge"] == 70
+        assert out["mbsfSex"] == 1
+        assert out["fipsCounty"] == "39001"
+        assert out["fipsState"] == "39"
+        assert out["rucc"] == 5
+        assert out["region"] is not None
+
+    def test_ip_adds_admission_date_flags(self, spark):
+        from cms.base import add_beneficiary_info
+        baseDF = spark.createDataFrame(
+            [(1, 2020, 110, 100, "36001")],
+            "DSYSRTKY int, THRU_DT_YEAR int, THRU_DT_DAY int, ADMSN_DT_DAY int, ssaCounty string")
+        out = add_beneficiary_info(baseDF, _bene_mbsf_df(spark, [_bene_mbsf_row(1, 2020, v_dod_sw="V", death_dt_day=105)]),
+                                   _bene_data(spark), self._LAST_OBSERVABLE_DAY, claimType="ip").collect()[0]
+        assert out["daysDeadAfterAdmissionDate"] == 5
+        assert out["30DaysAfterAdmissionDateDead"] == 1
+        assert out["daysDeadAfterThroughDate"] == -5
+        assert out["90DaysAfterThroughDateDead"] == 1
