@@ -6,6 +6,7 @@ from .revenue import filter_claims, add_ed, add_mri, add_ct, get_revenue_info
 from .claims import get_claims
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, get_daysInYearsPrior, usRegionFipsCodes, get_monthsInYearsPrior
 import re
+import warnings
 from functools import reduce
 
 #CMS DUA email on my question about LDS claim numbers:
@@ -1873,6 +1874,10 @@ def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provi
 #outputs: baseDF with four additional columns, losAtX90, losDaysAtX90, losAtX365, losDaysAtX365
 #note: due to the complex joins etc I prefer to add the four columns at the same time here
 def add_los_at_X_info(baseDF, XDF, lastObservableDay, X="hosp"):
+    '''A facility claim whose through date is after the death date is clipped at the death date. A claim admitted
+    after the death date is dropped: clipping it alone would leave through < admission, and F.sequence in
+    add_losDays would then run backwards from the admission to the death date, counting phantom facility days
+    that push homeDays negative. Both counts are reported in one warning when either is non-zero.'''
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90)
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=365)
     #XDF = (XDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) #need only 3 columns from this df
@@ -1891,9 +1896,18 @@ def add_los_at_X_info(baseDF, XDF, lastObservableDay, X="hosp"):
                     #on=[ baseDF.DSYSRTKY==XDF.DSYSRTKY,
                     #     XDF.ADMSN_DT_DAY - baseDF.baseTHRU_DT_DAY >= 0 ],
                     how="inner")  #inner join ensures that each X claim is matched will all relevant base claims
-              .filter(F.col("ADMSN_DT_DAY") - F.col("baseTHRU_DT_DAY") >= 0)
-              #for a small number of beneficiaries and claims, the claims through date is after the death date, then manually set it to death date
-              .withColumn("THRU_DT_DAY", F.when( F.col("DEATH_DT_DAY")<F.col("THRU_DT_DAY"), F.col("DEATH_DT_DAY")).otherwise(F.col("THRU_DT_DAY"))))        
+              .filter(F.col("ADMSN_DT_DAY") - F.col("baseTHRU_DT_DAY") >= 0))
+    pastDeath = (XDF.filter(F.col("DEATH_DT_DAY") < F.col("THRU_DT_DAY"))
+                    .select("DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY", "DEATH_DT_DAY").distinct()
+                    .agg(F.sum((F.col("ADMSN_DT_DAY") <= F.col("DEATH_DT_DAY")).cast('int')).alias("clipped"),
+                         F.sum((F.col("ADMSN_DT_DAY") > F.col("DEATH_DT_DAY")).cast('int')).alias("dropped"))
+                    .collect()[0])
+    clipped, dropped = pastDeath["clipped"] or 0, pastDeath["dropped"] or 0
+    if clipped + dropped > 0:
+        warnings.warn(f"add_los_at_X_info(X={X}): {clipped} facility claims clipped at the death date, "
+                      f"{dropped} admitted after the death date dropped")
+    XDF = (XDF.filter(F.col("DEATH_DT_DAY").isNull() | (F.col("ADMSN_DT_DAY") <= F.col("DEATH_DT_DAY")))
+              .withColumn("THRU_DT_DAY", F.least(F.col("THRU_DT_DAY"), F.col("DEATH_DT_DAY"))))
 
     XDF = add_losDays(XDF) #add a sequence of days that represents length of stay
 
@@ -1973,11 +1987,14 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
     '''lastObservableDay makes the homeDays columns (and therefore their Group columns) NULL for admissions
     whose window extends past the end of the loaded data. See get_homeDays.'''
     #here I am using the definition of Fonarow2016, with the difference that I am including hospice
-    snfDF = snfDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY"))
-    hospDF = hospDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
-    ipDF = ipDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
-    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF])
-             .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
+    snfDF, hhaDF, hospDF, ipDF = [df.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY"))
+                                  for df in (snfDF, hhaDF, hospDF, ipDF)]
+    valid = F.col("THRU_DT_DAY") >= F.col("ADMSN_DT_DAY")
+    malformed = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF])
+                 .filter(~valid).count())
+    if malformed > 0:
+        warnings.warn(f"add_days_at_home_info: dropped {malformed} facility claims with through date before admission date")
+    allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF]).filter(valid)
     baseDF = add_los_at_X_info(baseDF, allDF, lastObservableDay, X="allMinusHha")
     #baseDF = add_los_total_info(baseDF, X="allMinusHha")
     baseDF = (baseDF.withColumn("homeDays90", get_homeDays(90, "losAtallMinusHha90", lastObservableDay))
@@ -1992,9 +2009,7 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
                                                      .when( F.col("homeDays365")<=360, 3)))
 
     #now include HHA and label these as home living independently rates
-    hhaDF = hhaDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") )
-    allDF = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF])
-             .filter(F.col("THRU_DT_DAY")>=F.col("ADMSN_DT_DAY")))
+    allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF]).filter(valid)
     baseDF = add_los_at_X_info(baseDF, allDF, lastObservableDay, X="all")
     #baseDF = add_los_total_info(baseDF, X="all")
     baseDF = (baseDF.withColumn("homeDaysIndependent90", get_homeDays(90, "losAtall90", lastObservableDay))

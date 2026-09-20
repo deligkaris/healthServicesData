@@ -2784,6 +2784,48 @@ class TestAddDaysAtHomeInfoTransfers:
         assert row["losAtall90"] == 0
         assert row["losAtall365"] == 0
 
+    def test_facility_claim_admitted_after_death_is_dropped_with_warning(self, spark):
+        # Died on day 1020; a SNF claim dated 1050-1060 lies entirely after death. Clipping its through date
+        # at death alone would make F.sequence run backwards over days 1050..1020 and give homeDays90 = -10.
+        from cms.transfers import add_days_at_home_info
+        transfers_schema = StructType([StructField(c, IntegerType(), True) for c in
+            ("toDSYSRTKY", "toCLAIMNO", "toADMSN_DT_DAY", "toTHRU_DT_DAY", "toDEATH_DT_DAY", "toSTUS_CD",
+             "to90DaysAfterAdmissionDateDead", "to365DaysAfterAdmissionDateDead")])
+        small_schema = StructType([StructField(c, IntegerType(), True) for c in
+            ("DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY")])
+        transfers_df = spark.createDataFrame([(1, 1, 1000, 1010, 1020, 1, 1, 1)], schema=transfers_schema)
+        snf_df = spark.createDataFrame([(1, 1050, 1060)], schema=small_schema)
+        empty = spark.createDataFrame([], schema=small_schema)
+        with pytest.warns(UserWarning, match="0 facility claims clipped at the death date, 1 admitted after the death date dropped"):
+            row = add_days_at_home_info(transfers_df, snf_df, empty, empty, empty, 5000).collect()[0]
+        assert row["losAtallMinusHha90"] == 0
+        assert row["homeDays90"] == 21
+        assert row["homeDays365"] == 21
+
+    def test_clipped_and_malformed_facility_claims_are_warned(self, spark):
+        # Died on day 1020. SNF 1010-1030 straddles death and is clipped to 1010-1020 (11 days).
+        # HHA 1040-1035 has through < admission and is dropped before the union with its own warning.
+        from cms.transfers import add_days_at_home_info
+        transfers_schema = StructType([StructField(c, IntegerType(), True) for c in
+            ("toDSYSRTKY", "toCLAIMNO", "toADMSN_DT_DAY", "toTHRU_DT_DAY", "toDEATH_DT_DAY", "toSTUS_CD",
+             "to90DaysAfterAdmissionDateDead", "to365DaysAfterAdmissionDateDead")])
+        small_schema = StructType([StructField(c, IntegerType(), True) for c in
+            ("DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY")])
+        transfers_df = spark.createDataFrame([(1, 1, 1000, 1010, 1020, 1, 1, 1)], schema=transfers_schema)
+        snf_df = spark.createDataFrame([(1, 1010, 1030)], schema=small_schema)
+        hha_df = spark.createDataFrame([(1, 1040, 1035)], schema=small_schema)
+        empty = spark.createDataFrame([], schema=small_schema)
+        with pytest.warns(UserWarning) as record:
+            row = add_days_at_home_info(transfers_df, snf_df, hha_df, empty, empty, 5000).collect()[0]
+        messages = [str(w.message) for w in record]
+        assert any("dropped 1 facility claims with through date before admission date" in m for m in messages)
+        assert sum("1 facility claims clipped at the death date, 0 admitted after the death date dropped" in m
+                   for m in messages) == 2
+        assert row["losAtallMinusHha90"] == 11
+        assert row["losAtall90"] == 11
+        assert row["homeDays90"] == 10
+        assert row["homeDaysIndependent90"] == 10
+
     def test_end_to_end_eight_columns_sufficient_with_extras_round_tripping(self, spark):
         # Stronger end-to-end check that:
         #   1. baseF.add_days_at_home_info reads only the eight documented to-prefixed
