@@ -186,6 +186,10 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #zip codes split between counties are listed more than once and their ratios are shown
     filenames["zipToCounty"] = [pathToData + "/HUD/ZIP_COUNTY_122021.csv"]
 
+    #dartmouth atlas zip to hsa to hrr crosswalks: https://data.dartmouthatlas.org/supplemental/
+    #data exist only until 2019 (including), I copied the 2019 file to be used for 2020-2024
+    filenames["zipToHrr"] = [pathToData + f'/DARTMOUTH-ATLAS/ZipHsaHrr{year-2000}.csv' for year in range(2015,2025)]
+
     pathMA = pathToData +'/MEDICARE-ADVANTAGE' 
 
     # https://resdac.org/articles/public-use-sources-managed-care-enrollment-and-penetration-rates
@@ -284,6 +288,8 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_strokeCentersJCDF(df)
     elif file=="zipToCounty":
         df = prep_zipToCountyDF(df)
+    elif file=="zipToHrr":
+        df = prep_zipToHrrDF(df, filename)
     elif file=="aha":
         df = prep_ahaDF(df, filename)
     elif file=="chspHosp":
@@ -521,6 +527,20 @@ def prep_zipToCountyDF(zipToCountyDF):
                                                .otherwise(0)))
 
     return zipToCountyDF
+
+def prep_zipToHrrDF(zipToHrrDF, filename):
+    '''Dartmouth Atlas zip to hospital service area (hsa) to hospital referral region (hrr) crosswalk, one file per year.
+    The zip column is named after the year of the file (zipcode15, zipcode19,...) so it is renamed to zip to allow the
+    yearly files to be unioned. The year is taken from the filename and not from that column name because the 2019 file
+    was copied for the years after 2019, and those copies still carry the zipcode19 header.'''
+    year = 2000 + int(re.compile(r'ZipHsaHrr(\d{2})').search(filename).group(1))
+    zipColumn = [c for c in zipToHrrDF.columns if re.fullmatch(r'zipcode\d+', c)][0]
+    zipToHrrDF = (zipToHrrDF.withColumnRenamed(zipColumn, "zip")
+                            .withColumn("zip", F.lpad(F.col("zip"), 5, "0"))
+                            .withColumn("hsanum", F.col("hsanum").cast('int'))
+                            .withColumn("hrrnum", F.col("hrrnum").cast('int'))
+                            .withColumn("year", F.lit(year)))
+    return zipToHrrDF
 
 def prep_maPenetrationDF(maPenetrationDF):
     maPenetrationDF = (maPenetrationDF.withColumn("Penetration", F.split( F.trim(F.col("Penetration")), r'\.' ).getItem(0).cast('int') )

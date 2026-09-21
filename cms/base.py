@@ -909,8 +909,25 @@ def add_providerCmi(baseDF, cmiDF):
                          how="left_outer")
     return baseDF
 
+def add_provider_hrr_info(baseDF, zipToHrrDF): #assumes providerZip
+    '''Dartmouth Atlas hospital service area (hsa) and hospital referral region (hrr) of the provider, found from the zip code
+    of the provider and the year of the claim (https://data.dartmouthatlas.org/supplemental/).
+    Dartmouth has not published crosswalks after 2019 so the claims after 2019 use the 2019 crosswalk (see get_filenames),
+    hsa and hrr boundaries do not change over time, only the list of zip codes does.
+    Claims with a zip code that is not in the crosswalk of their year, or from a year without a crosswalk, get nulls.'''
+    baseDF = baseDF.join(zipToHrrDF.select(F.col("zip").alias("providerZip"),
+                                           F.col("year").alias("THRU_DT_YEAR"),
+                                           F.col("hsanum").alias("providerHsa"),
+                                           F.col("hrrnum").alias("providerHrr"),
+                                           F.col("hrrcity").alias("providerHrrCity"),
+                                           F.col("hrrstate").alias("providerHrrState")),
+                         on=["providerZip","THRU_DT_YEAR"],
+                         how="left_outer")
+    return baseDF
+
 def add_provider_info(baseDF, data):
     baseDF = add_provider_npi_info(baseDF, data["npi"])
+    baseDF = add_provider_hrr_info(baseDF, data["zipToHrr"])
     baseDF = add_provider_pos_info(baseDF, data["pos"])
     baseDF = add_providerRegion(baseDF)
     baseDF = add_ccnCah(baseDF)

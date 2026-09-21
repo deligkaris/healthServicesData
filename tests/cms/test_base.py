@@ -2490,3 +2490,63 @@ class TestAddBeneficiaryInfo:
         assert out["30DaysAfterAdmissionDateDead"] == 1
         assert out["daysDeadAfterThroughDate"] == -5
         assert out["90DaysAfterThroughDateDead"] == 1
+
+# ============================================================
+# Dartmouth Atlas hospital referral regions
+# ============================================================
+
+class TestPrepZipToHrrDF:
+
+    def _run(self, spark, filename, zipColumn="zipcode19"):
+        from utilities import prep_zipToHrrDF
+        df = spark.createDataFrame(
+            [("501", "33095", "Patchogue", "NY", "301", "East Long Island", "NY")],
+            f"{zipColumn} string, hsanum string, hsacity string, hsastate string, hrrnum string, hrrcity string, hrrstate string")
+        return prep_zipToHrrDF(df, filename)
+
+    def test_year_from_filename_not_header(self, spark):
+        out = self._run(spark, "/DATA/DARTMOUTH-ATLAS/ZipHsaHrr21.csv").collect()[0]
+        assert out["year"] == 2021
+
+    def test_zip_renamed_and_padded(self, spark):
+        df = self._run(spark, "/DATA/DARTMOUTH-ATLAS/ZipHsaHrr15.csv", zipColumn="zipcode15")
+        assert "zipcode15" not in df.columns
+        assert df.collect()[0]["zip"] == "00501"
+
+    def test_numbers_are_int(self, spark):
+        df = self._run(spark, "/DATA/DARTMOUTH-ATLAS/ZipHsaHrr19.csv")
+        assert dict(df.dtypes)["hsanum"] == "int"
+        assert dict(df.dtypes)["hrrnum"] == "int"
+        assert df.collect()[0]["hrrnum"] == 301
+
+
+class TestAddProviderHrrInfo:
+
+    def _run(self, spark, claims):
+        from cms.base import add_provider_hrr_info
+        zipToHrrDF = spark.createDataFrame(
+            [("00501", 2019, 33095, "Patchogue", "NY", 301, "East Long Island", "NY"),
+             ("00501", 2020, 33099, "Elsewhere", "NY", 302, "Other", "NY")],
+            "zip string, year int, hsanum int, hsacity string, hsastate string, hrrnum int, hrrcity string, hrrstate string")
+        baseDF = spark.createDataFrame(claims, "CLAIMNO int, providerZip string, THRU_DT_YEAR int")
+        return {r["CLAIMNO"]: r for r in add_provider_hrr_info(baseDF, zipToHrrDF).collect()}
+
+    def test_matches_row_of_claim_year(self, spark):
+        out = self._run(spark, [(1, "00501", 2019), (2, "00501", 2020)])
+        assert out[1]["providerHrr"] == 301
+        assert out[1]["providerHsa"] == 33095
+        assert out[1]["providerHrrCity"] == "East Long Island"
+        assert out[1]["providerHrrState"] == "NY"
+        assert out[2]["providerHrr"] == 302
+
+    def test_unknown_zip_is_null(self, spark):
+        out = self._run(spark, [(1, "99999", 2019)])
+        assert out[1]["providerHrr"] is None
+
+    def test_year_without_crosswalk_is_null(self, spark):
+        out = self._run(spark, [(1, "00501", 2013)])
+        assert out[1]["providerHrr"] is None
+
+    def test_row_count_unchanged(self, spark):
+        out = self._run(spark, [(1, "00501", 2019), (2, "99999", 2019), (3, None, 2019)])
+        assert len(out) == 3
