@@ -429,6 +429,7 @@ def prep_ahaDF(ahaDF, filename):
                   .withColumn("LONG", F.col("LONG").cast('double'))
                   .withColumn("ahaResidentToBedRatio", F.col("FTERES")/F.col("ahaTotalMinusNursingBeds"))
                   .withColumn("ahaBedsIcu", F.col("MSICBD").cast('int')) #number of medical/surgical intensive care beds
+                  .withColumn("ahaIcuHos", F.col("MSICHOS").cast('int'))
                   #NIS definition of teaching hospitals: https://hcup-us.ahrq.gov/db/vars/hosp_teach/nisnote.jsp
                   #the definition was somewhat unclear so I asked for clarification, see email on 7/25/2024:
                   #A hospital is considered to be a teaching hospital if it met any one of the following three criteria:
@@ -526,7 +527,7 @@ def prep_maPenetrationDF(maPenetrationDF):
                                       .withColumn("Year", F.col("Year").cast('int')))
     return maPenetrationDF
 
-def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=None):
+def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=None, lastCompleteYear=2024):
     '''Bed counts, number of interns and residents, and rural/urban status per hospital per year from the
     CMS HCRIS hospital 2552-10 cost report files.
 
@@ -632,6 +633,40 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     longer needed for these measures: the columns here are the same numbers for every year of HCRIS
     rather than the single 2018 snapshot the code used to read as hospCost2018.
 
+    providerHcrisResidentToBedRatio is the intern and resident to bed ratio (IRB) CMS itself computes for the
+    indirect medical education payment, read from Worksheet E Part A (WKSHT_CD E00A18A per Table 2 of the
+    electronic reporting specifications, section 4095) line 19 column 1, Current year resident to bed
+    ratio. The instructions are section 4030.1 of the same transmittal 18 pdf, line 4 on page 40-170.1
+    and lines 18 through 21 on page 40-170.5, and Table 3 of section 4095 lists the cell on page
+    40-769 (Table 2 is page 40-719.1): line 19 is line 18 divided by line 4, where line 18 is the adjusted rolling average FTE count,
+    the three year average of the allowable FTEs after the IME cap plus the residents of new programs
+    and of closed hospitals, and line 4 is Bed Days Available (S-3 Part I column 3, line 14 plus line
+    32) less the swing bed, observation, hospice, labor and delivery and COVID-19 expansion days,
+    divided by the days in the period. It is therefore NOT providerHcrisResidents over
+    providerHcrisBedsTotal: the numerator is capped, averaged and limited to the hospital component
+    where providerHcrisResidents is every resident in the facility this year, and the denominator is an
+    average over the period net of those days where providerHcrisBedsTotal is the end of period count.
+    It is the ratio the major teaching threshold of 0.25 is stated on (see prep_aamcHospitalsDF) and
+    what AAMC's FY20 IRB, used by base.add_rbr, was computed from for the one year it covers. Line 20
+    is the prior year ratio and line 21 the lesser of the two, which is what the payment formula uses;
+    neither is read here. The IME lines are completed only by hospitals paid under the inpatient
+    prospective payment system that train residents, so the cell is absent for everyone else. It is set
+    to 0 where it is absent and providerHcrisResidents is 0, no residents being a ratio of 0 whatever the
+    hospital is, and left null where it is absent and the facility does have residents (a critical
+    access or other non-IPPS teaching hospital), since there the ratio exists and the form just does
+    not compute it. CMS's Cost Report public use file has no resident to bed ratio column to compare against,
+    but it does carry three other Worksheet E Part A cells, Managed Care Simulated Payments (line 3),
+    Total IME Payment (line 29) and Allowable DSH Percentage (line 33), and across the 4860 reports
+    CostReport_2019_Final.csv shares with HOSP10FY2019 they agree with E00A18A lines 00300, 02900 and
+    03300 column 00100 on every report that files them (587, 463 and 1909), which confirms the
+    worksheet code and the line numbering. Line 19 itself equals line 18 over line 4 on all 1228
+    HOSP10FY2019 reports that file it, ranges from 0.0002 to 2.28 with a median of 0.11 and 360 reports
+    at or above 0.25, and runs a median 7% below providerHcrisResidents over providerHcrisBedsTotal,
+    within 20% of it on 62% of reports. Of the 6048 reports with a bed count, 4620 get the 0 and 200
+    stay null: 52 children's, 50 psychiatric, 28 rehabilitation, 18 critical access, 6 long term care
+    and 46 short term acute hospitals, the last mostly with a handful of residents. Unlike the bed
+    counts the cell is not checked against another cell, none of the values filed calling for it.
+
     hcrisYear is the calendar year containing the midpoint of the cost reporting period, not the fiscal
     year of the folder the report came from: the HOSP10FY{year} file groups reports by the federal fiscal
     year their period BEGINS in, so eg HOSP10FY2019 holds periods beginning 10/01/2018 through 09/30/2019
@@ -639,6 +674,11 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     lets the result join to the claims on THRU_DT_YEAR the way the AHA data does. Because of this the
     edge years are thin: yearInitial contributes a handful of reports to the calendar year before it, and
     the most recent fiscal years are still being filed, so their calendar years are incomplete.
+    lastCompleteYear drops the latter: reports whose hcrisYear is after it are not kept, so a year for
+    which only some hospitals have filed cannot be mistaken for a year in which the rest filed nothing.
+    From the September 2026 release calendar year 2025 had 3508 reports against the 5900 to 6000 of
+    every year from 2016 through 2024, which is why the default is 2024; raise it as CMS fills the later
+    years in, or pass None to keep everything. The thin year before yearInitial is not dropped.
 
     About 1.4% of (PRVDR_NUM, hcrisYear) pairs have more than one report, from a change of ownership or
     a change of fiscal year splitting the year into two short periods. The longest period wins, with the
@@ -680,6 +720,7 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     isBedDaysCell = isBedLine & (F.col("CLMN_NUM")=="00300")
     isResidentsCell = ((F.col("WKSHT_CD")=="S300001") & (F.col("LINE_NUM")=="02700") & (F.col("CLMN_NUM")=="00900"))
     isRuralCell = ((F.col("WKSHT_CD")=="S200001") & (F.col("LINE_NUM")=="02600") & (F.col("CLMN_NUM")=="00100"))
+    isResidentToBedRatioCell = ((F.col("WKSHT_CD")=="E00A18A") & (F.col("LINE_NUM")=="01900") & (F.col("CLMN_NUM")=="00100"))
 
     icuBlock = F.col("LINE_NUM").between("00800","00899")
     criticalCareBlock = F.col("LINE_NUM").between("00800","01299")
@@ -689,7 +730,7 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
         return F.sum(F.when(cell & block, F.col("ITM_VAL_NUM")))
 
     cellsDF = (spark.read.schema(hcrisNmrcSchema).csv(nmrcFiles)
-                    .filter(isBedCell | isBedDaysCell | isResidentsCell | isRuralCell)
+                    .filter(isBedCell | isBedDaysCell | isResidentsCell | isRuralCell | isResidentToBedRatioCell)
                     .groupBy("RPT_REC_NUM")
                     .agg(sum_cells(isBedCell, icuBlock).cast('int').alias("providerHcrisBedsIcu"),
                          sum_cells(isBedCell, criticalCareBlock).cast('int').alias("providerHcrisBedsCriticalCare"),
@@ -698,12 +739,16 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
                          sum_cells(isBedDaysCell, criticalCareBlock).cast('long').alias("providerHcrisBedDaysCriticalCare"),
                          sum_cells(isBedDaysCell, totalLine).cast('long').alias("providerHcrisBedDaysTotal"),
                          F.max(F.when(isResidentsCell, F.col("ITM_VAL_NUM"))).alias("providerHcrisResidents"),
+                         F.max(F.when(isResidentToBedRatioCell, F.col("ITM_VAL_NUM"))).alias("providerHcrisResidentToBedRatio"),
                          (F.max(F.when(isRuralCell, F.col("ITM_VAL_NUM")))==2).cast('int').alias("providerHcrisIsRural")))
 
     def beds_checked_against_bed_days(beds, bedDays):
         impliedBeds = F.col(bedDays)/F.col("hcrisReportDays")
         return (F.when((impliedBeds>=1) & (F.col(beds) > 5*impliedBeds), F.round(impliedBeds))
                  .otherwise(F.col(beds)).cast('int'))
+
+    if lastCompleteYear is not None:
+        rptDF = rptDF.filter(F.col("hcrisYear") <= lastCompleteYear)
 
     hcrisDF = (rptDF.join(cellsDF, on="RPT_REC_NUM", how="inner")
                     .withColumn("providerHcrisBedsIcu",
@@ -714,7 +759,10 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
                                 beds_checked_against_bed_days("providerHcrisBedsTotal","providerHcrisBedDaysTotal"))
                     .filter(F.col("providerHcrisBedsCriticalCare").isNotNull() | F.col("providerHcrisBedsTotal").isNotNull())
                     .fillna(0, subset=["providerHcrisBedsIcu","providerHcrisBedsCriticalCare","providerHcrisResidents",
-                                       "providerHcrisBedDaysIcu","providerHcrisBedDaysCriticalCare"]))
+                                       "providerHcrisBedDaysIcu","providerHcrisBedDaysCriticalCare"])
+                    .withColumn("providerHcrisResidentToBedRatio",
+                                F.when(F.col("providerHcrisResidentToBedRatio").isNull() & (F.col("providerHcrisResidents")==0), F.lit(0.0))
+                                 .otherwise(F.col("providerHcrisResidentToBedRatio"))))
 
     eachProviderYear = (Window.partitionBy("PRVDR_NUM","hcrisYear")
                               .orderBy(F.col("hcrisReportDays").desc(), F.col("RPT_REC_NUM").desc()))

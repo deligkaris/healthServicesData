@@ -473,12 +473,12 @@ class TestPrepAhaDF:
 
     # All raw columns prep_ahaDF references on the year<=2016 path, supplied as strings like the CSV read.
     AHA_COLS = ["MAPP3", "MAPP5", "MAPP8", "MAPP18", "BDH", "HOSPBD",
-                "FTERES", "LAT", "LONG", "MSICBD", "CBSATYPE", "CNTRL", "MHSMEMB"]
+                "FTERES", "LAT", "LONG", "MSICBD", "MSICHOS", "CBSATYPE", "CNTRL", "MHSMEMB"]
 
     def _row(self, msicbd):
         # Representative string values; only MSICBD varies across tests.
         return [("1", "1", "1", "1", "150", "200", "10", "40.0", "-83.0",
-                 msicbd, "Metro", "23", "1")]
+                 msicbd, "1", "Metro", "23", "1")]
 
     def test_ahaBedsIcu_is_int_not_string(self, spark):
         from utilities import prep_ahaDF
@@ -486,6 +486,13 @@ class TestPrepAhaDF:
         result = prep_ahaDF(df, "FY2016 ASDB")
         assert dict(result.dtypes)["ahaBedsIcu"] == "int"
         assert result.collect()[0]["ahaBedsIcu"] == 20
+
+    def test_ahaIcuHos_is_int_flag(self, spark):
+        from utilities import prep_ahaDF
+        df = spark.createDataFrame(self._row("20"), self.AHA_COLS)
+        result = prep_ahaDF(df, "FY2016 ASDB")
+        assert dict(result.dtypes)["ahaIcuHos"] == "int"
+        assert result.collect()[0]["ahaIcuHos"] == 1
 
     def test_ahaBedsIcu_casts_multiple_rows(self, spark):
         from utilities import prep_ahaDF
@@ -509,9 +516,10 @@ class TestGetHcrisDF:
     RPT_FIELDS = ["{rec}", "9", "{prov}", "", "2", "01/01/2019", "12/31/2019", "08/31/2021",
                   "N", "N", "M", "02001", "4", "08/26/2021", "F", "08/26/2021", "", "04/29/2020"]
 
-    def _build(self, spark, tmp_path, reports):
+    def _build(self, spark, tmp_path, reports, extraCells=None, **kwargs):
         # reports: {provider: [(bedsCell, bedDaysCell), ...]} as filed on line 14 column 2 and 3,
         # a None meaning the provider filed no such cell.
+        # extraCells: {provider: [(worksheet, line, column, value), ...]} for any other cell.
         folder = tmp_path / f"HOSP10FY{self.YEAR}"
         folder.mkdir()
         rptRows, nmrcRows = [], []
@@ -522,11 +530,13 @@ class TestGetHcrisDF:
                 nmrcRows.append(f"{rec},S300001,01400,00200,{beds}")
             if bedDays is not None:
                 nmrcRows.append(f"{rec},S300001,01400,00300,{bedDays}")
+            for (wksht, line, clmn, val) in (extraCells or {}).get(prov, []):
+                nmrcRows.append(f"{rec},{wksht},{line},{clmn},{val}")
         (folder / f"HOSP10_{self.YEAR}_rpt.csv").write_text("\n".join(rptRows) + "\n")
         (folder / f"HOSP10_{self.YEAR}_nmrc.csv").write_text("\n".join(nmrcRows) + "\n")
 
         from utilities import get_hcrisDF
-        df = get_hcrisDF(spark, str(tmp_path), yearInitial=self.YEAR, yearFinal=self.YEAR)
+        df = get_hcrisDF(spark, str(tmp_path), yearInitial=self.YEAR, yearFinal=self.YEAR, **kwargs)
         self.rows = {r["PRVDR_NUM"]: r for r in df.collect()}
         return {prov: r["providerHcrisBedsTotal"] for prov, r in self.rows.items()}
 
@@ -586,3 +596,28 @@ class TestGetHcrisDF:
         # 364036 filed 1098010950 for FY2016, half the int limit already.
         self._build(spark, tmp_path, {"364036": (30, 1098010950)})
         assert self.rows["364036"]["providerHcrisBedDaysTotal"] == 1098010950
+
+    def test_reports_after_lastCompleteYear_are_dropped(self, spark, tmp_path):
+        beds = self._build(spark, tmp_path, {"131316": (21, 7665)}, lastCompleteYear=2018)
+        assert beds == {}
+
+    def test_lastCompleteYear_none_keeps_every_year(self, spark, tmp_path):
+        beds = self._build(spark, tmp_path, {"131316": (21, 7665)}, lastCompleteYear=None)
+        assert beds == {"131316": 21}
+
+    def test_resident_to_bed_ratio_is_read_from_worksheet_e_part_a_line_19(self, spark, tmp_path):
+        # Line 20 is the prior year ratio and must not be picked up in place of line 19.
+        self._build(spark, tmp_path, {"360180": (1200, 438000)},
+                    extraCells={"360180": [("S300001", "02700", "00900", 1500.25),
+                                           ("E00A18A", "01900", "00100", 0.712345),
+                                           ("E00A18A", "02000", "00100", 0.698)]})
+        assert self.rows["360180"]["providerHcrisResidentToBedRatio"] == pytest.approx(0.712345)
+
+    def test_resident_to_bed_ratio_is_zero_without_residents(self, spark, tmp_path):
+        self._build(spark, tmp_path, {"131316": (21, 7665)})
+        assert self.rows["131316"]["providerHcrisResidentToBedRatio"] == 0.0
+
+    def test_resident_to_bed_ratio_is_null_with_residents_but_no_ime_lines(self, spark, tmp_path):
+        self._build(spark, tmp_path, {"131316": (21, 7665)},
+                    extraCells={"131316": [("S300001", "02700", "00900", 3.5)]})
+        assert self.rows["131316"]["providerHcrisResidentToBedRatio"] is None

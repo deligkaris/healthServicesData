@@ -1798,6 +1798,7 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                ("ahaNisTeachingHospital","ahaNisTeachingHospital"),
                ("ahaResidentToBedRatio","ahaResidentToBedRatio"),
                ("ahaBedsIcu","ahaBedsIcu"),
+               ("ahaIcuHos","ahaIcuHos"),
                ("ahaSystemMember","ahaSystemMember"),
                ("SYSID","ahaSystemMemberId")]                     #member health system ID
     selectCols = [(F.col(src) if src in ahaDF.columns else F.lit(None)).alias(alias) for (src,alias) in ahaCols]
@@ -1812,7 +1813,10 @@ def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provi
     other special care) and providerHcrisBedsTotal (all hospital beds), the bed days available
     providerHcrisBedDaysIcu, providerHcrisBedDaysCriticalCare and providerHcrisBedDaysTotal that go with
     them, providerHcrisResidents (the number of interns
-    and residents the facility employed, stated as an FTE count), and providerHcrisIsRural from the
+    and residents the facility employed, stated as an FTE count), providerHcrisResidentToBedRatio (the
+    intern and resident to bed ratio CMS computes on Worksheet E Part A for the indirect medical education
+    payment, null for a facility with residents that is not paid under IPPS and so does not file it; the
+    year specific counterpart of rbr from add_rbr and of ahaResidentToBedRatio), and providerHcrisIsRural from the
     urban/rural classification on Worksheet S-2 Part I. See utilities.get_hcrisDF, which builds
     hcrisDF, for where on the form each one comes from. That function has already reduced the cost
     reports to one row per provider-year, so this join cannot multiply the claims.
@@ -1861,6 +1865,7 @@ def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provi
                                         F.col("providerHcrisBedDaysCriticalCare"),
                                         F.col("providerHcrisBedDaysTotal"),
                                         F.col("providerHcrisResidents"),
+                                        F.col("providerHcrisResidentToBedRatio"),
                                         F.col("providerHcrisIsRural")),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")
