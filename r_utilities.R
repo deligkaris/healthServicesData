@@ -131,6 +131,7 @@ get_data_dictionary <- function() {
     "ahaSystemMemberId","AHA system identifier (last 4 digits of SYSID)",
     "providerSysId",   "Provider system ID (SYSID)",
     "providerIsVI",    "Vertically integrated / in a health system (0/1, from CHSP)",
+    "providerHrrVIProportion","Proportion of the hospitals of the facility HRR with a stay in the cohort that year that are vertically integrated",
     "providerCmi",     "Case-mix index",
 
     # ---- MBSF beneficiary / county context ----

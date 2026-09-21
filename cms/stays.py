@@ -44,6 +44,25 @@ def add_providerAnnualStays(staysDF):
     staysDF = staysDF.withColumn("providerAnnualStays", F.count(F.lit(1)).over(eachProvider))
     return staysDF
 
+def add_providerHrrVIProportion(staysDF):
+    '''Adds providerHrrVIProportion -- among the hospitals of the provider's hospital referral region that
+    appear in staysDF in that year, the proportion that are vertically integrated (providerIsVI==1).
+    Assumes providerHrr (add_provider_hrr_info) and providerIsVI (add_provider_system_info).
+    Each hospital (ORGNPINM) counts once no matter how many stays it has, so this is a proportion of
+    hospitals and not of stays. Hospitals with a null providerIsVI (not in the AHRQ compendium) are left
+    out of both the numerator and the denominator.
+    The denominator is NOT all the hospitals of the hrr, only those with at least one stay in staysDF, so
+    the value depends on the cohort: low volume hospitals are more likely to be missing from a small or
+    condition-specific cohort. Same per-year logic as add_providerAnnualVolume, the window partitions on
+    providerHrr AND THRU_DT_YEAR and nothing carries forward.
+    Stays with a null providerHrr, or in an hrr-year where no hospital has a known providerIsVI, get null.'''
+    eachHrr = Window.partitionBy(["providerHrr","THRU_DT_YEAR"])
+    hospitalsVI = F.size(F.collect_set(F.when(F.col("providerIsVI")==1, F.col("ORGNPINM"))).over(eachHrr))
+    hospitals = F.size(F.collect_set(F.when(F.col("providerIsVI").isNotNull(), F.col("ORGNPINM"))).over(eachHrr))
+    staysDF = staysDF.withColumn("providerHrrVIProportion",
+                                 F.when(F.col("providerHrr").isNotNull() & (hospitals>0), hospitalsVI/hospitals))
+    return staysDF
+
 def add_providerEverCapability(staysDF, col="imv"):
     '''Adds a binary column flagging whether the organization has EVER performed `col`, up to and
     including the current year -- provider<Col>EverCapability (e.g. col="imv" -> providerImvEverCapability).

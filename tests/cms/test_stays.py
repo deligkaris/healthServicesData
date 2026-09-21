@@ -3061,3 +3061,40 @@ class TestDropUnusedColumns:
         df = spark.createDataFrame([{"DSYSRTKY": 1, "admissionSource": "home"}], schema=schema)
         out = drop_unused_columns(df)
         assert set(out.columns) == {"DSYSRTKY", "admissionSource"}
+
+
+# ============================================================
+# Tests for add_providerHrrVIProportion
+# ============================================================
+
+class TestAddProviderHrrVIProportion:
+
+    def _run(self, spark, rows):
+        from cms.stays import add_providerHrrVIProportion
+        df = spark.createDataFrame(rows, "CLAIMNO int, ORGNPINM string, providerHrr int, THRU_DT_YEAR int, providerIsVI int")
+        return {r["CLAIMNO"]: r["providerHrrVIProportion"] for r in add_providerHrrVIProportion(df).collect()}
+
+    def test_counts_hospitals_not_stays(self, spark):
+        # hospital A (VI) has 3 stays, hospital B (not VI) has 1 -> 1 of 2 hospitals
+        out = self._run(spark, [(1, "A", 301, 2019, 1), (2, "A", 301, 2019, 1), (3, "A", 301, 2019, 1), (4, "B", 301, 2019, 0)])
+        assert all(v == 0.5 for v in out.values())
+
+    def test_partition_independent_per_hrr_and_year(self, spark):
+        out = self._run(spark, [(1, "A", 301, 2019, 1), (2, "B", 301, 2020, 0), (3, "C", 302, 2019, 0)])
+        assert out[1] == 1.0
+        assert out[2] == 0.0
+        assert out[3] == 0.0
+
+    def test_unknown_vi_left_out(self, spark):
+        out = self._run(spark, [(1, "A", 301, 2019, 1), (2, "B", 301, 2019, 0), (3, "C", 301, 2019, None)])
+        assert all(v == 0.5 for v in out.values())
+
+    def test_null_when_no_known_vi(self, spark):
+        out = self._run(spark, [(1, "A", 301, 2019, None)])
+        assert out[1] is None
+
+    def test_null_hrr_is_null(self, spark):
+        out = self._run(spark, [(1, "A", None, 2019, 1), (2, "B", None, 2019, 0), (3, "C", 301, 2019, 1)])
+        assert out[1] is None
+        assert out[2] is None
+        assert out[3] == 1.0
