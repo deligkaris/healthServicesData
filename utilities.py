@@ -187,7 +187,11 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     filenames["zipToCounty"] = [pathToData + "/HUD/ZIP_COUNTY_122021.csv"]
 
     #dartmouth atlas zip to hsa to hrr crosswalks: https://data.dartmouthatlas.org/supplemental/
-    #data exist only until 2019 (including), I copied the 2019 file to be used for 2020-2024
+    #data exist only until 2019 (including), I copied the 2019 file (ZipHsaHrr19.csv) to ZipHsaHrr20.csv,...,ZipHsaHrr24.csv
+    #to be used for 2020-2024, the copies are identical to the 2019 file so their zip column is still named zipcode19
+    #if data after 2019 become available, replace the copies with the real files and extend the range below if needed
+    #the 2015, 2016, 2017 files are published as xls, I converted them to csv with the zip codes as 5 character strings
+    #(leading zeros kept) and renamed the zip column of the 2017 file from zipcode2017 to zipcode17
     filenames["zipToHrr"] = [pathToData + f'/DARTMOUTH-ATLAS/ZipHsaHrr{year-2000}.csv' for year in range(2015,2025)]
 
     pathMA = pathToData +'/MEDICARE-ADVANTAGE' 
