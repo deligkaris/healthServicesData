@@ -3,6 +3,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 from pyspark.sql.window import Window
 from schemas import hcrisRptSchema, hcrisNmrcSchema
+from geocoding import add_address, add_geocode_info, get_geocode_schema
 from urllib.request import urlopen
 import json
 import re
@@ -210,7 +211,9 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     filenames["medicareHospitalInfo"] = [pathToData + "/Hospital_General_Information.csv"]
 
     #https://data.cms.gov/provider-characteristics/hospitals-and-other-facilities/provider-of-services-file-hospital-non-hospital-facilities
-    filenames["pos"] = [pathToData + "/PROVIDER-OF-SERVICES/POS_OTHER_DEC22.csv"]
+    #the parquet is built once by prep_posDF from the raw file PROVIDER-OF-SERVICES/POS_OTHER_DEC22.csv (same folder) and
+    #carries the geocoded coordinates of the hospitals, see prep_posDF for how to rebuild it
+    filenames["pos"] = [pathToData + "/PROVIDER-OF-SERVICES/pos.parquet"]
    
     #https://www.neighborhoodatlas.medicine.wisc.edu/
     #the 2023 ADI data is also available now (see my DATA folder), but I will need to implement the code for deciding which one to use
@@ -269,7 +272,7 @@ def read_data(spark, filenames):
 
 def read_and_prep_dataframe(filename, file, spark):
 
-    if file=="hcris":
+    if file in ["hcris", "pos"]:
         return spark.read.parquet(filename)
 
     df = spark.read.csv(filename, header=True)
@@ -278,8 +281,6 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_npiProvidersDF(df)
     elif file=="maPenetration":
         df = prep_maPenetrationDF(df)
-    elif file=="pos":
-        df = prep_posDF(df)
     elif file=="acgmeSites":
         df = prep_acgmeSitesDF(df)
     elif file=="acgmePrograms":
@@ -800,10 +801,19 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
 
     return hcrisDF
 
-def prep_posDF(posDF):
-    #https://data.cms.gov/sites/default/files/2022-10/58ee74d6-9221-48cf-b039-5b7a773bf39a/Layout%20Sep%2022%20Other.pdf
-    #posDF = posDF.withColumn("providerName", F.col("FAC_NAME"))
-    posDF = (posDF.withColumn("providerStateFIPS", F.col("FIPS_STATE_CD"))  
+def prep_posDF(posDF, pathToData=None, filename=None, maxCalls=None):
+    '''Builds the POS parquet that get_data loads (filenames["pos"]) from the raw csv, a one-off run in a notebook:
+        rawPosDF = spark.read.csv(pathToData + "/PROVIDER-OF-SERVICES/POS_OTHER_DEC22.csv", header=True)
+        posDF = prep_posDF(rawPosDF, pathToData=pathToData, filename=pathToData + "/PROVIDER-OF-SERVICES/pos.parquet")
+    Adds hospital, cah, shortTerm, posIsRural, providerFIPS, providerStateFIPS, FAC_NAMEProcessed, posZip and posAddress
+    (see geocoding.add_address) and, when pathToData is given, the geocoded coordinates of the hospitals (PRVDR_CTGRY_CD 01):
+    posLat, posLng, posGeocodeLocationType, posGeocodeFormattedAddress, posGeocodePartialMatch, posGeocodeStatus (see
+    geocoding.add_geocode_info). Only hospitals are geocoded because every distinct address that is not in the cache is
+    a paid Google Geocoding API call; the other provider types keep null coordinates. All rows of the raw file are kept.
+    Rebuild the parquet whenever the raw csv is replaced, the address cache makes that cheap. maxCalls is passed to
+    geocode_addresses as a cost guard.
+    Layout: https://data.cms.gov/sites/default/files/2022-10/58ee74d6-9221-48cf-b039-5b7a773bf39a/Layout%20Sep%2022%20Other.pdf'''
+    posDF = (posDF.withColumn("providerStateFIPS", F.col("FIPS_STATE_CD"))
                   .withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
                   .withColumn("hospital", F.when( F.col("PRVDR_CTGRY_CD")=="01", 1).otherwise(0))
                   .withColumn("cah", F.when( (F.col("hospital")==1) &  (F.col("PRVDR_CTGRY_SBTYP_CD")=="11"), 1).otherwise(0))
@@ -812,6 +822,15 @@ def prep_posDF(posDF):
                                              .when( F.col("CBSA_URBN_RRL_IND")=="U", F.lit(0))
                                              .otherwise(F.lit(None)))) #there are nulls but also "001" and "041" (very few though)
     posDF = add_processed_name(posDF,colToProcess="FAC_NAME")
+    posDF = posDF.withColumn("posZip", F.substring(F.trim(F.col("ZIP_CD")), 1, 5))
+    posDF = add_address(posDF, "ST_ADR", "CITY_NAME", "STATE_CD", "posZip", "posAddress")
+    if pathToData is not None:
+        geocodeCols = [field.name for field in get_geocode_schema("pos").fields if field.name != "address"]
+        hospitalsDF = add_geocode_info(posDF.filter(F.col("hospital")==1).select("PRVDR_NUM", "posAddress"),
+                                       "posAddress", pathToData, "pos", maxCalls=maxCalls)
+        posDF = posDF.join(hospitalsDF.select("PRVDR_NUM", *geocodeCols), on=["PRVDR_NUM"], how="left_outer")
+    if filename is not None:
+        posDF.coalesce(1).write.mode("overwrite").parquet(filename)
     return posDF
 
 def prep_aamcHospitalsDF(aamcHospitalsDF):
