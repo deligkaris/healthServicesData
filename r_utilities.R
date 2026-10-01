@@ -186,11 +186,11 @@ get_data_dictionary <- function() {
     "homeDays90",      "Days at home in 90d after admission (0 if died in visit; up to death date if died in window)",
     "homeDays90Group", "homeDays90 grouped (0=0,1=<=30,2=<=60,3=<=90)",
     "homeDays365",     "Days at home in 365d after admission",
-    "homeDays365Group","homeDays365 grouped (0=0,1=<=120,2=<=240,3=<=360)",
+    "homeDays365Group","homeDays365 grouped (0=0,1=<=122,2=<=244,3=<=365)",
     "homeDaysIndependent90","Days at home in 90d after admission, HHA days also excluded (living independently)",
     "homeDaysIndependent90Group","homeDaysIndependent90 grouped (0=0,1=<=30,2=<=60,3=<=90)",
     "homeDaysIndependent365","Days at home in 365d after admission, HHA days also excluded",
-    "homeDaysIndependent365Group","homeDaysIndependent365 grouped (0=0,1=<=120,2=<=240,3=<=360)",
+    "homeDaysIndependent365Group","homeDaysIndependent365 grouped (0=0,1=<=122,2=<=244,3=<=365)",
 
     # ---- revenue-center flags ----
     "ed",              "Emergency-dept revenue center present (0/1)",

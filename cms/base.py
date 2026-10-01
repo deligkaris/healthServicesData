@@ -2026,9 +2026,9 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
                                                     .when( F.col("homeDays90")<=90, 3))
                     .withColumn("homeDays365", get_homeDays(365, "losAtallMinusHha365", lastObservableDay))
                     .withColumn("homeDays365Group", F.when( F.col("homeDays365")==0, 0) #in analyses a categorical variable might be more useful
-                                                     .when( F.col("homeDays365")<=120, 1)
-                                                     .when( F.col("homeDays365")<=240, 2)
-                                                     .when( F.col("homeDays365")<=360, 3)))
+                                                     .when( F.col("homeDays365")<=122, 1)
+                                                     .when( F.col("homeDays365")<=244, 2)
+                                                     .when( F.col("homeDays365")<=365, 3)))
 
     #now include HHA and label these as home living independently rates
     allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF]).filter(valid)
@@ -2043,9 +2043,9 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
                     .withColumn("homeDaysIndependent365", get_homeDays(365, "losAtall365", lastObservableDay))
                     .withColumn("homeDaysIndependent365Group",
                                 F.when( F.col("homeDaysIndependent365")==0, 0) #in analyses a categorical variable might be more useful
-                                 .when( F.col("homeDaysIndependent365")<=120, 1)
-                                 .when( F.col("homeDaysIndependent365")<=240, 2)
-                                 .when( F.col("homeDaysIndependent365")<=360, 3)))
+                                 .when( F.col("homeDaysIndependent365")<=122, 1)
+                                 .when( F.col("homeDaysIndependent365")<=244, 2)
+                                 .when( F.col("homeDaysIndependent365")<=365, 3)))
     return baseDF
 
 def add_prior_hospitalization_info(baseDF, ipBaseDF):

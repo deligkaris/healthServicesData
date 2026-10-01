@@ -2708,6 +2708,9 @@ class TestAddDaysAtHomeInfoTransfers:
         row = result.collect()[0]
         assert row["homeDays90"] == 90
         assert row["homeDays365"] == 365
+        assert row["homeDays90Group"] == 3
+        assert row["homeDays365Group"] == 3
+        assert row["homeDaysIndependent365Group"] == 3
 
     def _days_at_home(self, spark, lastObservableDay, stus=1, death=None, dead90=0, dead365=0):
         """Run the transfers wrapper on one alive-at-discharge row admitted on day 1000, no facility stays."""
