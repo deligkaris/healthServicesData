@@ -883,7 +883,7 @@ def add_provider_pos_info(baseDF, posDF):
     baseDF = (baseDF.join(posDF
                            .select( F.col("PRVDR_NUM").alias("PROVIDER"), F.col("providerFIPS"), F.col("providerStateFIPS"),
                                     F.col("GNRL_CNTL_TYPE_CD"), 
-                                    F.col("cah").alias("posCah"),
+                                    F.col("posCah"),
                                     F.col("posIsRural") ),
                          on=["PROVIDER"],
                          how="left_outer"))

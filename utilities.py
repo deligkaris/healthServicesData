@@ -3,7 +3,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql.types import StringType
 from pyspark.sql.window import Window
 from schemas import hcrisRptSchema, hcrisNmrcSchema
-from geocoding import add_address, add_geocode_info, get_geocode_schema
+from geocoding import add_address, add_geocode_info, get_geocode_schema, get_geodesicDistanceKm
 from urllib.request import urlopen
 import json
 import re
@@ -80,6 +80,20 @@ def add_column_prior(df, column, who, when, gapFill=None):
           .withColumn(column+"Prior", F.max(F.col(column+"Prior")).over(eachWhoWhen))
           .drop("prior")) #scratch column used only to validate the lag is exactly 1 year
     return df
+
+#usps state abbreviations by state name, for sources that spell the state out (eg the joint commission export)
+usStateAbbreviations = {"alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA", "colorado": "CO",
+                        "connecticut": "CT", "delaware": "DE", "district of columbia": "DC", "florida": "FL", "georgia": "GA",
+                        "hawaii": "HI", "idaho": "ID", "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+                        "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD", "massachusetts": "MA",
+                        "michigan": "MI", "minnesota": "MN", "mississippi": "MS", "missouri": "MO", "montana": "MT",
+                        "nebraska": "NE", "nevada": "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM",
+                        "new york": "NY", "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+                        "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC", "south dakota": "SD",
+                        "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT", "virginia": "VA", "washington": "WA",
+                        "west virginia": "WV", "wisconsin": "WI", "wyoming": "WY", "puerto rico": "PR", "guam": "GU",
+                        "virgin islands": "VI", "u.s. virgin islands": "VI", "american samoa": "AS",
+                        "northern mariana islands": "MP"}
 
 #definition of which states (fips codes) belong to which region
 usRegionFipsCodes = {"west":  ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"],
@@ -246,6 +260,9 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     #joint commission website
     filenames["strokeCentersJC"] = [pathToData + "/JOINT-COMMISSION/StrokeCertificationList.csv"]
+    #accredited organizations export from the joint commission website, the parquet is built once by prep_jcAccreditationDF
+    #from the raw csv (same folder) and carries the geocoded coordinates of the sites, see prep_jcAccreditationDF
+    filenames["jcAccreditation"] = [pathToData + "/JOINT-COMMISSION/jcAccreditation.parquet"]
 
     #hcup, procedure classes for ICD10
     #https://hcup-us.ahrq.gov/toolssoftware/procedureicd10/procedure_icd10.jsp?
@@ -272,7 +289,7 @@ def read_data(spark, filenames):
 
 def read_and_prep_dataframe(filename, file, spark):
 
-    if file in ["hcris", "pos"]:
+    if file in ["hcris", "pos", "jcAccreditation"]:
         return spark.read.parquet(filename)
 
     df = spark.read.csv(filename, header=True)
@@ -801,33 +818,72 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
 
     return hcrisDF
 
-def prep_posDF(posDF, pathToData=None, filename=None, maxCalls=None):
+def add_posHospital(posDF):
+    '''1 for the POS rows that are hospitals (PRVDR_CTGRY_CD 01, every Medicare certified hospital kind, see
+    add_posHospitalType), 0 for the other provider categories (skilled nursing facilities, home health agencies,
+    hospices, ...).'''
+    posDF = posDF.withColumn("posHospital", F.when(F.col("PRVDR_CTGRY_CD")=="01", 1).otherwise(0))
+    return posDF
+
+def add_posHospitalType(posDF):
+    '''The kind of hospital a POS hospital row (PRVDR_CTGRY_CD 01) is, read from the last four characters of its CCN as
+    CMS assigns them (State Operations Manual chapter 2, section 2779A1,
+    https://www.cms.gov/Regulations-and-Guidance/Guidance/Manuals/downloads/som107c02.pdf): acute (0001-0879, short term
+    general and specialty hospitals), cah (1300-1399), ltch (2000-2299), rehabilitation (3025-3099), childrens
+    (3300-3399), psychiatric (4000-4499), transplant (9800-9899, the transplant center number an approved transplant
+    program within a hospital carries alongside the hospital's own CCN), emergency (E in the sixth position, a
+    nonparticipating non-Federal emergency hospital, section 2052), federal (F in the sixth position, a nonparticipating
+    Federal emergency hospital, eg a VA medical center) and other. Null for non-hospital rows.'''
+    tail = F.substring(F.col("PRVDR_NUM"), 3, 4)
+    number = F.when(tail.rlike("^[0-9]{4}$"), tail.cast("int"))
+    posDF = posDF.withColumn("posHospitalType",
+                             F.when(F.col("posHospital") != 1, F.lit(None))
+                              .when(tail.endswith("E"), "emergency")
+                              .when(tail.endswith("F"), "federal")
+                              .when(number.between(1, 879), "acute")
+                              .when(number.between(1300, 1399), "cah")
+                              .when(number.between(2000, 2299), "ltch")
+                              .when(number.between(3025, 3099), "rehabilitation")
+                              .when(number.between(3300, 3399), "childrens")
+                              .when(number.between(4000, 4499), "psychiatric")
+                              .when(number.between(9800, 9899), "transplant")
+                              .otherwise("other"))
+    return posDF
+
+def prep_posDF(posDF, pathToData=None, filename=None, maxCalls=None, keyFilename=None, activeOnly=False):
     '''Builds the POS parquet that get_data loads (filenames["pos"]) from the raw csv, a one-off run in a notebook:
         rawPosDF = spark.read.csv(pathToData + "/PROVIDER-OF-SERVICES/POS_OTHER_DEC22.csv", header=True)
         posDF = prep_posDF(rawPosDF, pathToData=pathToData, filename=pathToData + "/PROVIDER-OF-SERVICES/pos.parquet")
-    Adds hospital, cah, shortTerm, posIsRural, providerFIPS, providerStateFIPS, FAC_NAMEProcessed, posZip and posAddress
-    (see geocoding.add_address) and, when pathToData is given, the geocoded coordinates of the hospitals (PRVDR_CTGRY_CD 01):
-    posLat, posLng, posGeocodeLocationType, posGeocodeFormattedAddress, posGeocodePartialMatch, posGeocodeStatus (see
-    geocoding.add_geocode_info). Only hospitals are geocoded because every distinct address that is not in the cache is
-    a paid Google Geocoding API call; the other provider types keep null coordinates. All rows of the raw file are kept.
-    Rebuild the parquet whenever the raw csv is replaced, the address cache makes that cheap. maxCalls is passed to
-    geocode_addresses as a cost guard.
+    Adds posHospital (see add_posHospital), posCah, posShortTerm, posIsRural, posActive, posHospitalType (see
+    add_posHospitalType), providerFIPS,
+    providerStateFIPS, FAC_NAMEProcessed, posZip and
+    posAddress (see geocoding.add_address) and, when pathToData is given, the geocoded coordinates of the hospitals
+    (PRVDR_CTGRY_CD 01): posLat, posLng, posGeocodeLocationType, posGeocodeFormattedAddress, posGeocodePartialMatch,
+    posGeocodeStatus (see geocoding.add_geocode_info). Only hospitals are geocoded because every distinct address that is
+    not in the cache is a paid Google Geocoding API call; the other provider types keep null coordinates. The file keeps
+    every provider that ever had a CCN, terminated ones included (PGM_TRMNTN_CD 00 is an active provider, posActive), and
+    with activeOnly=True only the active hospitals are geocoded. All rows of the raw file are kept.
+    Rebuild the parquet whenever the raw csv is replaced, the address cache makes that cheap. maxCalls (cost guard) and
+    keyFilename (where the API key is, default pathToData/GEOCODING/key.csv) are passed to geocode_addresses.
     Layout: https://data.cms.gov/sites/default/files/2022-10/58ee74d6-9221-48cf-b039-5b7a773bf39a/Layout%20Sep%2022%20Other.pdf'''
+    posDF = add_posHospital(posDF)
     posDF = (posDF.withColumn("providerStateFIPS", F.col("FIPS_STATE_CD"))
                   .withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
-                  .withColumn("hospital", F.when( F.col("PRVDR_CTGRY_CD")=="01", 1).otherwise(0))
-                  .withColumn("cah", F.when( (F.col("hospital")==1) &  (F.col("PRVDR_CTGRY_SBTYP_CD")=="11"), 1).otherwise(0))
-                  .withColumn("shortTerm",  F.when( (F.col("hospital")==1) & (F.col("PRVDR_CTGRY_SBTYP_CD")=="01"), 1).otherwise(0))
+                  .withColumn("posCah", F.when( (F.col("posHospital")==1) &  (F.col("PRVDR_CTGRY_SBTYP_CD")=="11"), 1).otherwise(0))
+                  .withColumn("posShortTerm",  F.when( (F.col("posHospital")==1) & (F.col("PRVDR_CTGRY_SBTYP_CD")=="01"), 1).otherwise(0))
                   .withColumn("posIsRural", F.when( F.col("CBSA_URBN_RRL_IND")=="R", F.lit(1))
                                              .when( F.col("CBSA_URBN_RRL_IND")=="U", F.lit(0))
-                                             .otherwise(F.lit(None)))) #there are nulls but also "001" and "041" (very few though)
+                                             .otherwise(F.lit(None))) #there are nulls but also "001" and "041" (very few though)
+                  .withColumn("posActive", F.when( F.col("PGM_TRMNTN_CD")=="00", 1).otherwise(0)))
     posDF = add_processed_name(posDF,colToProcess="FAC_NAME")
+    posDF = add_posHospitalType(posDF)
     posDF = posDF.withColumn("posZip", F.substring(F.trim(F.col("ZIP_CD")), 1, 5))
     posDF = add_address(posDF, "ST_ADR", "CITY_NAME", "STATE_CD", "posZip", "posAddress")
     if pathToData is not None:
         geocodeCols = [field.name for field in get_geocode_schema("pos").fields if field.name != "address"]
-        hospitalsDF = add_geocode_info(posDF.filter(F.col("hospital")==1).select("PRVDR_NUM", "posAddress"),
-                                       "posAddress", pathToData, "pos", maxCalls=maxCalls)
+        toGeocode = (F.col("posHospital")==1) & ((F.col("posActive")==1) | F.lit(not activeOnly))
+        hospitalsDF = add_geocode_info(posDF.filter(toGeocode).select("PRVDR_NUM", "posAddress"),
+                                       "posAddress", pathToData, "pos", maxCalls=maxCalls, keyFilename=keyFilename)
         posDF = posDF.join(hospitalsDF.select("PRVDR_NUM", *geocodeCols), on=["PRVDR_NUM"], how="left_outer")
     if filename is not None:
         posDF.coalesce(1).write.mode("overwrite").parquet(filename)
@@ -1046,6 +1102,166 @@ def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
 def prep_strokeCentersJCDF(strokeCentersJCDF):
     strokeCentersJCDF = add_processed_name(strokeCentersJCDF,colToProcess="OrganizationName")
     return strokeCentersJCDF
+
+jcStrokeProgramRanking = ["comprehensive", "thrombectomy", "primary", "acute stroke ready", "stroke rehabilitation"]
+
+def prep_jcAccreditationDF(jcDF, pathToData=None, filename=None, maxCalls=None, keyFilename=None, topProgramOnly=False,
+                           excludePrograms=None):
+    '''Builds the parquet that get_data loads (filenames["jcAccreditation"]) from the raw joint commission export, a
+    one-off run in a notebook:
+        rawJcDF = spark.read.csv(pathToData + "/JOINT-COMMISSION/<export>.csv", header=True)
+        jcDF = prep_jcAccreditationDF(rawJcDF, pathToData=pathToData, filename=pathToData + "/JOINT-COMMISSION/jcAccreditation.parquet")
+    The export has one row per site and accreditation program (HCO ID, Organization Name, Organization Doing Business As
+    (DBA) Name, State, City, Street Address, Postal Code, Site Name, Site Doing Business As (DBA) Name, Program, Effective
+    Date, Status) and no CCN or NPI, so the sites are located by their address instead: jcSiteName (Site Name, falling
+    back to the site DBA name and then the organization name), jcState (the export spells the state out, jcState is the
+    usps abbreviation from usStateAbbreviations so it joins the POS STATE_CD; a 2-letter value passes through), jcZip,
+    jcAddress (built from the raw State column, which is the geocoding cache key and must not change) and,
+    when pathToData is given, jcLat, jcLng, jcGeocodeLocationType, jcGeocodeFormattedAddress, jcGeocodePartialMatch,
+    jcGeocodeStatus (see geocoding.add_geocode_info). An address repeated across programs is geocoded once.
+    jcProgramRank orders the stroke certifications, matched regardless of case and of extra spaces (the export writes
+    "Stroke  Rehabilitation") by "stroke" plus a keyword in jcProgram (jcStrokeProgramRanking, "stroke" keeps eg Primary
+    Care Medical Home out): 1 comprehensive, 2 thrombectomy-capable,
+    3 primary, 4 acute stroke ready, 5 stroke rehabilitation, null for any other program. With topProgramOnly=True a site (jcHcoId, jcSiteName, jcAddress) keeps
+    one row, the one with the best jcProgramRank; a site with only other programs keeps one of them (first by jcProgram
+    alphabetically) with a null rank, so no site is lost. excludePrograms is a list of keywords: a row whose jcProgram
+    contains one of them (regardless of case) is dropped before that collapse, so eg ["stroke rehabilitation"] removes
+    the rehabilitation certification (rank 5, kept in the ranking so the rank values stay stable) and a site that had
+    only it. By default all rows are kept. The raw columns are renamed
+    (jcHcoId, jcOrganizationName, jcOrganizationDbaName, jcCity, jcStreetAddress, jcPostalCode, jcSiteDbaName,
+    jcProgram, jcEffectiveDate, jcStatus) because parquet does not allow spaces and parentheses in column names.
+    maxCalls (cost guard) and keyFilename (where the API key is, default pathToData/GEOCODING/key.csv) are passed to
+    geocode_addresses.'''
+    rawCols = {"HCO ID": "jcHcoId",
+               "Organization Name": "jcOrganizationName",
+               "Organization Doing Business As (DBA) Name": "jcOrganizationDbaName",
+               "State": "jcState",
+               "City": "jcCity",
+               "Street Address": "jcStreetAddress",
+               "Postal Code": "jcPostalCode",
+               "Site Name": "jcSiteName",
+               "Site Doing Business As (DBA) Name": "jcSiteDbaName",
+               "Program": "jcProgram",
+               "Effective Date": "jcEffectiveDate",
+               "Status": "jcStatus"}
+    jcDF = jcDF.select([F.col(raw).alias(new) for raw, new in rawCols.items()])
+    stateAbbreviation = F.create_map([F.lit(x) for x in chain(*usStateAbbreviations.items())])
+    jcDF = (jcDF.withColumn("jcSiteName", F.coalesce(F.col("jcSiteName"), F.col("jcSiteDbaName"), F.col("jcOrganizationName")))
+                .withColumn("jcZip", F.substring(F.trim(F.col("jcPostalCode")), 1, 5)))
+    jcDF = add_address(jcDF, "jcStreetAddress", "jcCity", "jcState", "jcZip", "jcAddress")
+    jcDF = jcDF.withColumn("jcState", F.coalesce(stateAbbreviation[F.lower(F.trim(F.col("jcState")))],
+                                                 F.upper(F.trim(F.col("jcState")))))
+    program = F.regexp_replace(F.lower(F.trim(F.col("jcProgram"))), r"\s+", " ")
+    programRank = F.lit(None)
+    for rank, keyword in reversed(list(enumerate(jcStrokeProgramRanking, start=1))):
+        programRank = F.when(program.contains("stroke") & program.contains(keyword), F.lit(rank)).otherwise(programRank)
+    jcDF = jcDF.withColumn("jcProgramRank", programRank.cast("int"))
+    for keyword in (excludePrograms or []):
+        jcDF = jcDF.filter(~F.coalesce(program.contains(keyword.lower()), F.lit(False)))
+    if topProgramOnly:
+        eachSite = Window.partitionBy("jcHcoId", "jcSiteName", "jcAddress").orderBy(F.asc_nulls_last("jcProgramRank"), "jcProgram")
+        jcDF = jcDF.withColumn("programRow", F.row_number().over(eachSite)).filter(F.col("programRow")==1).drop("programRow")
+    if pathToData is not None:
+        jcDF = add_geocode_info(jcDF, "jcAddress", pathToData, "jc", maxCalls=maxCalls, keyFilename=keyFilename)
+    if filename is not None:
+        jcDF.coalesce(1).write.mode("overwrite").parquet(filename)
+    return jcDF
+
+def add_pos_nearest_info(jcDF, posDF):
+    '''For every joint commission site (jcHcoId, jcSiteName, jcAddress, see prep_jcAccreditationDF) the nearest POS
+    hospital in the same state by geodesic distance between the geocoded coordinates: posNearestCcn, posNearestFacName
+    (for eyeballing only, names play no part), posNearestDistanceKm, posNearestActive (see posActive) and
+    posNearestGeocodeLocationType (how precise the hospital's coordinate is, the site's own is jcGeocodeLocationType),
+    and the runner up, posSecondNearestCcn, posSecondNearestFacName, posSecondNearestDistanceKm, posSecondNearestActive:
+    a second hospital about as close as the first (same campus, a closed predecessor CCN at the same address) means the
+    nearest one is not certain to be the site. Closed hospitals compete too, at equal distance the active one is preferred.
+    The join is blocked on the state (jcState == STATE_CD) to avoid a full cross join, so a site whose nearest hospital
+    is across a state line is shown its nearest in-state hospital instead. A site without coordinates, or in a state
+    without geocoded hospitals, keeps nulls; every row of jcDF is kept. This is the step before a match: its distance
+    distribution says how close a true match is and where to put the threshold.'''
+    siteKey = ["jcHcoId", "jcSiteName", "jcAddress"]
+    hospitalsDF = (posDF.filter((F.col("posHospital")==1) & F.col("posLat").isNotNull())
+                        .select(F.col("STATE_CD").alias("jcState"),
+                                F.col("PRVDR_NUM").alias("posNearestCcn"),
+                                F.col("FAC_NAME").alias("posNearestFacName"),
+                                F.col("posActive").alias("posNearestActive"),
+                                F.col("posGeocodeLocationType").alias("posNearestGeocodeLocationType"),
+                                F.col("posLat"), F.col("posLng")))
+    eachSite = Window.partitionBy(siteKey).orderBy("posNearestDistanceKm", F.desc("posNearestActive"), "posNearestCcn")
+    nearestDF = (jcDF.filter(F.col("jcLat").isNotNull())
+                     .select(*siteKey, "jcState", "jcLat", "jcLng").distinct()
+                     .join(hospitalsDF, on=["jcState"], how="inner")
+                     .withColumn("posNearestDistanceKm",
+                                 get_geodesicDistanceKm(F.col("jcLat"), F.col("jcLng"), F.col("posLat"), F.col("posLng")))
+                     .withColumn("nearestRow", F.row_number().over(eachSite))
+                     .withColumn("posSecondNearestCcn", F.lead("posNearestCcn").over(eachSite))
+                     .withColumn("posSecondNearestFacName", F.lead("posNearestFacName").over(eachSite))
+                     .withColumn("posSecondNearestDistanceKm", F.lead("posNearestDistanceKm").over(eachSite))
+                     .withColumn("posSecondNearestActive", F.lead("posNearestActive").over(eachSite))
+                     .filter(F.col("nearestRow")==1)
+                     .select(*siteKey, "posNearestCcn", "posNearestFacName", "posNearestDistanceKm",
+                             "posNearestActive", "posNearestGeocodeLocationType",
+                             "posSecondNearestCcn", "posSecondNearestFacName", "posSecondNearestDistanceKm",
+                             "posSecondNearestActive"))
+    jcDF = jcDF.join(nearestDF, on=siteKey, how="left_outer")
+    return jcDF
+
+def add_pos_ccn_info(jcDF, posDF, reviewDF, maxDistanceKm=0.5, unambiguousDistanceKm=0.1):
+    '''Assigns each joint commission site the CCN of the POS hospital it is, from the geocoded distances alone plus the
+    decisions made by hand for the sites distance cannot settle. With the nearest and second nearest hospital from
+    add_pos_nearest_info (run here when its columns are missing), a site is one of:
+      nearest:  the nearest hospital is within unambiguousDistanceKm and no other active hospital is, so it is taken;
+      review:   the nearest is within unambiguousDistanceKm but a second active hospital is too (same campus, a successor
+                CCN at the same address), or the nearest is between unambiguousDistanceKm and maxDistanceKm; the site
+                is looked up in reviewDF (jcReview.csv written by nearest_jc_pos.py and decided by hand, keyed on
+                jcSiteName, posNearestCcn, posSecondNearestCcn) and keepCcn, one of the two candidates, is taken;
+      none:     the nearest hospital is farther than maxDistanceKm (the export carries a parent system address), or the
+                review said neither candidate (blank keepCcn), or the site needed a review row and has none.
+    A keepCcn that is neither candidate raises, so a typo cannot invent a match. Adds posCcn, posCcnFacName (for
+    eyeballing only), posCcnDistanceKm, posCcnActive and posMatchMethod (nearest, review, none); every row of jcDF is
+    kept and several sites may share a CCN (campuses under one Medicare provider agreement). The distance is kept so
+    that a stricter cutoff can be applied downstream.'''
+    if "posNearestCcn" not in jcDF.columns:
+        jcDF = add_pos_nearest_info(jcDF, posDF)
+    reviewDF = (reviewDF.select(F.col("jcSiteName"), F.col("posNearestCcn"), F.col("posSecondNearestCcn"),
+                                F.trim(F.col("keepCcn")).alias("keepCcn"), F.lit(1).alias("reviewed"))
+                        .dropDuplicates(["jcSiteName", "posNearestCcn", "posSecondNearestCcn"]))
+    jcDF = jcDF.join(reviewDF, on=["jcSiteName", "posNearestCcn", "posSecondNearestCcn"], how="left_outer")
+    foreign = jcDF.filter(F.col("keepCcn").isNotNull() & (F.col("keepCcn") != "") &
+                          (F.col("keepCcn") != F.col("posNearestCcn")) & (F.col("keepCcn") != F.col("posSecondNearestCcn")))
+    if foreign.count() > 0:
+        raise ValueError("keepCcn is neither candidate for " + str([r["jcSiteName"] for r in foreign.select("jcSiteName").collect()]))
+    ambiguous = (F.col("posSecondNearestDistanceKm") <= unambiguousDistanceKm) & (F.col("posSecondNearestActive") == 1)
+    takeNearest = (F.col("posNearestDistanceKm") <= unambiguousDistanceKm) & ~F.coalesce(ambiguous, F.lit(False))
+    takeReview = (F.col("posNearestDistanceKm") <= maxDistanceKm) & F.coalesce(F.col("keepCcn") != "", F.lit(False))
+    jcDF = jcDF.withColumn("posMatchMethod", F.when(takeNearest, "nearest").when(takeReview, "review").otherwise("none"))
+    keepSecond = (F.col("posMatchMethod") == "review") & (F.col("keepCcn") == F.col("posSecondNearestCcn"))
+    def pick(nearestCol, secondCol):
+        return (F.when(F.col("posMatchMethod") == "none", F.lit(None))
+                 .when(keepSecond, F.col(secondCol))
+                 .otherwise(F.col(nearestCol)))
+    jcDF = (jcDF.withColumn("posCcn", pick("posNearestCcn", "posSecondNearestCcn"))
+                .withColumn("posCcnFacName", pick("posNearestFacName", "posSecondNearestFacName"))
+                .withColumn("posCcnDistanceKm", pick("posNearestDistanceKm", "posSecondNearestDistanceKm"))
+                .withColumn("posCcnActive", pick("posNearestActive", "posSecondNearestActive"))
+                .drop("keepCcn", "reviewed"))
+    return jcDF
+
+def get_ccn_jc_info(jcDF):
+    '''One row per CCN that received at least one joint commission site (see add_pos_ccn_info): jcSites (how many
+    sites, campuses under one provider agreement), jcBestProgramRank and jcBestProgram (the highest stroke certification
+    among them, see prep_jcAccreditationDF), jcSiteNames and jcMaxCcnDistanceKm. This is what the claims join on
+    PROVIDER: a stroke transfer to any campus of the provider shows the same CCN.'''
+    eachCcn = Window.partitionBy("posCcn").orderBy(F.asc_nulls_last("jcProgramRank"), "jcProgram")
+    ccnDF = (jcDF.filter(F.col("posCcn").isNotNull())
+                 .withColumn("bestRow", F.row_number().over(eachCcn))
+                 .groupBy("posCcn")
+                 .agg(F.count("*").alias("jcSites"),
+                      F.min("jcProgramRank").alias("jcBestProgramRank"),
+                      F.first(F.when(F.col("bestRow") == 1, F.col("jcProgram")), ignorenulls=True).alias("jcBestProgram"),
+                      F.collect_list("jcSiteName").alias("jcSiteNames"),
+                      F.max("posCcnDistanceKm").alias("jcMaxCcnDistanceKm")))
+    return ccnDF
 
 def add_ccn_from_pos(DF,posDF, providerZip="providerZip",providerName="providerNameProcessed"): #assumes a zipCode column, providerNameProcessed
 

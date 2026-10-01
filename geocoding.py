@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -16,6 +17,7 @@ the key must never be committed and the cache is data, not code.'''
 
 googleGeocodeUrl = "https://maps.googleapis.com/maps/api/geocode/json"
 retryStatuses = ["OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT", "UNKNOWN_ERROR"]
+geocodeWorkers = 4
 geocodeFields = ["lat", "lng", "locationType", "formattedAddress", "partialMatch", "status", "geocodedOn"]
 
 class GeocodeRetryError(Exception):
@@ -27,10 +29,11 @@ def get_geocode_cache_filename(pathToData):
 def get_api_key_filename(pathToData):
     return f"{pathToData}/GEOCODING/key.csv"
 
-def get_api_key(pathToData):
+def get_api_key(pathToData, keyFilename=None):
     '''The key is a single line in a file outside the repo (chmod 600) rather than an argument or an
-    environment variable, so that it never ends up in a notebook cell, a shell history or a commit.'''
-    filename = get_api_key_filename(pathToData)
+    environment variable, so that it never ends up in a notebook cell, a shell history or a commit. The file is
+    pathToData/GEOCODING/key.csv unless keyFilename says otherwise.'''
+    filename = keyFilename if keyFilename is not None else get_api_key_filename(pathToData)
     if not os.path.isfile(filename):
         raise FileNotFoundError(f"put the Google Geocoding API key, one line, in {filename}")
     with open(filename) as f:
@@ -106,27 +109,34 @@ def geocode_address(address, apiKey, maxRetries=5):
             time.sleep(2 ** attempt)
     raise RuntimeError(f"geocoding {address!r} failed after {maxRetries} retries: {lastError}")
 
-def geocode_addresses(addresses, pathToData, flushEvery=100, maxCalls=None):
+def geocode_addresses(addresses, pathToData, flushEvery=500, maxCalls=None, keyFilename=None, workers=None):
     '''Returns {address: record} for every address, calling the API only for the ones not in the cache.
-    The cache is flushed every flushEvery new records and when the loop ends for any reason, so an
-    interrupted run keeps what it paid for and the next run resumes where it stopped. maxCalls is a cost
-    guard: when more addresses are missing than that, nothing is called and the count is reported instead.
-    When nothing is missing the key file is not even read.'''
+    The calls run on a small thread pool (workers, default geocodeWorkers): at 4 threads and ~0.2 s per call
+    that is ~20 requests/s, well under the API's 50 requests/s limit, and ~10 min for 12k addresses instead
+    of ~1 h. The cache is flushed every flushEvery new records and when the loop ends for any reason, so an
+    interrupted run keeps what it paid for and the next run resumes where it stopped; on an error the calls
+    not started yet are cancelled. maxCalls is a cost guard: when more addresses are missing than that,
+    nothing is called and the count is reported instead. When nothing is missing the key file (see
+    get_api_key) is not even read.'''
     cache = get_geocode_cache(pathToData)
     misses = get_geocode_cache_misses(addresses, pathToData)
     if len(misses) == 0:
         return {a: cache[a] for a in addresses if a is not None}
     if maxCalls is not None and len(misses) > maxCalls:
         raise RuntimeError(f"{len(misses)} addresses are not cached, more than maxCalls={maxCalls}")
-    apiKey = get_api_key(pathToData)
+    apiKey = get_api_key(pathToData, keyFilename)
     newRecords = 0
+    pool = ThreadPoolExecutor(max_workers=workers if workers is not None else geocodeWorkers)
+    futures = {pool.submit(geocode_address, address, apiKey): address for address in misses}
     try:
-        for address in misses:
-            cache[address] = geocode_address(address, apiKey)
+        for future in as_completed(futures):
+            cache[futures[future]] = future.result()
             newRecords += 1
             if newRecords % flushEvery == 0:
                 write_geocode_cache(cache, pathToData)
+                print(f"geocoded {newRecords}/{len(misses)}")
     finally:
+        pool.shutdown(wait=True, cancel_futures=True)
         if newRecords > 0:
             write_geocode_cache(cache, pathToData)
     return {a: cache[a] for a in addresses if a is not None}
@@ -152,16 +162,25 @@ def get_geocode_schema(prefix):
                        StructField(f"{prefix}GeocodePartialMatch", IntegerType()),
                        StructField(f"{prefix}GeocodeStatus", StringType())])
 
-def add_geocode_info(DF, addressCol, pathToData, prefix, maxCalls=None):
+def add_geocode_info(DF, addressCol, pathToData, prefix, maxCalls=None, keyFilename=None):
     '''Adds {prefix}Lat, {prefix}Lng, {prefix}GeocodeLocationType, {prefix}GeocodeFormattedAddress,
     {prefix}GeocodePartialMatch and {prefix}GeocodeStatus for the address in addressCol. The distinct
     addresses are collected to the driver and geocoded there (see geocode_addresses), so filter DF to the
     rows that need coordinates before calling this: every distinct address that is not cached is a paid
     call. The resulting small table is broadcast joined back.'''
     addresses = [row[0] for row in DF.select(addressCol).distinct().collect()]
-    records = geocode_addresses(addresses, pathToData, maxCalls=maxCalls)
+    records = geocode_addresses(addresses, pathToData, maxCalls=maxCalls, keyFilename=keyFilename)
     rows = [(a, r["lat"], r["lng"], r["locationType"], r["formattedAddress"], r["partialMatch"], r["status"])
             for a, r in records.items()]
     geocodeDF = DF.sparkSession.createDataFrame(rows, schema=get_geocode_schema(prefix))
     DF = DF.join(F.broadcast(geocodeDF), on=[F.col(addressCol) == F.col("address")], how="left_outer").drop("address")
     return DF
+
+def get_geodesicDistanceKm(lat1, lng1, lat2, lng2):
+    '''Great circle distance in km between two points given as column expressions of degrees (haversine on a
+    sphere of mean radius 6371.0088 km, accurate to ~0.3% which is far below geocoding error). Also what
+    dyadGeodesicDistanceKm between two hospitals is meant to be computed with.'''
+    dLat = F.radians(lat2) - F.radians(lat1)
+    dLng = F.radians(lng2) - F.radians(lng1)
+    a = F.sin(dLat / 2) ** 2 + F.cos(F.radians(lat1)) * F.cos(F.radians(lat2)) * F.sin(dLng / 2) ** 2
+    return 2 * 6371.0088 * F.asin(F.sqrt(a))
