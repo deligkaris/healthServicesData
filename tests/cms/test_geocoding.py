@@ -4,6 +4,7 @@ import pytest
 from unittest import mock
 
 import geocoding
+import pyspark.sql.functions as F
 
 # ============================================================
 # Pure Python tests (no SparkSession needed)
@@ -275,6 +276,10 @@ class TestPrepJcAccreditationDF:
              ("1", "Ohio Health", None, "Ohio", "Columbus", "123 Main St", "43215-1234", "Ohio Hospital", None,
               "Laboratory", "01/01/2020", "Accredited"),
              ("2", "Elm Org", None, "oh", "Columbus", "456 Elm St", "43215", None, "Elm DBA",
+              "Hospital", "01/01/2020", "Accredited"),
+             ("3", "NA Org", None, "OH", "Columbus", "789 Oak St", "43215", "Legal Entity LLC", "N/A",
+              "Hospital", "01/01/2020", "Accredited"),
+             ("4", "Generic Org", None, "OH", "Columbus", "789 Oak St", "43215", "Saint John Hospital", "General Acute Care Hospital",
               "Hospital", "01/01/2020", "Accredited")],
             self.JC_SCHEMA)
 
@@ -287,17 +292,21 @@ class TestPrepJcAccreditationDF:
         monkeypatch.setattr(geocoding, "geocode_addresses", fake_geocode_addresses)
         filename = str(tmp_path / "jc.parquet")
         result = prep_jcAccreditationDF(self._df(spark), pathToData=str(tmp_path), filename=filename)
-        assert sorted(seen) == ["123 MAIN ST, COLUMBUS, OHIO 43215", "456 ELM ST, COLUMBUS, OH 43215"]
+        assert sorted(seen) == ["123 MAIN ST, COLUMBUS, OHIO 43215", "456 ELM ST, COLUMBUS, OH 43215", "789 OAK ST, COLUMBUS, OH 43215"]
         rows = result.collect()
-        assert len(rows) == 3
+        assert len(rows) == 5
         assert all(c[0].islower() for c in result.columns)
         byId = {(r["jcHcoId"], r["jcProgram"]): r for r in rows}
+        assert byId[("3", "Hospital")]["jcSearchName"] == "Legal Entity LLC"
+        assert byId[("4", "Hospital")]["jcSearchName"] == "Saint John Hospital"
         assert byId[("1", "Hospital")]["jcState"] == "OH" and byId[("1", "Hospital")]["jcZip"] == "43215"
         assert byId[("2", "Hospital")]["jcState"] == "OH"
+        assert byId[("1", "Hospital")]["jcSearchName"] == "Ohio Hospital" and byId[("1", "Hospital")]["jcPlaceQuery"] == "Ohio Hospital, OH"
+        assert byId[("2", "Hospital")]["jcSearchName"] == "Elm DBA" and byId[("2", "Hospital")]["jcPlaceQuery"] == "Elm DBA, OH"
         assert byId[("1", "Hospital")]["jcSiteName"] == "Ohio Hospital"
         assert byId[("2", "Hospital")]["jcSiteName"] == "Elm DBA"
         assert byId[("2", "Hospital")]["jcLat"] == 39.96
-        assert spark.read.parquet(filename).count() == 3
+        assert spark.read.parquet(filename).count() == 5
 
     def test_no_pathToData_skips_geocoding(self, spark, monkeypatch):
         from utilities import prep_jcAccreditationDF
@@ -431,88 +440,175 @@ class TestAddPosNearestInfo:
         byId = {r["jcHcoId"]: r for r in rows}
         assert byId["1"]["posNearestCcn"] == "360001" and byId["1"]["posNearestDistanceKm"] == 0
         assert byId["1"]["posNearestActive"] == 1 and byId["1"]["posNearestGeocodeLocationType"] == "ROOFTOP"
-        assert byId["1"]["posSecondNearestCcn"] == "360002" and byId["1"]["posSecondNearestDistanceKm"] == 0
-        assert byId["1"]["posSecondNearestActive"] == 0
+        assert byId["1"]["posNearestSecondCcn"] == "360002" and byId["1"]["posNearestSecondDistanceKm"] == 0
+        assert byId["1"]["posNearestSecondActive"] == 0
         assert byId["2"]["posNearestCcn"] == "360003" and abs(byId["2"]["posNearestDistanceKm"] - 0.111) < 0.01
-        assert byId["2"]["posSecondNearestCcn"] == "360001" and abs(byId["2"]["posSecondNearestDistanceKm"] - 1.0) < 0.01
+        assert byId["2"]["posNearestSecondCcn"] == "360001" and abs(byId["2"]["posNearestSecondDistanceKm"] - 1.0) < 0.01
         assert byId["3"]["posNearestCcn"] is None and byId["3"]["posNearestDistanceKm"] is None
-        assert byId["4"]["posNearestCcn"] is None and byId["4"]["posSecondNearestCcn"] is None
+        assert byId["4"]["posNearestCcn"] is None and byId["4"]["posNearestSecondCcn"] is None
         added = set(result.columns) - set(self._jc(spark).columns)
         assert added == {"posNearestCcn", "posNearestFacName", "posNearestDistanceKm", "posNearestActive", "posNearestGeocodeLocationType",
-                         "posSecondNearestCcn", "posSecondNearestFacName", "posSecondNearestDistanceKm", "posSecondNearestActive"}
+                         "posNearestSecondCcn", "posNearestSecondFacName", "posNearestSecondDistanceKm", "posNearestSecondActive"}
         assert all(c[0].islower() for c in added)
+
+    def test_prefix_and_coordinates(self, spark):
+        from utilities import add_pos_nearest_info
+        jc = self._jc(spark).withColumn("otherLat", F.lit(40.0100)).withColumn("otherLng", F.lit(-83.0))
+        result = add_pos_nearest_info(jc, self._pos(spark), latCol="otherLat", lngCol="otherLng", prefix="posParentNearest")
+        byId = {r["jcHcoId"]: r for r in result.collect()}
+        assert byId["1"]["posParentNearestCcn"] == "360003" and byId["1"]["posParentNearestDistanceKm"] == 0
+        assert "posNearestCcn" not in result.columns
 
 
 class TestAddPosCcnInfo:
 
     POS_SCHEMA = "PRVDR_NUM string, FAC_NAME string, STATE_CD string, posHospital int, posActive int, posLat double, posLng double, posGeocodeLocationType string"
-    JC_SCHEMA = "jcHcoId string, jcSiteName string, jcAddress string, jcState string, jcLat double, jcLng double, jcProgram string, jcProgramRank int"
-    REVIEW_SCHEMA = "jcSiteName string, posNearestCcn string, posSecondNearestCcn string, keepCcn string"
+    JC_SCHEMA = ("jcHcoId string, jcSiteName string, jcAddress string, jcState string, jcLat double, jcLng double, "
+                 "jcSiteLat double, jcSiteLng double, jcSiteLocationSource string, jcProgram string, jcProgramRank int")
 
     def _pos(self, spark):
         return spark.createDataFrame(
-            [("360001", "ALONE", "OH", 1, 1, 40.0, -83.0, "ROOFTOP"),
-             ("360002", "CAMPUS ACUTE", "OH", 1, 1, 41.0, -83.0, "ROOFTOP"),
-             ("369802", "CAMPUS TRANSPLANT", "OH", 1, 1, 41.0, -83.0, "ROOFTOP"),
-             ("360003", "MID", "OH", 1, 1, 42.0, -83.0, "ROOFTOP"),
-             ("360004", "MID CLOSED", "OH", 1, 0, 42.0, -83.0, "ROOFTOP"),
-             ("360005", "FAR", "OH", 1, 1, 43.0, -83.0, "ROOFTOP")],
+            [("360001", "PARENT", "OH", 1, 1, 40.0, -83.0, "ROOFTOP"),
+             ("360002", "OWN CCN CAMPUS", "OH", 1, 1, 41.0, -83.0, "ROOFTOP"),
+             ("360003", "TIE ACTIVE", "OH", 1, 1, 42.0, -83.0, "ROOFTOP"),
+             ("360004", "TIE CLOSED", "OH", 1, 0, 42.0, -83.0, "ROOFTOP"),
+             ("360005", "FAR", "OH", 1, 1, 43.0, -83.0, "ROOFTOP"),
+             ("360006", "MARIA PARHAM MEDICAL CENTER", "OH", 1, 1, 46.0, -83.0, "APPROXIMATE"),
+             ("360007", "SOME OTHER PLACE", "OH", 1, 1, 46.01, -83.0, "ROOFTOP"),
+             ("360008", "CATHOLIC HEALTH SOUTHEAST HOSPITAL", "OH", 1, 1, 47.0, -83.0, "ROOFTOP")],
             self.POS_SCHEMA)
 
     def _jc(self, spark):
+        parent = (40.0, -83.0)
         return spark.createDataFrame(
-            [("1", "A", "ADDR A", "OH", 40.0000, -83.0, "Primary Stroke Center", 3),
-             ("2", "B", "ADDR B", "OH", 41.0000, -83.0, "Acute Stroke Ready Hospital", 4),
-             ("3", "C", "ADDR C", "OH", 41.0000, -83.0, "Comprehensive Stroke Center", 1),
-             ("4", "D", "ADDR D", "OH", 41.0000, -83.0, "Hospital", None),
-             ("5", "E", "ADDR E", "OH", 42.0020, -83.0, "Primary Stroke Center", 3),
-             ("6", "F", "ADDR F", "OH", 42.0020, -83.0, "Primary Stroke Center", 3),
-             ("7", "G", "ADDR G", "OH", 42.0020, -83.0, "Primary Stroke Center", 3),
-             ("8", "H", "ADDR H", "OH", 43.0100, -83.0, "Primary Stroke Center", 3)],
-            self.JC_SCHEMA)
+            [("1", "MAIN", "ADDR", "OH", *parent, *parent, "place", "Comprehensive Stroke Center", 1),
+             ("1", "OWN CCN", "ADDR", "OH", *parent, 41.0, -83.0, "place", "Primary Stroke Center", 3),
+             ("1", "PROVIDER BASED", "ADDR", "OH", *parent, 44.0, -83.0, "place", "Acute Stroke Ready Hospital", 4),
+             ("2", "TIE", "ADDR T", "OH", 42.0, -83.0, 42.0, -83.0, "place", "Primary Stroke Center", 3),
+             ("3", "LOST", "ADDR L", "OH", 44.0, -83.0, 44.0, -83.0, "address", "Primary Stroke Center", 3),
+             ("4", "NEAR FAR", "ADDR F", "OH", 43.002, -83.0, 43.002, -83.0, "place", "Primary Stroke Center", 3),
+             ("5", "FALLBACK NONE", "ADDR N", "OH", 44.0, -83.0, 45.0, -83.0, "place", "Primary Stroke Center", 3),
+             ("6", "NAMED", "ADDR X", "OH", 46.02, -83.0, 46.02, -83.0, "place", "Primary Stroke Center", 3),
+             ("7", "OTHER NAME", "ADDR Y", "OH", 46.02, -83.0, 46.02, -83.0, "place", "Primary Stroke Center", 3),
+             ("8", "HALF NAME", "ADDR Z", "OH", 47.02, -83.0, 47.02, -83.0, "place", "Primary Stroke Center", 3)],
+            self.JC_SCHEMA).withColumn("jcSearchName", F.when(F.col("jcSiteName") == "NAMED", "Maria Parham Health")
+                                                        .when(F.col("jcSiteName") == "OTHER NAME", "Somewhere Else Hospital")
+                                                        .when(F.col("jcSiteName") == "HALF NAME", "Mercy Catholic Fitzgerald Hospital")
+                                                        .otherwise(F.col("jcSiteName")))
 
-    def _review(self, spark, rows):
-        return spark.createDataFrame(rows, self.REVIEW_SCHEMA)
-
-    def test_methods(self, spark):
+    def test_rule(self, spark):
         from utilities import add_pos_ccn_info
-        review = self._review(spark, [("B", "360002", "369802", "360002"),
-                                      ("C", "360002", "369802", "369802"),
-                                      ("E", "360003", "360004", "360003"),
-                                      ("F", "360003", "360004", ""),
-                                      ("H", "360005", "360004", "360005")])
-        result = add_pos_ccn_info(self._jc(spark), self._pos(spark), review)
-        rows = {r["jcHcoId"]: r for r in result.collect()}
-        assert len(rows) == 8
-        assert rows["1"]["posMatchMethod"] == "nearest" and rows["1"]["posCcn"] == "360001" and rows["1"]["posCcnDistanceKm"] == 0
-        assert rows["2"]["posMatchMethod"] == "review" and rows["2"]["posCcn"] == "360002"
-        assert rows["3"]["posMatchMethod"] == "review" and rows["3"]["posCcn"] == "369802" and rows["3"]["posCcnFacName"] == "CAMPUS TRANSPLANT"
-        assert rows["4"]["posMatchMethod"] == "none" and rows["4"]["posCcn"] is None
-        assert rows["5"]["posMatchMethod"] == "review" and rows["5"]["posCcn"] == "360003" and 0.2 < rows["5"]["posCcnDistanceKm"] < 0.25
-        assert rows["6"]["posMatchMethod"] == "none" and rows["6"]["posCcn"] is None and rows["6"]["posNearestCcn"] == "360003"
-        assert rows["7"]["posMatchMethod"] == "none"
-        assert rows["8"]["posMatchMethod"] == "none" and rows["8"]["posCcn"] is None
-        assert rows["2"]["posCcn"] == rows["4"]["posNearestCcn"]
+        result = add_pos_ccn_info(self._jc(spark), self._pos(spark))
+        rows = {r["jcSiteName"]: r for r in result.collect()}
+        assert len(rows) == 10
+        assert rows["MAIN"]["posMatchMethod"] == "nearestSite" and rows["MAIN"]["posCcn"] == "360001" and rows["MAIN"]["posCcnPass"] == "site"
+        assert rows["OWN CCN"]["posMatchMethod"] == "nearestSite" and rows["OWN CCN"]["posCcn"] == "360002"
+        assert rows["PROVIDER BASED"]["posMatchMethod"] == "nearestParent" and rows["PROVIDER BASED"]["posCcn"] == "360001"
+        assert rows["PROVIDER BASED"]["posCcnPass"] == "parent" and rows["PROVIDER BASED"]["posCcnDistanceKm"] == 0
+        assert rows["TIE"]["posCcn"] == "360003" and rows["TIE"]["posMatchAmbiguous"] == 1 and rows["MAIN"]["posMatchAmbiguous"] == 0
+        assert rows["LOST"]["posMatchMethod"] == "none" and rows["LOST"]["posCcn"] is None and rows["LOST"]["posMatchAmbiguous"] is None
+        assert rows["NEAR FAR"]["posCcn"] == "360005" and 0.2 < rows["NEAR FAR"]["posCcnDistanceKm"] < 0.25
+        assert rows["FALLBACK NONE"]["posMatchMethod"] == "none"
+        assert rows["NAMED"]["posMatchMethod"] == "nearestNamed" and rows["NAMED"]["posCcn"] == "360006" and rows["NAMED"]["posCcnPass"] == "named"
+        assert rows["NAMED"]["posCcnNameScore"] == 1.0 and 2.1 < rows["NAMED"]["posCcnDistanceKm"] < 2.3 and rows["NAMED"]["posMatchAmbiguous"] == 0
+        assert rows["OTHER NAME"]["posMatchMethod"] == "none" and rows["OTHER NAME"]["posCcnNameScore"] is None
+        assert rows["HALF NAME"]["posMatchMethod"] == "none" and rows["MAIN"]["posCcnNameScore"] is None
+        assert rows["MAIN"]["posParentNearestCcn"] == "360001" and rows["OWN CCN"]["posParentNearestCcn"] == "360001"
         added = set(result.columns) - set(self._jc(spark).columns)
-        assert {"posCcn", "posCcnFacName", "posCcnDistanceKm", "posCcnActive", "posMatchMethod"} <= added
-        assert "keepCcn" not in result.columns and all(c[0].islower() for c in added)
+        assert {"posCcn", "posCcnFacName", "posCcnDistanceKm", "posCcnActive", "posCcnPass", "posMatchMethod", "posMatchAmbiguous"} <= added
+        assert all(c[0].islower() for c in added)
 
-    def test_foreign_keepCcn_raises(self, spark):
+    def test_without_site_columns_uses_address(self, spark):
         from utilities import add_pos_ccn_info
-        review = self._review(spark, [("B", "360002", "369802", "999999")])
-        with pytest.raises(ValueError, match="neither candidate"):
-            add_pos_ccn_info(self._jc(spark), self._pos(spark), review)
+        jc = self._jc(spark).drop("jcSiteLat", "jcSiteLng", "jcSiteLocationSource")
+        rows = {r["jcSiteName"]: r for r in add_pos_ccn_info(jc, self._pos(spark)).collect()}
+        assert rows["OWN CCN"]["posCcn"] == "360001" and rows["PROVIDER BASED"]["posMatchMethod"] == "nearestParent"
+        assert rows["MAIN"]["posMatchMethod"] == "nearestParent" and rows["MAIN"]["posCcnPass"] == "parent"
+
+    def test_overrides(self, spark):
+        from utilities import add_pos_ccn_info
+        overrides = spark.createDataFrame([("1", "MAIN", "360005"), ("2", "TIE", ""), ("9", "ABSENT", "360001")],
+                                          "jcHcoId string, jcSiteName string, keepCcn string")
+        result = add_pos_ccn_info(self._jc(spark), self._pos(spark), overridesDF=overrides)
+        rows = {r["jcSiteName"]: r for r in result.collect()}
+        assert len(rows) == 10
+        assert rows["MAIN"]["posMatchMethod"] == "override" and rows["MAIN"]["posCcn"] == "360005" and rows["MAIN"]["posCcnFacName"] == "FAR"
+        assert rows["MAIN"]["posCcnDistanceKm"] is None and rows["MAIN"]["posCcnPass"] is None
+        assert rows["TIE"]["posMatchMethod"] == "none" and rows["TIE"]["posCcn"] is None
+        assert rows["OWN CCN"]["posMatchMethod"] == "nearestSite"
+
+    def test_name_score_threshold(self, spark):
+        from utilities import add_pos_ccn_info
+        rows = {r["jcSiteName"]: r for r in add_pos_ccn_info(self._jc(spark), self._pos(spark), nameScoreMin=0.5).collect()}
+        assert rows["HALF NAME"]["posMatchMethod"] == "nearestNamed" and rows["HALF NAME"]["posCcn"] == "360008"
+        assert rows["HALF NAME"]["posCcnNameScore"] == 0.5 and rows["OTHER NAME"]["posMatchMethod"] == "none"
 
     def test_get_ccn_jc_info(self, spark):
         from utilities import add_pos_ccn_info, get_ccn_jc_info
-        review = self._review(spark, [("B", "360002", "369802", "360002"),
-                                      ("C", "360002", "369802", "360002")])
-        result = get_ccn_jc_info(add_pos_ccn_info(self._jc(spark), self._pos(spark), review))
+        result = get_ccn_jc_info(add_pos_ccn_info(self._jc(spark), self._pos(spark)))
         rows = {r["posCcn"]: r for r in result.collect()}
-        assert set(rows) == {"360001", "360002"}
-        assert rows["360002"]["jcSites"] == 2 and rows["360002"]["jcBestProgramRank"] == 1
-        assert rows["360002"]["jcBestProgram"] == "Comprehensive Stroke Center" and sorted(rows["360002"]["jcSiteNames"]) == ["B", "C"]
-        assert rows["360001"]["jcSites"] == 1 and rows["360001"]["jcBestProgram"] == "Primary Stroke Center"
+        assert set(rows) == {"360001", "360002", "360003", "360005", "360006"}
+        assert rows["360001"]["jcSites"] == 2 and rows["360001"]["jcBestProgramRank"] == 1
+        assert rows["360001"]["jcBestProgram"] == "Comprehensive Stroke Center" and sorted(rows["360001"]["jcSiteNames"]) == ["MAIN", "PROVIDER BASED"]
+        assert rows["360001"]["jcBestProgramSite"] == "MAIN" and rows["360001"]["jcBestProgramMatchMethod"] == "nearestSite"
+        assert rows["360001"]["jcMatchMethods"] == ["nearestParent", "nearestSite"]
+        assert rows["360006"]["jcBestProgramMatchMethod"] == "nearestNamed"
+        assert {k: r["jcCertificationConfidence"] for k, r in rows.items()} == {"360001": 3, "360002": 4, "360003": 4, "360005": 4, "360006": 1}
+
+
+class TestAddPlaceInfo:
+
+    def test_columns_from_cache(self, spark, tmp_path, monkeypatch):
+        seen = dict()
+        def fake_find_places(queries, pathToData, maxCalls=None, keyFilename=None):
+            seen.update(queries)
+            return {q: geocoding.parse_place_response(place_payload() if q == "A, NY" else {}) for q in queries}
+        monkeypatch.setattr(geocoding, "find_places", fake_find_places)
+        df = spark.createDataFrame([("1", "A, NY", 40.7, -74.0), ("2", "A, NY", 40.8, -74.1), ("3", "B, NY", None, None)],
+                                   "id string, q string, lat double, lng double")
+        result = geocoding.add_place_info(df, "q", str(tmp_path), "jc", biasLatCol="lat", biasLngCol="lng", maxCalls=0)
+        rows = {r["id"]: r for r in result.collect()}
+        assert seen == {"A, NY": (40.7, -74.0), "B, NY": None}
+        assert rows["1"]["jcPlaceLat"] == 40.72 and rows["2"]["jcPlaceName"] == "NYP Allen Hospital" and rows["1"]["jcPlaceTypes"] == "hospital,health"
+        assert rows["3"]["jcPlaceStatus"] == "ZERO_RESULTS" and rows["3"]["jcPlaceLat"] is None
+        assert set(result.columns) - set(df.columns) == {"jcPlaceLat", "jcPlaceLng", "jcPlaceName", "jcPlaceAddress", "jcPlaceTypes", "jcPlaceStatus"}
+
+
+class TestPrepJcAccreditationPlaces:
+
+    def test_site_location(self, spark, tmp_path, monkeypatch):
+        from utilities import prep_jcAccreditationDF
+        cols = TestPrepJcAccreditationDF.JC_SCHEMA
+        df = spark.createDataFrame(
+            [("1", "Org", None, "New York", "New York", "525 E 68th St", "10065", "NYP", "Allen Hospital", "Primary Stroke Center", "2020-01-01", "Certification"),
+             ("2", "Org", None, "New York", "New York", "525 E 68th St", "10065", "Clinic Site", None, "Primary Stroke Center", "2020-01-01", "Certification"),
+             ("3", "Org", None, "New York", "New York", "525 E 68th St", "10065", "Unknown Site", None, "Primary Stroke Center", "2020-01-01", "Certification"),
+             ("4", "Org", None, "New York", "New York", "525 E 68th St", "10065", "Campus Site", None, "Primary Stroke Center", "2020-01-01", "Certification")],
+            cols)
+        monkeypatch.setattr(geocoding, "geocode_addresses",
+                            lambda addresses, pathToData, maxCalls=None, keyFilename=None: {a: geocoding.parse_geocode_response(ok_payload(lat=40.7647, lng=-73.9540)) for a in addresses})
+        def fake_find_places(queries, pathToData, maxCalls=None, keyFilename=None):
+            out = dict()
+            for q in queries:
+                if q.startswith("Allen Hospital"):
+                    out[q] = geocoding.parse_place_response(place_payload(lat=40.8700, lng=-73.9200))
+                elif q.startswith("Clinic Site"):
+                    out[q] = geocoding.parse_place_response(place_payload(lat=40.9, lng=-73.9, types=("medical_clinic",)))
+                elif q.startswith("Campus Site"):
+                    out[q] = geocoding.parse_place_response(place_payload(lat=40.95, lng=-73.9, types=("university", "point_of_interest")))
+                else:
+                    out[q] = geocoding.parse_place_response({})
+            return out
+        monkeypatch.setattr(geocoding, "find_places", fake_find_places)
+        result = prep_jcAccreditationDF(df, pathToData=str(tmp_path), placesLookup=True)
+        rows = {r["jcHcoId"]: r for r in result.collect()}
+        assert rows["1"]["jcPlaceQuery"] == "Allen Hospital, NY" and rows["1"]["jcPlaceIsHospital"] == 1
+        assert rows["1"]["jcSiteLocationSource"] == "place" and rows["1"]["jcSiteLat"] == 40.87 and 11 < rows["1"]["jcPlaceDistanceKm"] < 13
+        assert rows["2"]["jcPlaceIsHospital"] == 0 and rows["2"]["jcSiteLocationSource"] == "place" and rows["2"]["jcSiteLat"] == 40.9
+        assert rows["4"]["jcPlaceIsHospital"] == 0 and rows["4"]["jcSiteLocationSource"] == "address" and rows["4"]["jcSiteLat"] == 40.7647
+        assert rows["3"]["jcPlaceStatus"] == "ZERO_RESULTS" and rows["3"]["jcPlaceIsHospital"] is None
+        assert rows["3"]["jcSiteLocationSource"] == "address" and rows["3"]["jcPlaceDistanceKm"] is None
+        assert rows["1"]["jcLat"] == 40.7647
 
 
 class TestAddPosHospitalType:
@@ -526,3 +622,127 @@ class TestAddPosHospitalType:
         df = spark.createDataFrame([(c, h) for c, h, _ in cases], "PRVDR_NUM string, posHospital int")
         got = {r["PRVDR_NUM"]: r["posHospitalType"] for r in add_posHospitalType(df).collect()}
         assert got == {c: t for c, _, t in cases}
+
+
+def place_payload(lat=40.72, lng=-73.92, name="NYP Allen Hospital", types=("hospital", "health")):
+    return {"places": [{"id": "ChIJx", "displayName": {"text": name, "languageCode": "en"},
+                        "formattedAddress": "5141 Broadway, New York, NY 10034, USA",
+                        "location": {"latitude": lat, "longitude": lng}, "types": list(types),
+                        "businessStatus": "OPERATIONAL"}]}
+
+
+class TestParsePlaceResponse:
+
+    def test_found(self):
+        record = geocoding.parse_place_response(place_payload())
+        assert record["status"] == "OK" and record["lat"] == 40.72 and record["lng"] == -73.92
+        assert record["name"] == "NYP Allen Hospital" and record["types"] == "hospital,health"
+        assert record["placeId"] == "ChIJx" and record["businessStatus"] == "OPERATIONAL"
+        assert set(record) == set(geocoding.placeFields)
+
+    def test_empty(self):
+        record = geocoding.parse_place_response({})
+        assert record["status"] == "ZERO_RESULTS" and record["lat"] is None
+
+
+class TestFindPlace:
+
+    def test_request_shape(self, no_sleep):
+        opener = fake_urlopen([place_payload()])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            record = geocoding.find_place("NYP Allen Hospital, NY", "secret-key", biasLat=40.7, biasLng=-74.0)
+        request = opener.call_args[0][0]
+        body = json.loads(request.data)
+        assert request.get_method() == "POST" and request.full_url == geocoding.googlePlacesUrl
+        assert body["textQuery"] == "NYP Allen Hospital, NY" and body["regionCode"] == "US"
+        assert body["locationBias"]["circle"]["center"] == {"latitude": 40.7, "longitude": -74.0}
+        assert body["locationBias"]["circle"]["radius"] == 50000
+        assert request.get_header("X-goog-api-key") == "secret-key"
+        assert request.get_header("X-goog-fieldmask") == geocoding.googlePlacesFieldMask
+        assert record["status"] == "OK"
+
+    def test_no_bias(self, no_sleep):
+        opener = fake_urlopen([place_payload()])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            geocoding.find_place("X, NY", "secret-key")
+        assert "locationBias" not in json.loads(opener.call_args[0][0].data)
+
+    def test_retry_on_503_then_ok(self, no_sleep):
+        from urllib.error import HTTPError
+        calls = []
+        def opener(request, timeout=None):
+            calls.append(request)
+            if len(calls) == 1:
+                raise HTTPError(request.full_url, 503, "unavailable", {}, io.BytesIO(b"busy"))
+            response = mock.MagicMock()
+            response.__enter__.return_value = io.StringIO(json.dumps(place_payload()))
+            return response
+        with mock.patch.object(geocoding, "urlopen", opener):
+            record = geocoding.find_place("X, NY", "secret-key")
+        assert len(calls) == 2 and record["status"] == "OK"
+
+    def test_403_raises_without_key(self, no_sleep):
+        from urllib.error import HTTPError
+        def opener(request, timeout=None):
+            raise HTTPError(request.full_url, 403, "forbidden", {}, io.BytesIO(b"API not enabled"))
+        with mock.patch.object(geocoding, "urlopen", opener):
+            with pytest.raises(RuntimeError) as e:
+                geocoding.find_place("X, NY", "secret-key")
+        assert "403" in str(e.value) and "API not enabled" in str(e.value) and "secret-key" not in str(e.value)
+
+
+class TestFindPlaces:
+
+    def test_all_cached_makes_no_calls(self, tmp_path):
+        record = geocoding.parse_place_response(place_payload())
+        geocoding.write_places_cache({"A, NY": record}, str(tmp_path))
+        opener = fake_urlopen([])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            records = geocoding.find_places({"A, NY": (40.7, -74.0)}, str(tmp_path))
+        assert records == {"A, NY": record} and opener.call_count == 0
+
+    def test_miss_called_once_and_cached(self, tmp_path):
+        write_key(tmp_path)
+        opener = fake_urlopen([place_payload()])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            records = geocoding.find_places({"A, NY": None}, str(tmp_path))
+            geocoding.find_places({"A, NY": None}, str(tmp_path))
+        assert opener.call_count == 1 and records["A, NY"]["name"] == "NYP Allen Hospital"
+        cacheText = (tmp_path / "GEOCODING" / "googlePlacesCache.json").read_text()
+        assert "A, NY" in json.loads(cacheText) and "secret-key" not in cacheText
+
+    def test_zero_results_cached(self, tmp_path):
+        write_key(tmp_path)
+        opener = fake_urlopen([{}])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            geocoding.find_places({"A, NY": None}, str(tmp_path))
+            geocoding.find_places({"A, NY": None}, str(tmp_path))
+        assert opener.call_count == 1
+
+    def test_max_calls_guard(self, tmp_path):
+        write_key(tmp_path)
+        opener = fake_urlopen([])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            with pytest.raises(RuntimeError, match="maxCalls"):
+                geocoding.find_places({"A, NY": None, "B, NY": None}, str(tmp_path), maxCalls=1)
+        assert opener.call_count == 0
+
+
+class TestNameScore:
+
+    def test_scores(self, spark):
+        from utilities import get_nameScore, get_nameTokens
+        df = spark.createDataFrame(
+            [("Maria Parham Health", "MARIA PARHAM MEDICAL CENTER", 1.0),
+             ("St. Mary Medical Center", "ST MARY MEDICAL CENTER", 1.0),
+             ("Hospital", "GENERAL ACUTE CARE HOSPITAL", 0.0),
+             ("Mercy Catholic Fitzgerald Hospital", "MERCY FITZGERALD HOSPITAL", 1.0),
+             ("Mercy Catholic Fitzgerald Hospital", "CATHOLIC HEALTH SOUTHEAST HOSPITAL", 0.5),
+             ("Sanford Medical Center Fargo", "ESSENTIA HEALTH FARGO", 0.5),
+             ("Corpus Christi Medical Center - Doctors", "CHRISTUS SPOHN HOSPITAL CORPUS CHRISTI", 0.6666666666666666),
+             (None, "ANY", 0.0)],
+            "a string, b string, expected double")
+        rows = df.select("a", get_nameScore(F.col("a"), F.col("b")).alias("s"), "expected", get_nameTokens(F.col("a")).alias("t")).collect()
+        for r in rows:
+            assert abs(r["s"] - r["expected"]) < 1e-9, (r["a"], r["s"])
+        assert [r["t"] for r in rows if r["a"] == "St. Mary Medical Center"][0] == ["mary"]

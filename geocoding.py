@@ -5,20 +5,23 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pyspark.sql.functions as F
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType
 
 '''Coordinates for street addresses from the Google Geocoding API
-(https://developers.google.com/maps/documentation/geocoding), with every response cached on disk so that
-an address is paid for once. The cache and the API key live under pathToData/GEOCODING, outside the repo:
-the key must never be committed and the cache is data, not code.'''
+(https://developers.google.com/maps/documentation/geocoding) and for place names from the Places API (New) text search,
+with every response cached on disk so that an address or a name is paid for once. The caches and the API key live
+under pathToData/GEOCODING, outside the repo: the key must never be committed and the caches are data, not code.'''
 
 googleGeocodeUrl = "https://maps.googleapis.com/maps/api/geocode/json"
+googlePlacesUrl = "https://places.googleapis.com/v1/places:searchText"
+googlePlacesFieldMask = "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.businessStatus"
 retryStatuses = ["OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT", "UNKNOWN_ERROR"]
 geocodeWorkers = 4
 geocodeFields = ["lat", "lng", "locationType", "formattedAddress", "partialMatch", "status", "geocodedOn"]
+placeFields = ["lat", "lng", "name", "address", "types", "placeId", "businessStatus", "status", "searchedOn"]
 
 class GeocodeRetryError(Exception):
     '''The API asked us to try again later (quota or a transient server side error).'''
@@ -184,3 +187,131 @@ def get_geodesicDistanceKm(lat1, lng1, lat2, lng2):
     dLng = F.radians(lng2) - F.radians(lng1)
     a = F.sin(dLat / 2) ** 2 + F.cos(F.radians(lat1)) * F.cos(F.radians(lat2)) * F.sin(dLng / 2) ** 2
     return 2 * 6371.0088 * F.asin(F.sqrt(a))
+
+def get_places_cache_filename(pathToData):
+    return f"{pathToData}/GEOCODING/googlePlacesCache.json"
+
+def get_places_cache(pathToData):
+    filename = get_places_cache_filename(pathToData)
+    if not os.path.isfile(filename):
+        return dict()
+    with open(filename) as f:
+        return json.load(f)
+
+def write_places_cache(cache, pathToData):
+    filename = get_places_cache_filename(pathToData)
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename + ".tmp", "w") as f:
+        json.dump(cache, f, indent=1, sort_keys=True)
+    os.replace(filename + ".tmp", filename)
+
+def get_places_cache_misses(queries, pathToData):
+    '''The queries that are not in the places cache, ie the paid calls a find_places run would make.'''
+    cache = get_places_cache(pathToData)
+    return sorted(set(q for q in queries if q is not None and q not in cache))
+
+def parse_place_response(payload):
+    '''Turns the Places API (New) text search json into a cache record holding the first result: its coordinates,
+    display name, formatted address, types (a hospital should carry "hospital") and business status. No result is a
+    ZERO_RESULTS record so that a name the API cannot resolve is not asked again on every run.'''
+    record = dict(lat=None, lng=None, name=None, address=None, types=None, placeId=None, businessStatus=None,
+                  status="ZERO_RESULTS", searchedOn=date.today().isoformat())
+    places = payload.get("places", [])
+    if len(places) > 0:
+        place = places[0]
+        record["lat"] = place["location"]["latitude"]
+        record["lng"] = place["location"]["longitude"]
+        record["name"] = place.get("displayName", {}).get("text")
+        record["address"] = place.get("formattedAddress")
+        record["types"] = ",".join(place.get("types", []))
+        record["placeId"] = place.get("id")
+        record["businessStatus"] = place.get("businessStatus")
+        record["status"] = "OK"
+    return record
+
+def find_place(query, apiKey, biasLat=None, biasLng=None, biasRadiusM=50000, maxRetries=5):
+    '''One Places API (New) text search (https://developers.google.com/maps/documentation/places/web-service/text-search)
+    for a name such as "North Baldwin Infirmary, AL", returning the first place. With biasLat/biasLng the search prefers
+    results within biasRadiusM of that point (the parent organization's address; the API allows at most 50 km) without excluding others, which keeps
+    a generic name like "Memorial Hospital" near where the site is expected. The field mask limits the response to what
+    the cache record holds (and what is billed). Exponential backoff on quota and transient errors; 400 and 403 (bad
+    request, API not enabled or key not allowed) raise with the API's message; exceptions never carry the key.'''
+    body = dict(textQuery=query, regionCode="US")
+    if biasLat is not None and biasLng is not None:
+        body["locationBias"] = dict(circle=dict(center=dict(latitude=biasLat, longitude=biasLng), radius=biasRadiusM))
+    headers = {"Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": googlePlacesFieldMask}
+    for attempt in range(maxRetries + 1):
+        request = Request(googlePlacesUrl, data=json.dumps(body).encode(), headers=headers, method="POST")
+        try:
+            with urlopen(request, timeout=30) as response:
+                return parse_place_response(json.load(response))
+        except HTTPError as e:
+            message = e.read().decode(errors="replace")[:500]
+            if e.code in (429, 500, 502, 503, 504):
+                lastError = f"http {e.code}: {message}"
+            else:
+                raise RuntimeError(f"places search {query!r} failed with http {e.code}: {message}") from None
+        except URLError as e:
+            lastError = str(e.reason)
+        if attempt < maxRetries:
+            time.sleep(2 ** attempt)
+    raise RuntimeError(f"places search {query!r} failed after {maxRetries} retries: {lastError}")
+
+def find_places(queries, pathToData, flushEvery=500, maxCalls=None, keyFilename=None, workers=None):
+    '''Returns {query: record} for every query, calling the Places API only for the ones not in the cache; queries is
+    {query: (biasLat, biasLng)} (or None for no bias). Same cache, flush, cost guard, key and thread pool behaviour as
+    geocode_addresses, in GEOCODING/googlePlacesCache.json.'''
+    cache = get_places_cache(pathToData)
+    misses = get_places_cache_misses(queries, pathToData)
+    if len(misses) == 0:
+        return {q: cache[q] for q in queries if q is not None}
+    if maxCalls is not None and len(misses) > maxCalls:
+        raise RuntimeError(f"{len(misses)} queries are not cached, more than maxCalls={maxCalls}")
+    apiKey = get_api_key(pathToData, keyFilename)
+    newRecords = 0
+    pool = ThreadPoolExecutor(max_workers=workers if workers is not None else geocodeWorkers)
+    futures = dict()
+    for query in misses:
+        bias = queries.get(query) or (None, None)
+        futures[pool.submit(find_place, query, apiKey, bias[0], bias[1])] = query
+    try:
+        for future in as_completed(futures):
+            cache[futures[future]] = future.result()
+            newRecords += 1
+            if newRecords % flushEvery == 0:
+                write_places_cache(cache, pathToData)
+                print(f"searched {newRecords}/{len(misses)}")
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
+        if newRecords > 0:
+            write_places_cache(cache, pathToData)
+    return {q: cache[q] for q in queries if q is not None}
+
+def get_place_schema(prefix):
+    return StructType([StructField("query", StringType()),
+                       StructField(f"{prefix}PlaceLat", DoubleType()),
+                       StructField(f"{prefix}PlaceLng", DoubleType()),
+                       StructField(f"{prefix}PlaceName", StringType()),
+                       StructField(f"{prefix}PlaceAddress", StringType()),
+                       StructField(f"{prefix}PlaceTypes", StringType()),
+                       StructField(f"{prefix}PlaceStatus", StringType())])
+
+def add_place_info(DF, queryCol, pathToData, prefix, biasLatCol=None, biasLngCol=None, maxCalls=None, keyFilename=None):
+    '''Adds {prefix}PlaceLat, {prefix}PlaceLng, {prefix}PlaceName, {prefix}PlaceAddress, {prefix}PlaceTypes (comma
+    separated) and {prefix}PlaceStatus for the place name in queryCol, from a Places text search biased to the point in
+    biasLatCol/biasLngCol when given (the first point seen for a query is used). The distinct queries are collected to
+    the driver and looked up there (see find_places), so every distinct query that is not cached is a paid call;
+    maxCalls=0 guarantees none. The resulting small table is broadcast joined back.'''
+    cols = [queryCol] + ([biasLatCol, biasLngCol] if biasLatCol is not None else [])
+    queries = dict()
+    for row in DF.select(*cols).collect():
+        if row[0] is None:
+            continue
+        bias = (row[1], row[2]) if biasLatCol is not None and row[1] is not None else None
+        if row[0] not in queries or queries[row[0]] is None:
+            queries[row[0]] = bias
+    records = find_places(queries, pathToData, maxCalls=maxCalls, keyFilename=keyFilename)
+    rows = [(q, r["lat"], r["lng"], r["name"], r["address"], r["types"], r["status"]) for q, r in records.items()]
+    placeDF = DF.sparkSession.createDataFrame(rows, schema=get_place_schema(prefix))
+    DF = DF.join(F.broadcast(placeDF), on=[F.col(queryCol) == F.col("query")], how="left_outer").drop("query")
+    return DF

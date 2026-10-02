@@ -22,3 +22,22 @@ Examples:
 - add_death_date_info(mbsfDF) uses withColumn commands to add columns to the mbsfDF using information from the same dataframe
 - add_death_date_info(baseDF,mbsfDF) uses a join to add columns to baseDF using information from the mbsfDF dataframe
 
+## Linking Joint Commission stroke centers to CMS hospitals (scripts/)
+
+The Joint Commission export of stroke-certified sites carries no CCN, so sites are linked to the CMS Provider of
+Services (POS) hospitals by location rather than by name. `scripts/01_geocode_pos.py` geocodes the POS hospital
+addresses with the Google Geocoding API and builds `pos.parquet`; `scripts/02_lookup_jc.py` geocodes the export's
+addresses and, because those are the accredited organization's rather than the site's, also searches each site's public
+name with the Google Places API, filling two caches under `DATA/GEOCODING` so every paid lookup happens once;
+`scripts/03_geocode_jc.py` attaches both results and builds `jcAccreditation.parquet` (one row per site, its top stroke
+certification); `scripts/04_match_jc_pos.py` assigns each site the nearest active acute or critical access hospital
+within 0.5 km of the point found for its name (`nearestSite`), else within 0.5 km of the organization's address, which
+is where CMS lists a campus that bills under its parent (`nearestParent`), else, as a last resort, a hospital within
+5 km whose name contains every distinctive word of the site's (`nearestNamed`), and writes `jcMatched.parquet` (one row
+per site, `posMatchMethod` records how it was assigned) and `ccnStrokeCertification.parquet`, the per-CCN table that
+joins the claims on `PROVIDER`: `jcBestProgram` is the highest certification among the sites assigned to the CCN,
+`jcSites` how many sites that was, and `jcCertificationConfidence` folds the two into one scale (4: the certified site is
+the CCN's only site and a hospital sits where Google puts its name; 3: same but other sites share the CCN; 2: the site
+was placed at its organization's address, a campus credited to the parent; 1: name based). The rule is deterministic
+and reproducible from the two source files, the key and the caches.
+

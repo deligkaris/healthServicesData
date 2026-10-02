@@ -1,7 +1,7 @@
 '''Geocodes the hospitals of the CMS Provider of Services file and writes the pos parquet that
 healthServicesData.get_data loads.
 
-Usage: python scripts/geocode_pos.py [--pos POS_OTHER_DEC22.csv] [--data /path/to/DATA] [--key key.csv] [--out pos.parquet]
+Usage: python scripts/01_geocode_pos.py [--pos POS_OTHER_DEC22.csv] [--data /path/to/DATA] [--key key.csv] [--out pos.parquet]
                                      [--active-only] [--dry-run] [--max-calls N]
 
     --pos       the raw POS "other" file from data.cms.gov
