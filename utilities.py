@@ -31,6 +31,36 @@ for year in range(min(years),max(years)):
 #cms.utilities.add_through_date_info) so it tracks any change to leapYears/yearMin. 274 = day-of-year of Oct 1
 #in non-leap 2015 (Jan-Sep = 273 days). Used to null comorbidities whose 360-day lookback reaches into the ICD9 era.
 icd10Day = daysInYearsPriorDict[2015] + 274
+
+#usps state abbreviations by state name, for sources that spell the state out (eg the joint commission export)
+usStateAbbreviations = {"alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA", "colorado": "CO",
+                        "connecticut": "CT", "delaware": "DE", "district of columbia": "DC", "florida": "FL", "georgia": "GA",
+                        "hawaii": "HI", "idaho": "ID", "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+                        "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD", "massachusetts": "MA",
+                        "michigan": "MI", "minnesota": "MN", "mississippi": "MS", "missouri": "MO", "montana": "MT",
+                        "nebraska": "NE", "nevada": "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM",
+                        "new york": "NY", "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+                        "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC", "south dakota": "SD",
+                        "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT", "virginia": "VA", "washington": "WA",
+                        "west virginia": "WV", "wisconsin": "WI", "wyoming": "WY", "puerto rico": "PR", "guam": "GU",
+                        "virgin islands": "VI", "u.s. virgin islands": "VI", "american samoa": "AS",
+                        "northern mariana islands": "MP"}
+
+#definition of which states (fips codes) belong to which region
+usRegionFipsCodes = {"west":  ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"],
+                     "south": ["10", "11", "12", "13", "24", "37", "45", "51", "54", "01", "21", "28", "47", "05", "22", "40", "48"],
+                     "midwest": ["18", "17", "26", "39", "55", "19", "20", "27", "29", "31", "38", "46"],
+                     "northeast": ["09", "23", "25", "33", "44", "50", "34", "36", "42"]}
+
+#joint commission stroke certifications in rank order, the generic words that make a site DBA name or a facility name
+#non distinctive, and the google place types that count as a care site (see prep_jcAccreditationDF, get_nameTokens)
+jcStrokeProgramRanking = ["comprehensive", "thrombectomy", "primary", "acute stroke ready", "stroke rehabilitation"]
+jcGenericNameWords = ["hospital", "hospitals", "medical", "center", "centre", "general", "acute", "care", "the", "inc", "llc",
+                      "lp", "ltd", "health", "healthcare", "system", "services", "regional", "community", "of", "and", "a", "an"]
+jcPlaceSiteTypes = ["hospital", "medical_center", "medical_clinic", "health"]
+nameGenericWords = jcGenericNameWords + ["campus", "hosp", "ctr", "med", "memorial", "st", "saint", "university", "county",
+                                        "baptist", "methodist", "mercy", "providence"]
+
 def get_daysInYearsPrior():
     return F.create_map([F.lit(x) for x in chain(*daysInYearsPriorDict.items())])
 
@@ -80,26 +110,6 @@ def add_column_prior(df, column, who, when, gapFill=None):
           .withColumn(column+"Prior", F.max(F.col(column+"Prior")).over(eachWhoWhen))
           .drop("prior")) #scratch column used only to validate the lag is exactly 1 year
     return df
-
-#usps state abbreviations by state name, for sources that spell the state out (eg the joint commission export)
-usStateAbbreviations = {"alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA", "colorado": "CO",
-                        "connecticut": "CT", "delaware": "DE", "district of columbia": "DC", "florida": "FL", "georgia": "GA",
-                        "hawaii": "HI", "idaho": "ID", "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
-                        "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD", "massachusetts": "MA",
-                        "michigan": "MI", "minnesota": "MN", "mississippi": "MS", "missouri": "MO", "montana": "MT",
-                        "nebraska": "NE", "nevada": "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM",
-                        "new york": "NY", "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
-                        "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC", "south dakota": "SD",
-                        "tennessee": "TN", "texas": "TX", "utah": "UT", "vermont": "VT", "virginia": "VA", "washington": "WA",
-                        "west virginia": "WV", "wisconsin": "WI", "wyoming": "WY", "puerto rico": "PR", "guam": "GU",
-                        "virgin islands": "VI", "u.s. virgin islands": "VI", "american samoa": "AS",
-                        "northern mariana islands": "MP"}
-
-#definition of which states (fips codes) belong to which region
-usRegionFipsCodes = {"west":  ["04", "08", "16", "35", "30", "49", "32", "56", "02", "06", "15", "41", "53"],
-                     "south": ["10", "11", "12", "13", "24", "37", "45", "51", "54", "01", "21", "28", "47", "05", "22", "40", "48"],
-                     "midwest": ["18", "17", "26", "39", "55", "19", "20", "27", "29", "31", "38", "46"],
-                     "northeast": ["09", "23", "25", "33", "44", "50", "34", "36", "42"]}
 
 def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
@@ -1088,13 +1098,6 @@ def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
 def prep_strokeCentersJCDF(strokeCentersJCDF):
     strokeCentersJCDF = add_processed_name(strokeCentersJCDF,colToProcess="OrganizationName")
     return strokeCentersJCDF
-
-jcStrokeProgramRanking = ["comprehensive", "thrombectomy", "primary", "acute stroke ready", "stroke rehabilitation"]
-jcGenericNameWords = ["hospital", "hospitals", "medical", "center", "centre", "general", "acute", "care", "the", "inc", "llc",
-                      "lp", "ltd", "health", "healthcare", "system", "services", "regional", "community", "of", "and", "a", "an"]
-jcPlaceSiteTypes = ["hospital", "medical_center", "medical_clinic", "health"]
-nameGenericWords = jcGenericNameWords + ["campus", "hosp", "ctr", "med", "memorial", "st", "saint", "university", "county",
-                                        "baptist", "methodist", "mercy", "providence"]
 
 def get_nameTokens(col):
     '''The distinctive words of a facility name, as an array Column: "ST MARY MEDICAL CENTER" gives ["mary"].'''
