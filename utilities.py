@@ -580,177 +580,20 @@ def prep_maPenetrationDF(maPenetrationDF):
     return maPenetrationDF
 
 def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=None, lastCompleteYear=2024):
-    '''Bed counts, number of interns and residents, and rural/urban status per hospital per year from the
-    CMS HCRIS hospital 2552-10 cost report files.
+    '''Bed counts, bed days, interns and residents, resident to bed ratio and rural status per hospital per year from the
+    HCRIS hospital 2552-10 cost reports: one row per (PRVDR_NUM, hcrisYear) with providerHcrisBeds{Icu,CriticalCare,Total},
+    providerHcrisBedDays{Icu,CriticalCare,Total}, providerHcrisResidents, providerHcrisResidentToBedRatio,
+    providerHcrisIsRural, hcrisReportDays. Run once offline with filename to write the parquet get_data loads
+    (filenames["hcris"]); the return value is the uncomputed plan over ~8GB of csv, validate against the parquet.
+    pathToHcris holds HOSP10FY{year}/HOSP10_{year}_{rpt,nmrc}.csv as CMS distributes them
+    (https://downloads.cms.gov/files/hcris/hosp10fy{year}.zip). Cell positions follow the Provider Reimbursement Manual
+    Part 2 chapter 40 (https://www.cms.gov/regulations-and-guidance/guidance/manuals/paper-based-manuals-items/cms021935):
+    blank worksheets https://www.cms.gov/files/document/r23p240f.pdf (S-3 Part I p. 40-511, S-2 Part I p. 40-504),
+    instructions https://www.cms.gov/files/document/r18p240ipdf.pdf (S-3 Part I sec. 4005.1 p. 40-53, lines 8-14 p. 40-57;
+    S-2 Part I sec. 4004.1; E Part A sec. 4030.1 p. 40-170.1 and 40-170.5; Table 2/3 of sec. 4095 p. 40-719.1/40-769).
+    Page numbers are the 40-NNN printed on the page, which survive a change of transmittal.'''
 
-    pathToHcris holds one folder per federal fiscal year, HOSP10FY{year}, each containing the three
-    headerless CSVs HOSP10_{year}_{rpt,nmrc,alpha}.csv as CMS distributes them in HOSP10FY{year}.ZIP
-    (https://downloads.cms.gov/files/hcris/hosp10fy{year}.zip). Only rpt and nmrc are read; alpha holds
-    the cost center labels, which the intensive care lines do not use (see below). This is meant to be
-    run once, offline: when filename is given the result is written there as a single parquet, and it is
-    that parquet the analysis code reads, so the ~8GB of source CSV is never scanned again. The returned
-    dataframe is the uncomputed plan over the CSVs, so validate against the written parquet rather than
-    against it.
-
-    The nmrc file is one row per worksheet cell, keyed by (RPT_REC_NUM, WKSHT_CD, LINE_NUM, CLMN_NUM),
-    so a measure is identified by its position on the cost report form. Beds live on Worksheet S-3
-    Part I (WKSHT_CD S300001), column 2 (CLMN_NUM 00200), and the line blocks are intensive care
-    00800-00899, coronary care 00900-00999, burn intensive care 01000-01099, surgical intensive care
-    01100-01199, other special care 01200-01299, and total hospital beds 01400. HOSP2010_README.txt
-    section 5.2 is explicit that these units are NOT cost center coded on S-3, so the actual line number
-    is extracted rather than a label looked up in the alpha file. The line blocks are ranges rather than
-    single lines because a hospital with more than one unit of a kind subscripts the line (00801, 00802,
-    ... up to 00850 has been observed), so the beds of a multi-ICU hospital are only complete when the
-    whole block is summed. LINE_NUM and CLMN_NUM are fixed-width zero-padded strings, which is why the
-    ranges can be expressed as string comparisons. providerHcrisBedsIcu is the 00800-00899 block alone
-    while providerHcrisBedsCriticalCare is all five blocks, so the first is a subset of the second rather
-    than a category beside it. The critical care range ends at 01299 because line 13 is the nursery,
-    which is not special care, and providerHcrisBedsTotal is read from line 01400, the form's own Total,
-    rather than derived by summing the unit lines.
-
-    Column 3 of the same lines is Bed Days Available, the beds of column 2 multiplied by the days in the
-    cost reporting period. It is summed over the same three line groups into providerHcrisBedDaysIcu,
-    providerHcrisBedDaysCriticalCare and providerHcrisBedDaysTotal, and it is also what column 2 is checked
-    against: a bed count is replaced by the bed days divided by hcrisReportDays, rounded to a whole bed,
-    whenever the count filed is more than 5 times that. Bed days are the beds a hospital had times the days
-    it had them, so they measure a whole year of capacity where the bed counts measure the single day the
-    period ends on, which is why they are worth carrying and not only worth checking against. They are long
-    rather than int because a garbage cell in this column is 365 times larger than a garbage bed count, and
-    one provider has already filed a value a third of the way to the int limit.
-
-    The check is needed because nothing validates column 2 at filing time and some
-    providers put a number in it that is not a bed count at all, which nothing downstream of them catches
-    either -- CMS's own cost report public use file reads the same cell and carries the same values, so
-    this is what the hospital filed rather than a misread of the file. Every
-    such report has a sane bed days cell beside the wrong count and a sane count in the provider's own
-    other years: 360044 filed 1594784 beds for FY2020 against 14640 bed days, 40 beds, and filed 36 to 63
-    every other year; 131316 filed 52913 for FY2019 against 7665 bed days, 21 beds, and 21 every other
-    year; 370215, 223300, 310028, 050179, 521357, 391300 and 493033 are the same story. Building the
-    2015-2024 parquet, the check replaces a count on 26 of its 59553 reports, 0.04%: 22 totals, 12 of them
-    in the thousands, and 4 reports whose total was sound while an intensive or special care line was not,
-    among them a 56 bed intensive care unit against bed days for 8 filed by a hospital that files 8 in
-    every other year, and a coronary care line reading 2191 beds against bed days for 10. The replacement
-    is rare, then, but it is the whole of the tail: these are the reports a comparison against the AHA bed
-    counts turns up first.
-
-    The check is deliberately one sided and its threshold deliberately loose. It is one sided because
-    a count far BELOW its bed days is the other cell being wrong, not this one: those reports file a bed
-    days cell 5 to 10 times too large beside a count that is stable across the provider's other years, and
-    replacing the good count with the bad bed days would be the error. It is 5 times rather than something
-    tighter because the two cells legitimately disagree by a factor of about 2: column 2 is the beds
-    available at the END of the period while bed days accumulate over it, so a hospital that adds or closes
-    beds partway through the year has a real, correctly filed gap between them (100079 filed 524 beds for a
-    period whose bed days imply 325, then 524 against 524 the following year).
-
-    The check also refuses to fire when the bed days cell implies less than one bed, that is when it is
-    absent, zero, or smaller than the days in the period, because a bed days cell that small is itself
-    not a credible number and the check would then be correcting the sound cell with the broken one:
-    040011 filed 41 beds for FY2016 against 6 bed days, a hospital open six bed days in a year, and its
-    41 is the more believable of the two. This is also what keeps a replacement from ever coming out as
-    0, which would be read downstream as the hospital having no unit of that kind rather than as a count
-    that could not be trusted -- 020026 files 1 other special care bed against 1 bed day every year and
-    keeps its 1.
-
-    The lines and columns are those of the blank worksheets and their line by line instructions in the
-    Provider Reimbursement Manual Part 2 (CMS Pub. 15-2) chapter 40
-    (https://www.cms.gov/regulations-and-guidance/guidance/manuals/paper-based-manuals-items/cms021935).
-    The blank worksheets are section 4090, https://www.cms.gov/files/document/r23p240f.pdf as of
-    transmittal 23, with S-3 Part I on page 40-511 and S-2 Part I line 26 on page 40-504. The line by
-    line instructions are https://www.cms.gov/files/document/r18p240ipdf.pdf as of transmittal 18, S-3
-    Part I at section 4005.1 starting on page 40-53 with the instructions for lines 8 through 14 on page
-    40-57, and S-2 Part I at section 4004.1. Those page numbers are the 40-NNN printed in the corner of
-    the page, which is what the manual cross references and what survives a change of transmittal, not
-    the position in the pdf. S-3 Part I column 2 is No. of
-    Beds, defined there as the beds available for use by patients at the end of the cost reporting period
-    per 42 CFR 412.105(b), and column 3 is Bed Days Available, instructed to be that count multiplied by
-    the number of days in the cost reporting period, which is what makes the two checkable against each
-    other; lines 8 through 13 are intensive care, coronary care, burn intensive care,
-    surgical intensive care, other special care and nursery; and line 14, Total, is instructed to be the
-    sum of lines 7 through 13 in columns 2 through 8, so it also counts the adults and pediatrics of line
-    7 and the nursery of line 13. Column 9 is Interns & Residents FTEs and line 27 is Total, the sum of
-    lines 14 through 26. S-2 Part I line 26 is the standard geographic classification, not the wage one,
-    at the BEGINNING of the cost reporting period, 1 for urban and 2 for rural; line 27 is the same
-    classification at the end of the period and is not read here.
-
-    Two single cells are read besides the bed blocks: providerHcrisResidents, the number of interns and residents
-    the facility employed stated as an FTE count, on S-3 Part I line 27 column 9, and the urban/rural
-    geographic classification on Worksheet S-2 Part I (WKSHT_CD S200001) line 26 column 1, coded 1 for
-    urban and 2 for rural. Line 27 of S-3 Part I is the whole facility, subproviders included, while
-    line 14 is the hospital component alone. All of these positions were confirmed against CMS's own
-    Cost Report public use file (CostReport_2019_Final.csv), which carries rpt_rec_num and so joins to
-    the raw files report by report: across the 2039 reports it shares with HOSP10FY2019 its Number of
-    Beds, Total Bed Days Available and Rural Versus Urban agree with these cells on every report, and
-    its Number of Interns and Residents (FTE) agrees with line 27 on all 170 teaching hospitals while
-    line 14 disagrees on 31 of them. That public use file is therefore no
-    longer needed for these measures: the columns here are the same numbers for every year of HCRIS
-    rather than the single 2018 snapshot the code used to read as hospCost2018.
-
-    providerHcrisResidentToBedRatio is the intern and resident to bed ratio (IRB) CMS itself computes for the
-    indirect medical education payment, read from Worksheet E Part A (WKSHT_CD E00A18A per Table 2 of the
-    electronic reporting specifications, section 4095) line 19 column 1, Current year resident to bed
-    ratio. The instructions are section 4030.1 of the same transmittal 18 pdf, line 4 on page 40-170.1
-    and lines 18 through 21 on page 40-170.5, and Table 3 of section 4095 lists the cell on page
-    40-769 (Table 2 is page 40-719.1): line 19 is line 18 divided by line 4, where line 18 is the adjusted rolling average FTE count,
-    the three year average of the allowable FTEs after the IME cap plus the residents of new programs
-    and of closed hospitals, and line 4 is Bed Days Available (S-3 Part I column 3, line 14 plus line
-    32) less the swing bed, observation, hospice, labor and delivery and COVID-19 expansion days,
-    divided by the days in the period. It is therefore NOT providerHcrisResidents over
-    providerHcrisBedsTotal: the numerator is capped, averaged and limited to the hospital component
-    where providerHcrisResidents is every resident in the facility this year, and the denominator is an
-    average over the period net of those days where providerHcrisBedsTotal is the end of period count.
-    It is the ratio the major teaching threshold of 0.25 is stated on (see prep_aamcHospitalsDF) and
-    what AAMC's FY20 IRB, used by base.add_rbr, was computed from for the one year it covers. Line 20
-    is the prior year ratio and line 21 the lesser of the two, which is what the payment formula uses;
-    neither is read here. The IME lines are completed only by hospitals paid under the inpatient
-    prospective payment system that train residents, so the cell is absent for everyone else. It is set
-    to 0 where it is absent and providerHcrisResidents is 0, no residents being a ratio of 0 whatever the
-    hospital is, and left null where it is absent and the facility does have residents (a critical
-    access or other non-IPPS teaching hospital), since there the ratio exists and the form just does
-    not compute it. CMS's Cost Report public use file has no resident to bed ratio column to compare against,
-    but it does carry three other Worksheet E Part A cells, Managed Care Simulated Payments (line 3),
-    Total IME Payment (line 29) and Allowable DSH Percentage (line 33), and across the 4860 reports
-    CostReport_2019_Final.csv shares with HOSP10FY2019 they agree with E00A18A lines 00300, 02900 and
-    03300 column 00100 on every report that files them (587, 463 and 1909), which confirms the
-    worksheet code and the line numbering. Line 19 itself equals line 18 over line 4 on all 1228
-    HOSP10FY2019 reports that file it, ranges from 0.0002 to 2.28 with a median of 0.11 and 360 reports
-    at or above 0.25, and runs a median 7% below providerHcrisResidents over providerHcrisBedsTotal,
-    within 20% of it on 62% of reports. Of the 6048 reports with a bed count, 4620 get the 0 and 200
-    stay null: 52 children's, 50 psychiatric, 28 rehabilitation, 18 critical access, 6 long term care
-    and 46 short term acute hospitals, the last mostly with a handful of residents. Unlike the bed
-    counts the cell is not checked against another cell, none of the values filed calling for it.
-
-    hcrisYear is the calendar year containing the midpoint of the cost reporting period, not the fiscal
-    year of the folder the report came from: the HOSP10FY{year} file groups reports by the federal fiscal
-    year their period BEGINS in, so eg HOSP10FY2019 holds periods beginning 10/01/2018 through 09/30/2019
-    and ending anywhere in 2018-2020. The midpoint assigns each report to exactly one calendar year and
-    lets the result join to the claims on THRU_DT_YEAR the way the AHA data does. Because of this the
-    edge years are thin: yearInitial contributes a handful of reports to the calendar year before it, and
-    the most recent fiscal years are still being filed, so their calendar years are incomplete.
-    lastCompleteYear drops the latter: reports whose hcrisYear is after it are not kept, so a year for
-    which only some hospitals have filed cannot be mistaken for a year in which the rest filed nothing.
-    From the September 2026 release calendar year 2025 had 3508 reports against the 5900 to 6000 of
-    every year from 2016 through 2024, which is why the default is 2024; raise it as CMS fills the later
-    years in, or pass None to keep everything. The thin year before yearInitial is not dropped.
-
-    About 1.4% of (PRVDR_NUM, hcrisYear) pairs have more than one report, from a change of ownership or
-    a change of fiscal year splitting the year into two short periods. The longest period wins, with the
-    highest RPT_REC_NUM breaking ties so the choice is deterministic. hcrisReportDays is kept so a caller can drop the reports
-    covering well under a year.
-
-    A report that filed S-3 Part I but no intensive care line reported no intensive care unit, so
-    providerHcrisBedsIcu and providerHcrisBedsCriticalCare are 0 rather than null there, the null being
-    what summing a block none of whose lines the report filed returns, and providerHcrisBedDaysIcu and
-    providerHcrisBedDaysCriticalCare are 0 for the same reason and in the same rows. providerHcrisResidents is 0 on the same
-    reasoning: a hospital with no teaching program leaves the cell empty, which is how the public use
-    file leaves it too, but no residents is the real value. providerHcrisBedsTotal is left null when its cell is
-    absent, since zero total beds is not a real value, as is providerHcrisBedDaysTotal when its own cell is
-    absent, and providerHcrisIsRural when the report filed no
-    S-2 Part I line 26. The bed and bed days columns are filled independently of each other, so a report can
-    carry a count with no bed days beside it, which is the 040011 case above. Reports that filed no S-3 Part I
-    bed cell at all (about 1% per year) are dropped rather than recorded as having no beds, which is why
-    the bed columns, not the mere presence of a row in the aggregation, decide what the result keeps: a
-    report can file the S-2 and resident cells while filing no bed cell.'''
-
+    #only rpt and nmrc are read; alpha holds cost center labels, which the S-3 unit lines do not use (HOSP2010_README 5.2)
     rptFiles = [pathToHcris + f"/HOSP10FY{year}/HOSP10_{year}_rpt.csv" for year in range(yearInitial, yearFinal+1)]
     nmrcFiles = [pathToHcris + f"/HOSP10FY{year}/HOSP10_{year}_nmrc.csv" for year in range(yearInitial, yearFinal+1)]
 
@@ -761,11 +604,29 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
                           F.to_date(F.col("FY_BGN_DT"), "MM/dd/yyyy").alias("FY_BGN_DT"),
                           F.to_date(F.col("FY_END_DT"), "MM/dd/yyyy").alias("FY_END_DT")))
 
+    #hcrisYear is the calendar year of the midpoint of the reporting period, not the folder's fiscal year: HOSP10FY2019
+    #holds periods beginning 10/2018-09/2019 and ending anywhere in 2018-2020. The midpoint puts each report in exactly one
+    #calendar year, joinable to the claims on THRU_DT_YEAR like the AHA data. The edge years are thin as a result
     rptDF = (rptDF.withColumn("hcrisReportDays", F.datediff(F.col("FY_END_DT"), F.col("FY_BGN_DT")) + 1)
                   .withColumn("hcrisYear",
                               F.year(F.date_add(F.col("FY_BGN_DT"),
                                                 (F.datediff(F.col("FY_END_DT"), F.col("FY_BGN_DT"))/2).cast('int')))))
 
+    #nmrc is one row per worksheet cell keyed by (RPT_REC_NUM, WKSHT_CD, LINE_NUM, CLMN_NUM), LINE_NUM and CLMN_NUM are
+    #fixed width zero padded strings so ranges are string comparisons. Beds: Worksheet S-3 Part I column 2 (beds available
+    #at the END of the period, 42 CFR 412.105(b)), column 3 bed days available (beds times days in the period); lines 8-13
+    #are intensive care, coronary care, burn intensive care, surgical intensive care, other special care, nursery, line 14
+    #the form's own Total (lines 7-13, so adults and pediatrics and the nursery too). The units are not cost center coded,
+    #so the line number is used, and as a block (00800-00899, ...) because a hospital with several units of a kind
+    #subscripts the line (00801, 00802, ... up to 00850 seen). Residents: S-3 Part I line 27 column 9, Interns & Residents
+    #FTEs for the whole facility (line 14 is the hospital component alone and disagrees with the public use file on 31 of
+    #170 teaching hospitals, line 27 agrees on all). Rural: S-2 Part I line 26 column 1, geographic classification at the
+    #BEGINNING of the period, 1 urban 2 rural (line 27, the end of period one, is not read). Resident to bed ratio:
+    #Worksheet E Part A (E00A18A per Table 2) line 19 column 1, the IME ratio CMS computes: line 18 (three year average
+    #of capped allowable FTEs plus new programs) over line 4 (bed days net of swing, observation, hospice, labor and
+    #delivery and COVID days, per day), so NOT providerHcrisResidents over providerHcrisBedsTotal; it runs a median 7%
+    #below that quotient. All positions confirmed against CostReport_2019_Final.csv report by report (beds, bed days,
+    #rural on all 2039 shared reports; E Part A lines 3, 29, 33 on every report that files them)
     isBedLine = ((F.col("WKSHT_CD")=="S300001") &
                  (F.col("LINE_NUM").between("00800","01299") | (F.col("LINE_NUM")=="01400")))
     isBedCell = isBedLine & (F.col("CLMN_NUM")=="00200")
@@ -774,6 +635,8 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     isRuralCell = ((F.col("WKSHT_CD")=="S200001") & (F.col("LINE_NUM")=="02600") & (F.col("CLMN_NUM")=="00100"))
     isResidentToBedRatioCell = ((F.col("WKSHT_CD")=="E00A18A") & (F.col("LINE_NUM")=="01900") & (F.col("CLMN_NUM")=="00100"))
 
+    #icu is the intensive care block alone, critical care all five blocks (so icu is a subset of it); the range stops at
+    #01299 because line 13 is the nursery; the total is read from line 14 rather than summed
     icuBlock = F.col("LINE_NUM").between("00800","00899")
     criticalCareBlock = F.col("LINE_NUM").between("00800","01299")
     totalLine = (F.col("LINE_NUM")=="01400")
@@ -781,6 +644,8 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     def sum_cells(cell, block):
         return F.sum(F.when(cell & block, F.col("ITM_VAL_NUM")))
 
+    #bed days are long rather than int: a garbage cell there is 365 times a garbage bed count, and one provider has filed
+    #a value a third of the way to the int limit. They measure a year of capacity where the counts measure the last day
     cellsDF = (spark.read.schema(hcrisNmrcSchema).csv(nmrcFiles)
                     .filter(isBedCell | isBedDaysCell | isResidentsCell | isRuralCell | isResidentToBedRatioCell)
                     .groupBy("RPT_REC_NUM")
@@ -794,14 +659,34 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
                          F.max(F.when(isResidentToBedRatioCell, F.col("ITM_VAL_NUM"))).alias("providerHcrisResidentToBedRatio"),
                          (F.max(F.when(isRuralCell, F.col("ITM_VAL_NUM")))==2).cast('int').alias("providerHcrisIsRural")))
 
+    #nothing validates the bed count at filing and a few providers file something else in it (360044 filed 1594784 beds
+    #for FY2020 against bed days for 40, and 36-63 every other year; the public use file carries the same value). Every
+    #such report has a sane bed days cell beside it, so a count more than 5 times the beds implied by the bed days is
+    #replaced by the implied count: 26 of 59553 reports in 2015-2024, 0.04%, but the whole of the tail a comparison with
+    #AHA turns up. One sided because a count far BELOW its bed days is the bed days cell being wrong; 5 times because
+    #the two legitimately differ by about 2 when beds change during the period (100079: 524 beds, bed days for 325, then
+    #524 against 524). Not fired when the bed days imply less than one bed (absent, 0, or below the days in the period):
+    #040011 filed 41 beds against 6 bed days and 41 is the credible one; this also keeps a replacement from being 0,
+    #which downstream would read as no unit (020026 files 1 other special care bed against 1 bed day every year)
     def beds_checked_against_bed_days(beds, bedDays):
         impliedBeds = F.col(bedDays)/F.col("hcrisReportDays")
         return (F.when((impliedBeds>=1) & (F.col(beds) > 5*impliedBeds), F.round(impliedBeds))
                  .otherwise(F.col(beds)).cast('int'))
 
+    #the most recent fiscal years are still being filed (September 2026 release: 3508 reports for calendar 2025 against
+    #5900-6000 for 2016-2024), so an incomplete year is dropped rather than mistaken for one where the rest filed nothing;
+    #raise lastCompleteYear as CMS fills in, None keeps everything. The thin year before yearInitial is kept
     if lastCompleteYear is not None:
         rptDF = rptDF.filter(F.col("hcrisYear") <= lastCompleteYear)
 
+    #a report with S-3 Part I but no intensive care line has no such unit: icu and critical care beds and bed days are 0,
+    #not the null a sum over unfiled lines returns; residents 0 on the same reasoning (an empty cell is no program).
+    #The total beds, total bed days and rural cells stay null when absent, 0 not being a real value for them. Reports
+    #with no bed cell at all (~1% per year) are dropped rather than recorded as having no beds; they may still carry
+    #the S-2 and resident cells, which is why the bed columns and not the row decide. The IME ratio is absent for every
+    #hospital not paid under IPPS or without residents: 0 where there are no residents (a ratio of 0 whatever the
+    #hospital), null where there are (a CAH or other non IPPS teaching hospital, the ratio exists but is not computed):
+    #4620 zeros and 200 nulls of 6048 reports in 2019
     hcrisDF = (rptDF.join(cellsDF, on="RPT_REC_NUM", how="inner")
                     .withColumn("providerHcrisBedsIcu",
                                 beds_checked_against_bed_days("providerHcrisBedsIcu","providerHcrisBedDaysIcu"))
@@ -816,6 +701,8 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
                                 F.when(F.col("providerHcrisResidentToBedRatio").isNull() & (F.col("providerHcrisResidents")==0), F.lit(0.0))
                                  .otherwise(F.col("providerHcrisResidentToBedRatio"))))
 
+    #about 1.4% of (PRVDR_NUM, hcrisYear) pairs have two reports, a change of ownership or of fiscal year splitting the
+    #year; the longest period wins, highest RPT_REC_NUM breaks ties, and hcrisReportDays is kept so short periods can be dropped
     eachProviderYear = (Window.partitionBy("PRVDR_NUM","hcrisYear")
                               .orderBy(F.col("hcrisReportDays").desc(), F.col("RPT_REC_NUM").desc()))
 
