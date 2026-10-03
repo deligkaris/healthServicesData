@@ -819,53 +819,37 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
     return hcrisDF
 
 def add_posHospital(posDF):
-    '''1 for the POS rows that are hospitals (PRVDR_CTGRY_CD 01, every Medicare certified hospital kind, see
-    add_posHospitalType), 0 for the other provider categories (skilled nursing facilities, home health agencies,
-    hospices, ...).'''
+    '''posHospital: 1 for POS rows that are hospitals of any kind (see add_posHospitalType), 0 otherwise.'''
+    #PRVDR_CTGRY_CD 01 is every Medicare certified hospital; the other codes are SNFs, home health, hospices, ...
     posDF = posDF.withColumn("posHospital", F.when(F.col("PRVDR_CTGRY_CD")=="01", 1).otherwise(0))
     return posDF
 
 def add_posHospitalType(posDF):
-    '''The kind of hospital a POS hospital row (PRVDR_CTGRY_CD 01) is, read from the last four characters of its CCN as
-    CMS assigns them (State Operations Manual chapter 2, section 2779A1,
-    https://www.cms.gov/Regulations-and-Guidance/Guidance/Manuals/downloads/som107c02.pdf): acute (0001-0879, short term
-    general and specialty hospitals), cah (1300-1399), ltch (2000-2299), rehabilitation (3025-3099), childrens
-    (3300-3399), psychiatric (4000-4499), transplant (9800-9899, the transplant center number an approved transplant
-    program within a hospital carries alongside the hospital's own CCN), emergency (E in the sixth position, a
-    nonparticipating non-Federal emergency hospital, section 2052), federal (F in the sixth position, a nonparticipating
-    Federal emergency hospital, eg a VA medical center) and other. Null for non-hospital rows.'''
+    '''posHospitalType: the kind of hospital, from the CCN range CMS assigns (State Operations Manual ch. 2 sec. 2779A1,
+    https://www.cms.gov/Regulations-and-Guidance/Guidance/Manuals/downloads/som107c02.pdf); null for non-hospitals.'''
+    #the last four characters of the CCN carry the type, the first two are the state
     tail = F.substring(F.col("PRVDR_NUM"), 3, 4)
     number = F.when(tail.rlike("^[0-9]{4}$"), tail.cast("int"))
     posDF = posDF.withColumn("posHospitalType",
                              F.when(F.col("posHospital") != 1, F.lit(None))
-                              .when(tail.endswith("E"), "emergency")
-                              .when(tail.endswith("F"), "federal")
-                              .when(number.between(1, 879), "acute")
+                              .when(tail.endswith("E"), "emergency")      #nonparticipating non-Federal emergency hospital (sec. 2052)
+                              .when(tail.endswith("F"), "federal")        #nonparticipating Federal emergency hospital, eg VA
+                              .when(number.between(1, 879), "acute")      #short term general and specialty hospitals
                               .when(number.between(1300, 1399), "cah")
                               .when(number.between(2000, 2299), "ltch")
                               .when(number.between(3025, 3099), "rehabilitation")
                               .when(number.between(3300, 3399), "childrens")
                               .when(number.between(4000, 4499), "psychiatric")
-                              .when(number.between(9800, 9899), "transplant")
+                              .when(number.between(9800, 9899), "transplant") #a hospital's transplant program, alongside its own CCN
                               .otherwise("other"))
     return posDF
 
 def prep_posDF(posDF, pathToData=None, filename=None, maxCalls=None, keyFilename=None, activeOnly=False):
-    '''Builds the POS parquet that get_data loads (filenames["pos"]) from the raw csv, a one-off run in a notebook:
-        rawPosDF = spark.read.csv(pathToData + "/PROVIDER-OF-SERVICES/POS_OTHER_DEC22.csv", header=True)
-        posDF = prep_posDF(rawPosDF, pathToData=pathToData, filename=pathToData + "/PROVIDER-OF-SERVICES/pos.parquet")
-    Adds posHospital (see add_posHospital), posCah, posShortTerm, posIsRural, posActive, posHospitalType (see
-    add_posHospitalType), providerFIPS,
-    providerStateFIPS, FAC_NAMEProcessed, posZip and
-    posAddress (see geocoding.add_address) and, when pathToData is given, the geocoded coordinates of the hospitals
-    (PRVDR_CTGRY_CD 01): posLat, posLng, posGeocodeLocationType, posGeocodeFormattedAddress, posGeocodePartialMatch,
-    posGeocodeStatus (see geocoding.add_geocode_info). Only hospitals are geocoded because every distinct address that is
-    not in the cache is a paid Google Geocoding API call; the other provider types keep null coordinates. The file keeps
-    every provider that ever had a CCN, terminated ones included (PGM_TRMNTN_CD 00 is an active provider, posActive), and
-    with activeOnly=True only the active hospitals are geocoded. All rows of the raw file are kept.
-    Rebuild the parquet whenever the raw csv is replaced, the address cache makes that cheap. maxCalls (cost guard) and
-    keyFilename (where the API key is, default pathToData/GEOCODING/key.csv) are passed to geocode_addresses.
-    Layout: https://data.cms.gov/sites/default/files/2022-10/58ee74d6-9221-48cf-b039-5b7a773bf39a/Layout%20Sep%2022%20Other.pdf'''
+    '''Builds the POS parquet that get_data loads (filenames["pos"]) from the raw csv, see scripts/01_geocode_pos.py.
+    Adds posHospital, posHospitalType, posCah, posShortTerm, posIsRural, posActive, providerFIPS, providerStateFIPS,
+    FAC_NAMEProcessed, posZip, posAddress and, with pathToData, the geocoded coordinates of the hospitals (posLat, posLng,
+    posGeocode*). All rows are kept. Layout:
+    https://data.cms.gov/sites/default/files/2022-10/58ee74d6-9221-48cf-b039-5b7a773bf39a/Layout%20Sep%2022%20Other.pdf'''
     posDF = add_posHospital(posDF)
     posDF = (posDF.withColumn("providerStateFIPS", F.col("FIPS_STATE_CD"))
                   .withColumn("providerFIPS",F.concat( F.col("FIPS_STATE_CD"),F.col("FIPS_CNTY_CD")))
@@ -874,12 +858,14 @@ def prep_posDF(posDF, pathToData=None, filename=None, maxCalls=None, keyFilename
                   .withColumn("posIsRural", F.when( F.col("CBSA_URBN_RRL_IND")=="R", F.lit(1))
                                              .when( F.col("CBSA_URBN_RRL_IND")=="U", F.lit(0))
                                              .otherwise(F.lit(None))) #there are nulls but also "001" and "041" (very few though)
+                  #the file keeps every provider that ever had a CCN, 00 is the code of the ones still active
                   .withColumn("posActive", F.when( F.col("PGM_TRMNTN_CD")=="00", 1).otherwise(0)))
     posDF = add_processed_name(posDF,colToProcess="FAC_NAME")
     posDF = add_posHospitalType(posDF)
     posDF = posDF.withColumn("posZip", F.substring(F.trim(F.col("ZIP_CD")), 1, 5))
     posDF = add_address(posDF, "ST_ADR", "CITY_NAME", "STATE_CD", "posZip", "posAddress")
     if pathToData is not None:
+        #only hospitals are geocoded, every address not in the cache is a paid call; the other provider types keep nulls
         geocodeCols = [field.name for field in get_geocode_schema("pos").fields if field.name != "address"]
         toGeocode = (F.col("posHospital")==1) & ((F.col("posActive")==1) | F.lit(not activeOnly))
         hospitalsDF = add_geocode_info(posDF.filter(toGeocode).select("PRVDR_NUM", "posAddress"),
@@ -1111,61 +1097,27 @@ nameGenericWords = jcGenericNameWords + ["campus", "hosp", "ctr", "med", "memori
                                         "baptist", "methodist", "mercy", "providence"]
 
 def get_nameTokens(col):
-    '''The distinctive words of a facility name as an array Column: lower cased, split on anything that is not a letter
-    or digit, generic words removed (nameGenericWords), duplicates removed. "ST MARY MEDICAL CENTER" gives ["mary"].'''
+    '''The distinctive words of a facility name, as an array Column: "ST MARY MEDICAL CENTER" gives ["mary"].'''
     words = F.split(F.regexp_replace(F.lower(F.coalesce(col, F.lit(""))), r"[^a-z0-9]+", " "), " ")
     return F.array_except(F.array_distinct(words), F.array([F.lit(w) for w in [""] + nameGenericWords]))
 
 def get_nameScore(col1, col2):
-    '''How much two facility names agree, as a Column between 0 and 1: the distinctive words they share
-    (get_nameTokens) divided by the distinctive words of the shorter name, so 1 means every distinctive word of the
-    shorter name is in the other ("Maria Parham Health" and "MARIA PARHAM MEDICAL CENTER"), 0 means nothing in common or
-    a name made of generic words only.'''
+    '''How much two facility names agree, 0 to 1: shared distinctive words over the distinctive words of the shorter name.'''
     tokens1, tokens2 = get_nameTokens(col1), get_nameTokens(col2)
     shorter = F.least(F.size(tokens1), F.size(tokens2))
+    #1 means every distinctive word of the shorter name is in the other ("Maria Parham Health", "MARIA PARHAM MEDICAL CENTER"),
+    #0 nothing in common or a name made of generic words only
     return F.when(shorter > 0, F.size(F.array_intersect(tokens1, tokens2)) / shorter).otherwise(F.lit(0.0))
 
 def prep_jcAccreditationDF(jcDF, pathToData=None, filename=None, maxCalls=None, keyFilename=None, topProgramOnly=False,
                            excludePrograms=None, placesLookup=False):
-    '''Builds the parquet that get_data loads (filenames["jcAccreditation"]) from the raw joint commission export, a
-    one-off run in a notebook:
-        rawJcDF = spark.read.csv(pathToData + "/JOINT-COMMISSION/<export>.csv", header=True)
-        jcDF = prep_jcAccreditationDF(rawJcDF, pathToData=pathToData, filename=pathToData + "/JOINT-COMMISSION/jcAccreditation.parquet")
-    The export has one row per site and accreditation program (HCO ID, Organization Name, Organization Doing Business As
-    (DBA) Name, State, City, Street Address, Postal Code, Site Name, Site Doing Business As (DBA) Name, Program, Effective
-    Date, Status) and no CCN or NPI, so the sites are located by their address instead: jcSiteName (Site Name, falling
-    back to the site DBA name and then the organization name), jcState (the export spells the state out, jcState is the
-    usps abbreviation from usStateAbbreviations so it joins the POS STATE_CD; a 2-letter value passes through), jcZip,
-    jcAddress (built from the raw State column, which is the geocoding cache key and must not change), jcSearchName and
-    jcPlaceQuery (the site's public name, the site DBA name when there is one since the site name is often the legal
-    entity, eg "Sutter Bay Hospitals" for eight different hospitals, unless the DBA is only generic words such as
-    "Hospital" or "General Acute Care Hospital" (jcGenericNameWords), which would find any hospital, else the site name,
-    and that name with the state,
-    the Places text search key the address cannot replace because the address is the organization's, not the site's) and,
-    when pathToData is given, jcLat, jcLng, jcGeocodeLocationType, jcGeocodeFormattedAddress, jcGeocodePartialMatch,
-    jcGeocodeStatus (see geocoding.add_geocode_info). An address repeated across programs is geocoded once.
-    With placesLookup=True (and pathToData) the Places text search result for jcPlaceQuery is attached too, biased to
-    within 50 km of the address point (see geocoding.add_place_info): jcPlaceLat, jcPlaceLng, jcPlaceName,
-    jcPlaceAddress, jcPlaceTypes, jcPlaceStatus, jcPlaceIsHospital (the types include hospital), jcPlaceDistanceKm (how
-    far the place is from the address, ie how far the site is from its organization), and the site location to use,
-    jcSiteLat, jcSiteLng: the place when it was found and is typed as a care site (jcPlaceSiteTypes: hospital,
-    medical_center, medical_clinic, health; a freestanding emergency department or a campus often comes back typed
-    medical_clinic), else the address (jcSiteLocationSource is place or address). A place that is not a hospital is
-    safe to use as the site point because add_pos_ccn_info falls back to the organization's address when no hospital
-    is near it.
-    jcProgramRank orders the stroke certifications, matched regardless of case and of extra spaces (the export writes
-    "Stroke  Rehabilitation") by "stroke" plus a keyword in jcProgram (jcStrokeProgramRanking, "stroke" keeps eg Primary
-    Care Medical Home out): 1 comprehensive, 2 thrombectomy-capable,
-    3 primary, 4 acute stroke ready, 5 stroke rehabilitation, null for any other program. With topProgramOnly=True a site (jcHcoId, jcSiteName, jcAddress) keeps
-    one row, the one with the best jcProgramRank; a site with only other programs keeps one of them (first by jcProgram
-    alphabetically) with a null rank, so no site is lost. excludePrograms is a list of keywords: a row whose jcProgram
-    contains one of them (regardless of case) is dropped before that collapse, so eg ["stroke rehabilitation"] removes
-    the rehabilitation certification (rank 5, kept in the ranking so the rank values stay stable) and a site that had
-    only it. By default all rows are kept. The raw columns are renamed
-    (jcHcoId, jcOrganizationName, jcOrganizationDbaName, jcCity, jcStreetAddress, jcPostalCode, jcSiteDbaName,
-    jcProgram, jcEffectiveDate, jcStatus) because parquet does not allow spaces and parentheses in column names.
-    maxCalls (cost guard) and keyFilename (where the API key is, default pathToData/GEOCODING/key.csv) are passed to
-    geocode_addresses.'''
+    '''Builds the parquet that get_data loads (filenames["jcAccreditation"]) from the raw joint commission export of
+    accredited organizations, see scripts/03_geocode_jc.py. One row per site and program in the export; with
+    topProgramOnly each site keeps its top stroke program (jcProgramRank), excludePrograms drops programs by keyword
+    first. Adds the renamed raw columns (jc*), jcState, jcZip, jcAddress, jcSearchName, jcPlaceQuery, jcProgramRank and,
+    with pathToData, the geocoded address (jcLat, jcLng, jcGeocode*) and, with placesLookup, the place found for the site
+    name (jcPlace*) and the site location to use (jcSiteLat, jcSiteLng, jcSiteLocationSource).'''
+    #parquet does not allow spaces and parentheses in column names
     rawCols = {"HCO ID": "jcHcoId",
                "Organization Name": "jcOrganizationName",
                "Organization Doing Business As (DBA) Name": "jcOrganizationDbaName",
@@ -1182,14 +1134,21 @@ def prep_jcAccreditationDF(jcDF, pathToData=None, filename=None, maxCalls=None, 
     stateAbbreviation = F.create_map([F.lit(x) for x in chain(*usStateAbbreviations.items())])
     jcDF = (jcDF.withColumn("jcSiteName", F.coalesce(F.col("jcSiteName"), F.col("jcSiteDbaName"), F.col("jcOrganizationName")))
                 .withColumn("jcZip", F.substring(F.trim(F.col("jcPostalCode")), 1, 5)))
+    #the address is built from the raw (spelled out) state: it is the geocoding cache key and must not change
     jcDF = add_address(jcDF, "jcStreetAddress", "jcCity", "jcState", "jcZip", "jcAddress")
+    #the export spells the state out, the usps abbreviation joins the POS STATE_CD; a 2-letter value passes through
     jcDF = jcDF.withColumn("jcState", F.coalesce(stateAbbreviation[F.lower(F.trim(F.col("jcState")))],
                                                  F.upper(F.trim(F.col("jcState")))))
+    #the address is the organization's, not the site's, so the site is searched by its public name: the site DBA name when
+    #there is one (the site name is often the legal entity, eg "Sutter Bay Hospitals" for eight hospitals), unless the DBA is
+    #generic words only ("Hospital", "General Acute Care Hospital") which would find any hospital, else the site name
     dbaWords = F.split(F.regexp_replace(F.lower(F.coalesce(F.col("jcSiteDbaName"), F.lit(""))), r"[^a-z0-9']+", " "), " ")
     dbaIsSpecific = F.size(F.array_except(dbaWords, F.array([F.lit(w) for w in [""] + jcGenericNameWords]))) > 0
     siteDba = F.when(F.upper(F.trim(F.col("jcSiteDbaName"))).isin("", "N/A") | ~dbaIsSpecific, None).otherwise(F.trim(F.col("jcSiteDbaName")))
     jcDF = (jcDF.withColumn("jcSearchName", F.coalesce(siteDba, F.trim(F.col("jcSiteName"))))
                 .withColumn("jcPlaceQuery", F.concat_ws(", ", F.col("jcSearchName"), F.col("jcState"))))
+    #stroke programs are ranked by keyword (jcStrokeProgramRanking), case and extra spaces ignored (the export writes
+    #"Stroke  Rehabilitation"); requiring "stroke" keeps eg Primary Care Medical Home out; other programs get a null rank
     program = F.regexp_replace(F.lower(F.trim(F.col("jcProgram"))), r"\s+", " ")
     programRank = F.lit(None)
     for rank, keyword in reversed(list(enumerate(jcStrokeProgramRanking, start=1))):
@@ -1198,19 +1157,24 @@ def prep_jcAccreditationDF(jcDF, pathToData=None, filename=None, maxCalls=None, 
     for keyword in (excludePrograms or []):
         jcDF = jcDF.filter(~F.coalesce(program.contains(keyword.lower()), F.lit(False)))
     if topProgramOnly:
+        #a site with only non stroke programs keeps one of them (alphabetically first) so that no site is lost
         eachSite = Window.partitionBy("jcHcoId", "jcSiteName", "jcAddress").orderBy(F.asc_nulls_last("jcProgramRank"), "jcProgram")
         jcDF = jcDF.withColumn("programRow", F.row_number().over(eachSite)).filter(F.col("programRow")==1).drop("programRow")
     if pathToData is not None:
         jcDF = add_geocode_info(jcDF, "jcAddress", pathToData, "jc", maxCalls=maxCalls, keyFilename=keyFilename)
     if placesLookup:
+        #the name search is biased to within 50 km of the organization's address
         jcDF = add_place_info(jcDF, "jcPlaceQuery", pathToData, "jc", biasLatCol="jcLat", biasLngCol="jcLng",
                               maxCalls=maxCalls, keyFilename=keyFilename)
+        #the place is the site's point when it is typed as a care site (a freestanding ED or a campus often comes back
+        #medical_clinic rather than hospital), else the address is; a non hospital place is safe to use because
+        #add_pos_ccn_info falls back to the organization's address when no hospital is near it
         placeTypes = F.split(F.coalesce(F.col("jcPlaceTypes"), F.lit("")), ",")
         isHospital = F.array_contains(placeTypes, "hospital")
         isCareSite = F.size(F.array_intersect(placeTypes, F.array([F.lit(t) for t in jcPlaceSiteTypes]))) > 0
         usePlace = (F.col("jcPlaceStatus") == "OK") & isCareSite
         jcDF = (jcDF.withColumn("jcPlaceIsHospital", F.when(F.col("jcPlaceStatus") == "OK", isHospital.cast("int")))
-                    .withColumn("jcPlaceDistanceKm",
+                    .withColumn("jcPlaceDistanceKm", #how far the site is from its organization's address
                                 get_geodesicDistanceKm(F.col("jcLat"), F.col("jcLng"), F.col("jcPlaceLat"), F.col("jcPlaceLng")))
                     .withColumn("jcSiteLat", F.when(usePlace, F.col("jcPlaceLat")).otherwise(F.col("jcLat")))
                     .withColumn("jcSiteLng", F.when(usePlace, F.col("jcPlaceLng")).otherwise(F.col("jcLng")))
@@ -1220,17 +1184,9 @@ def prep_jcAccreditationDF(jcDF, pathToData=None, filename=None, maxCalls=None, 
     return jcDF
 
 def add_pos_nearest_info(jcDF, posDF, latCol="jcLat", lngCol="jcLng", prefix="posNearest"):
-    '''For every joint commission site (jcHcoId, jcSiteName, jcAddress, see prep_jcAccreditationDF) the nearest POS
-    hospital in the same state by geodesic distance from the site point in latCol/lngCol: {prefix}Ccn, {prefix}FacName
-    (for eyeballing only, names play no part), {prefix}DistanceKm, {prefix}Active (see posActive) and
-    {prefix}GeocodeLocationType (how precise the hospital's coordinate is), and the runner up, {prefix}SecondCcn,
-    {prefix}SecondFacName, {prefix}SecondDistanceKm, {prefix}SecondActive: a second hospital about as close as the
-    first (same campus, a successor CCN at the same address) means the nearest one is not certain to be the site.
-    Closed hospitals compete too, at equal distance the active one is preferred. posDF is used as given, so filter it
-    first (eg to posHospitalType acute and cah). The join is blocked on the state (jcState == STATE_CD) to avoid a
-    full cross join, so a site whose nearest hospital is across a state line is shown its nearest in-state hospital
-    instead. A site without coordinates, or in a state without geocoded hospitals, keeps nulls; every row of jcDF is
-    kept. The prefix lets the lookup run twice, from the site's own point and from its organization's address.'''
+    '''For every joint commission site the nearest and second nearest POS hospital in the same state from the point in
+    latCol/lngCol: {prefix}Ccn, FacName, DistanceKm, Active, GeocodeLocationType and {prefix}Second{Ccn, FacName,
+    DistanceKm, Active}. posDF is used as given, filter it first. Every row of jcDF is kept.'''
     siteKey = ["jcHcoId", "jcSiteName", "jcAddress"]
     ccn, facName, distance, active, geocodeType = (f"{prefix}Ccn", f"{prefix}FacName", f"{prefix}DistanceKm",
                                                     f"{prefix}Active", f"{prefix}GeocodeLocationType")
@@ -1239,11 +1195,14 @@ def add_pos_nearest_info(jcDF, posDF, latCol="jcLat", lngCol="jcLng", prefix="po
     hospitalsDF = (posDF.filter((F.col("posHospital")==1) & F.col("posLat").isNotNull())
                         .select(F.col("STATE_CD").alias("jcState"),
                                 F.col("PRVDR_NUM").alias(ccn),
-                                F.col("FAC_NAME").alias(facName),
+                                F.col("FAC_NAME").alias(facName), #for eyeballing only, names play no part
                                 F.col("posActive").alias(active),
                                 F.col("posGeocodeLocationType").alias(geocodeType),
                                 F.col("posLat"), F.col("posLng")))
+    #at equal distance (a successor CCN at the same address) the active hospital is preferred
     eachSite = Window.partitionBy(siteKey).orderBy(distance, F.desc(active), ccn)
+    #blocked on the state to avoid a full cross join, so a site whose nearest hospital is across a state line gets its
+    #nearest in-state one; the second nearest says whether the nearest is certain to be the site (same campus, successor CCN)
     nearestDF = (jcDF.filter(F.col(latCol).isNotNull())
                      .select(*siteKey, "jcState", F.col(latCol).alias("siteLat"), F.col(lngCol).alias("siteLng")).distinct()
                      .join(hospitalsDF, on=["jcState"], how="inner")
@@ -1261,34 +1220,19 @@ def add_pos_nearest_info(jcDF, posDF, latCol="jcLat", lngCol="jcLng", prefix="po
     return jcDF
 
 def add_pos_ccn_info(jcDF, posDF, maxDistanceKm=0.5, tieDistanceKm=0.1, relaxedDistanceKm=5.0, nameScoreMin=1.0, overridesDF=None):
-    '''Assigns each joint commission site the CCN of the POS hospital it is, from the geocoded locations alone, no
-    names and no hand review. In simple words: where is the site? (jcSiteLat/jcSiteLng from prep_jcAccreditationDF:
-    the spot Google found for the site's name when that spot is a hospital, else the organization's address); which
-    hospital is there? (the nearest hospital of posDF in the same state within maxDistanceKm, and when another one is
-    within tieDistanceKm of it the open one is preferred, see add_pos_nearest_info); nothing there? (when the site's
-    own spot found nothing, try again from the organization's address: a campus that bills under its parent, such as
-    NewYork-Presbyterian Allen under 330101, is listed by CMS only at the parent's address, so that is where it is
-    found); still nothing? (as a last resort, and the only place a name is used: the hospital within relaxedDistanceKm
-    of the site's spot whose name contains every distinctive word of the shorter of the two names, get_nameScore equal
-    to nameScoreMin, ties by distance; this recovers hospitals whose POS coordinate is off, a PO box address, a partial
-    geocode or a move to a new building, and on the Dec 2022 data it recovered 18 of 38 unmatched sites with no error,
-    while any looser score admitted wrong hospitals); still nothing? (no CCN). Pass posDF filtered to the hospitals
-    that can be the site: posHospitalType acute
-    and cah, and posActive 1 since the joint commission list is current so every site bills under an open CCN (a
-    retired CCN at a campus, eg Presbyterian Hospital 330012 at the Columbia campus, must not win over the parent's). overridesDF, optional, holds hand picked exceptions, rows of jcHcoId, jcSiteName, keepCcn (blank for no
-    CCN) that replace the rule's answer.
-    Adds posNearest* and posParentNearest* (the two lookups, for inspection), posCcn, posCcnFacName (eyeballing only),
-    posCcnDistanceKm, posCcnActive, posCcnPass (site, parent, named, null: which lookup it came from), posMatchMethod
-    (nearestSite: found at the spot Google gave for the site's name; nearestParent: found at the organization's address,
-    either because the site's own spot had nothing or because the name search gave nothing usable and the address was
-    all there was; nearestNamed; override; none), posCcnNameScore (the name score, only for nearestNamed, so
-    the name based assignments can be set aside downstream) and posMatchAmbiguous (1 when another hospital was within tieDistanceKm
-    of the chosen one, so the choice rested on the tie break). Every row of jcDF is kept; several sites may share a
-    CCN (campuses under one Medicare provider agreement). The distance is kept so that a stricter cutoff can be
-    applied downstream.'''
+    '''Assigns each joint commission site the CCN of the POS hospital it is: the nearest hospital of posDF within
+    maxDistanceKm of the site's own point (nearestSite), else of its organization's address (nearestParent), else within
+    relaxedDistanceKm with a matching name (nearestNamed), else none; overridesDF (jcHcoId, jcSiteName, keepCcn) replaces
+    single answers. Pass posDF filtered to active acute and cah hospitals. Adds posNearest*, posParentNearest*, posCcn,
+    posCcnFacName, posCcnDistanceKm, posCcnActive, posCcnPass, posMatchMethod, posMatchAmbiguous, posCcnNameScore.
+    Every row of jcDF is kept; several sites may share a CCN (campuses under one provider agreement).'''
     if "jcSiteLat" not in jcDF.columns:
         jcDF = (jcDF.withColumn("jcSiteLat", F.col("jcLat")).withColumn("jcSiteLng", F.col("jcLng"))
                     .withColumn("jcSiteLocationSource", F.lit("address")))
+    #two lookups: from the site's own point and from the organization's address. A campus that bills under its parent
+    #(NewYork-Presbyterian Allen under 330101) is listed by CMS only at the parent's address, so when nothing is at the
+    #site's point the parent's address is tried; a retired CCN at a campus (Presbyterian Hospital 330012 at Columbia)
+    #must not win over the parent's, which is why posDF should hold active hospitals only
     jcDF = add_pos_nearest_info(jcDF, posDF, latCol="jcSiteLat", lngCol="jcSiteLng", prefix="posNearest")
     jcDF = add_pos_nearest_info(jcDF, posDF, latCol="jcLat", lngCol="jcLng", prefix="posParentNearest")
     siteHit = (F.col("jcSiteLocationSource") == "place") & (F.col("posNearestDistanceKm") <= maxDistanceKm)
@@ -1300,16 +1244,21 @@ def add_pos_ccn_info(jcDF, posDF, maxDistanceKm=0.5, tieDistanceKm=0.1, relaxedD
                  .when(F.col("posMatchMethod") == "nearestParent", F.col(parentCol)))
     jcDF = (jcDF.withColumn("posCcn", pick("posNearestCcn", "posParentNearestCcn"))
                 .withColumn("posCcnFacName", pick("posNearestFacName", "posParentNearestFacName"))
-                .withColumn("posCcnDistanceKm", pick("posNearestDistanceKm", "posParentNearestDistanceKm"))
+                .withColumn("posCcnDistanceKm", pick("posNearestDistanceKm", "posParentNearestDistanceKm")) #kept for a stricter cutoff downstream
                 .withColumn("posCcnActive", pick("posNearestActive", "posParentNearestActive"))
                 .withColumn("posCcnPass", F.when(F.col("posMatchMethod") == "nearestSite", "site")
                                            .when(F.col("posMatchMethod") == "nearestParent", "parent"))
+                #ambiguous: another hospital within tieDistanceKm of the chosen one, so the choice rested on the tie break
                 .withColumn("posMatchAmbiguous",
                             F.when(F.col("posMatchMethod") == "nearestSite",
                                    (F.col("posNearestSecondDistanceKm") <= tieDistanceKm).cast("int"))
                              .when(F.col("posMatchMethod") == "nearestParent",
                                    (F.col("posParentNearestSecondDistanceKm") <= tieDistanceKm).cast("int")))
                 .withColumn("posMatchAmbiguous", F.when(F.col("posCcn").isNotNull(), F.coalesce(F.col("posMatchAmbiguous"), F.lit(0)))))
+    #last resort and the only place a name is used: for the sites still unmatched, the hospital within relaxedDistanceKm
+    #whose name contains every distinctive word of the shorter name (get_nameScore of nameScoreMin), ties by distance.
+    #This recovers hospitals whose POS coordinate is off (PO box address, partial geocode, a move to a new building);
+    #on the Dec 2022 data it recovered 18 of 38 unmatched sites with no error, any looser score admitted wrong hospitals
     siteKey = ["jcHcoId", "jcSiteName", "jcAddress"]
     hospitalsDF = (posDF.filter((F.col("posHospital")==1) & F.col("posLat").isNotNull())
                         .select(F.col("STATE_CD").alias("jcState"), F.col("PRVDR_NUM").alias("namedCcn"),
@@ -1336,9 +1285,10 @@ def add_pos_ccn_info(jcDF, posDF, maxDistanceKm=0.5, tieDistanceKm=0.1, relaxedD
                 .withColumn("posCcnPass", F.when(named, "named").otherwise(F.col("posCcnPass")))
                 .withColumn("posMatchMethod", F.when(named, "nearestNamed").otherwise(F.col("posMatchMethod")))
                 .withColumn("posMatchAmbiguous", F.when(named, F.lit(0)).otherwise(F.col("posMatchAmbiguous")))
-                .withColumn("posCcnNameScore", F.when(named, F.col("namedScore")))
+                .withColumn("posCcnNameScore", F.when(named, F.col("namedScore"))) #only the name based assignments carry a score
                 .drop("namedCcn", "namedFacName", "namedDistanceKm", "namedActive", "namedScore"))
     if overridesDF is not None:
+        #hand picked exceptions, a blank keepCcn means no CCN
         hospitalsDF = posDF.select(F.col("PRVDR_NUM").alias("keepCcn"), F.col("FAC_NAME").alias("keepFacName"),
                                    F.col("posActive").alias("keepActive"))
         overridesDF = (overridesDF.select("jcHcoId", "jcSiteName", F.trim(F.col("keepCcn")).alias("keepCcn"), F.lit(1).alias("overridden"))
@@ -1359,16 +1309,11 @@ def add_pos_ccn_info(jcDF, posDF, maxDistanceKm=0.5, tieDistanceKm=0.1, relaxedD
     return jcDF
 
 def get_ccn_jc_info(jcDF):
-    '''One row per CCN that received at least one joint commission site (see add_pos_ccn_info): jcSites (how many
-    sites, campuses under one provider agreement), jcBestProgramRank and jcBestProgram (the highest stroke certification
-    among them, see prep_jcAccreditationDF), jcBestProgramSite and jcBestProgramMatchMethod (the site that holds that
-    certification and how it was assigned to the CCN, the measure of how sure the certification is the CCN's:
-    nearestSite, a hospital sits where Google puts the site's name; nearestParent, a campus folded into the parent's
-    CCN, so the provider as a whole is credited with a campus's certification; nearestNamed, rests on a name match),
-    jcSiteNames, jcMatchMethods (every method among the CCN's sites), jcMaxCcnDistanceKm and jcCertificationConfidence,
-    the two folded into one ordinal scale: 4 nearestSite and the CCN's only site, 3 nearestSite but other sites share
-    the CCN, 2 nearestParent (or an override), 1 nearestNamed. This is what the claims join on PROVIDER: a stroke
-    transfer to any campus of the provider shows the same CCN.'''
+    '''One row per CCN that received a joint commission site (see add_pos_ccn_info), the table the claims join on
+    PROVIDER: jcSites, jcBestProgramRank, jcBestProgram, jcBestProgramSite, jcBestProgramMatchMethod, jcSiteNames,
+    jcMatchMethods, jcMaxCcnDistanceKm, jcCertificationConfidence.'''
+    #the best program is the highest stroke certification among the CCN's sites: a stroke transfer to any campus of the
+    #provider shows the same CCN
     eachCcn = Window.partitionBy("posCcn").orderBy(F.asc_nulls_last("jcProgramRank"), "jcProgram", "jcSiteName")
     ccnDF = (jcDF.filter(F.col("posCcn").isNotNull())
                  .withColumn("bestRow", F.row_number().over(eachCcn))
@@ -1381,6 +1326,9 @@ def get_ccn_jc_info(jcDF):
                       F.collect_list("jcSiteName").alias("jcSiteNames"),
                       F.array_sort(F.collect_set("posMatchMethod")).alias("jcMatchMethods"),
                       F.max("posCcnDistanceKm").alias("jcMaxCcnDistanceKm")))
+    #how sure the certification is the CCN's, from how the site holding it was assigned and whether other sites share the CCN:
+    #4 a hospital sits where Google puts the site's name and it is the CCN's only site, 3 same but other sites share the CCN,
+    #2 a campus folded into the parent's CCN (or an override), 1 rests on a name match
     ccnDF = ccnDF.withColumn("jcCertificationConfidence",
                              F.when((F.col("jcBestProgramMatchMethod") == "nearestSite") & (F.col("jcSites") == 1), 4)
                               .when(F.col("jcBestProgramMatchMethod") == "nearestSite", 3)
