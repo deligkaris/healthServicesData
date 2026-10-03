@@ -273,6 +273,8 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #accredited organizations export from the joint commission website, the parquet is built once by prep_jcAccreditationDF
     #from the raw csv (same folder) and carries the geocoded coordinates of the sites, see prep_jcAccreditationDF
     filenames["jcAccreditation"] = [pathToData + "/JOINT-COMMISSION/jcAccreditation.parquet"]
+    #one row per CCN with its best stroke certification, built by scripts/04_match_jc_pos.py from the two parquets above
+    filenames["ccnStrokeCertification"] = [pathToData + "/JOINT-COMMISSION/ccnStrokeCertification.parquet"]
 
     #hcup, procedure classes for ICD10
     #https://hcup-us.ahrq.gov/toolssoftware/procedureicd10/procedure_icd10.jsp?
@@ -299,7 +301,7 @@ def read_data(spark, filenames):
 
 def read_and_prep_dataframe(filename, file, spark):
 
-    if file in ["hcris", "pos", "jcAccreditation"]:
+    if file in ["hcris", "pos", "jcAccreditation", "ccnStrokeCertification"]:
         return spark.read.parquet(filename)
 
     df = spark.read.csv(filename, header=True)

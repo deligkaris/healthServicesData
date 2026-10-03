@@ -2550,3 +2550,27 @@ class TestAddProviderHrrInfo:
     def test_row_count_unchanged(self, spark):
         out = self._run(spark, [(1, "00501", 2019), (2, "99999", 2019), (3, None, 2019)])
         assert len(out) == 3
+
+
+# ============================================================
+# add_provider_stroke_certification_info
+# ============================================================
+
+class TestAddProviderStrokeCertificationInfo:
+
+    def test_join_on_provider(self, spark):
+        from cms.base import add_provider_stroke_certification_info
+        base = spark.createDataFrame([("360001", 2019), ("360001", 2020), ("360002", 2019), ("360003", 2019)],
+                                     "PROVIDER string, THRU_DT_YEAR int")
+        ccn = spark.createDataFrame([("360001", 2, "Advanced Comprehensive Stroke Center", 3),
+                                     ("360002", 1, "Primary Stroke Center", 4)],
+                                    "posCcn string, jcSites int, jcBestProgram string, jcCertificationConfidence int")
+        result = add_provider_stroke_certification_info(base, ccn)
+        rows = {(r["PROVIDER"], r["THRU_DT_YEAR"]): r for r in result.collect()}
+        assert len(rows) == 4
+        assert rows[("360001", 2019)]["providerStrokeCertification"] == "Advanced Comprehensive Stroke Center"
+        assert rows[("360001", 2020)]["providerStrokeCertificationConfidence"] == 3 and rows[("360001", 2020)]["providerStrokeCertificationSites"] == 2
+        assert rows[("360002", 2019)]["providerStrokeCertification"] == "Primary Stroke Center"
+        assert rows[("360003", 2019)]["providerStrokeCertification"] is None
+        assert "posCcn" not in result.columns
+        assert all(c[0].islower() for c in set(result.columns) - set(base.columns))

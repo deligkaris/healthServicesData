@@ -940,6 +940,7 @@ def add_provider_info(baseDF, data):
     #baseDF = add_cbi_info(baseDF, cbiDF)
     baseDF = add_aha_info(baseDF, data["aha"])
     baseDF = add_hcris_info(baseDF, data["hcris"])
+    baseDF = add_provider_stroke_certification_info(baseDF, data["ccnStrokeCertification"])
     baseDF = add_provider_system_info(baseDF, data["chspHosp"])
     baseDF = add_providerCmi(baseDF, data["cmi"])
     baseDF = add_providerIn50StatesOrDc(baseDF)
@@ -1821,6 +1822,20 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
     selectCols = [(F.col(src) if src in ahaDF.columns else F.lit(None)).alias(alias) for (src,alias) in ahaCols]
     baseDF = baseDF.join(ahaDF.select(selectCols),
                          on=["PROVIDER","THRU_DT_YEAR"],
+                         how="left_outer")
+    return baseDF
+
+def add_provider_stroke_certification_info(baseDF, ccnDF):
+    '''Adds the provider's joint commission stroke certification from the per CCN table of utilities.get_ccn_jc_info
+    (see scripts/04_match_jc_pos.py): providerStrokeCertification (the best program among the sites assigned to the
+    CCN, eg Advanced Comprehensive Stroke Center, null for a provider with none), providerStrokeCertificationConfidence
+    (4 to 1, see jcCertificationConfidence) and providerStrokeCertificationSites (how many sites share the CCN).'''
+    #the certification list is current (2025) with no history, so the same value applies to every claim year
+    baseDF = baseDF.join(ccnDF.select(F.col("posCcn").alias("PROVIDER"),
+                                      F.col("jcBestProgram").alias("providerStrokeCertification"),
+                                      F.col("jcCertificationConfidence").alias("providerStrokeCertificationConfidence"),
+                                      F.col("jcSites").alias("providerStrokeCertificationSites")),
+                         on=["PROVIDER"],
                          how="left_outer")
     return baseDF
 
