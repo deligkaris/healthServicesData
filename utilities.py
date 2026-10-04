@@ -270,10 +270,9 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     #joint commission website
     filenames["strokeCentersJC"] = [pathToData + "/JOINT-COMMISSION/StrokeCertificationList.csv"]
-    #accredited organizations export from the joint commission website, the parquet is built once by prep_jcAccreditationDF
-    #from the raw csv (same folder) and carries the geocoded coordinates of the sites, see prep_jcAccreditationDF
-    filenames["jcAccreditation"] = [pathToData + "/JOINT-COMMISSION/jcAccreditation.parquet"]
-    #one row per CCN with its best stroke certification, built by scripts/04_match_jc_pos.py from the two parquets above
+    #one row per CCN with its joint commission stroke certification, built by scripts/01-04 from the pos parquet and the
+    #accredited organizations export of the joint commission website (the site level jcAccreditation.parquet those
+    #scripts also write is an input of the match and an audit trail, not loaded here)
     filenames["ccnStrokeCertification"] = [pathToData + "/JOINT-COMMISSION/ccnStrokeCertification.parquet"]
 
     #hcup, procedure classes for ICD10
@@ -301,7 +300,7 @@ def read_data(spark, filenames):
 
 def read_and_prep_dataframe(filename, file, spark):
 
-    if file in ["hcris", "pos", "jcAccreditation", "ccnStrokeCertification"]:
+    if file in ["hcris", "pos", "ccnStrokeCertification"]:
         return spark.read.parquet(filename)
 
     df = spark.read.csv(filename, header=True)
@@ -1003,8 +1002,8 @@ def get_nameScore(col1, col2):
 
 def prep_jcAccreditationDF(jcDF, pathToData=None, filename=None, maxCalls=None, keyFilename=None, topProgramOnly=False,
                            excludePrograms=None, placesLookup=False):
-    '''Builds the parquet that get_data loads (filenames["jcAccreditation"]) from the raw joint commission export of
-    accredited organizations, see scripts/03_geocode_jc.py. One row per site and program in the export; with
+    '''Builds jcAccreditation.parquet, one row per joint commission site, from the raw export of accredited
+    organizations, see scripts/03_geocode_jc.py; scripts/04_match_jc_pos.py reads it to build the per CCN table get_data loads. One row per site and program in the export; with
     topProgramOnly each site keeps its top stroke program (jcProgramRank), excludePrograms drops programs by keyword
     first. Adds the renamed raw columns (jc*), jcState, jcZip, jcAddress, jcSearchName, jcPlaceQuery, jcProgramRank and,
     with pathToData, the geocoded address (jcLat, jcLng, jcGeocode*) and, with placesLookup, the place found for the site

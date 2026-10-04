@@ -1,5 +1,5 @@
-'''Builds jcAccreditation.parquet, the processed joint commission accredited organizations export that get_data loads
-(filenames["jcAccreditation"]): one row per site with its top stroke certification, the geocoded address of its
+'''Builds jcAccreditation.parquet, the processed joint commission accredited organizations export that
+scripts/04_match_jc_pos.py reads: one row per site with its top stroke certification, the geocoded address of its
 organization and the place Google found for the site's own name (see utilities.prep_jcAccreditationDF).
 
 Usage: python scripts/03_geocode_jc.py [--jc jc.csv] [--data /path/to/DATA] [--key key.csv] [--out jcAccreditation.parquet]
