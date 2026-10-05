@@ -146,8 +146,10 @@ def add_address(DF, streetCol, cityCol, stateCol, zipCol, addressCol):
     def clean(col):
         return F.regexp_replace(F.upper(F.trim(F.col(col))), r"\s{2,}", " ")
     zip5 = F.substring(F.trim(F.col(zipCol)), 1, 5)
+    stateZip = F.concat_ws(" ", clean(stateCol), zip5)
+    #concat_ws skips nulls but not the empty string a state and zip both null produce, hence the when
     DF = DF.withColumn(addressCol,
-                       F.concat_ws(", ", clean(streetCol), clean(cityCol), F.concat_ws(" ", clean(stateCol), zip5)))
+                       F.concat_ws(", ", clean(streetCol), clean(cityCol), F.when(stateZip != "", stateZip)))
     return DF
 
 def get_geocode_schema(prefix):
