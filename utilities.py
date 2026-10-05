@@ -1189,13 +1189,14 @@ def add_pos_ccn_info(jcDF, posDF, maxDistanceKm=0.5, tieDistanceKm=0.1, relaxedD
     return jcDF
 
 #The joint commission stroke certifications reach the claims as follows (scripts/01-04). The export of certified sites
-#carries no CCN, so sites are linked to POS hospitals by location, not by name: the POS hospital addresses are geocoded
-#(01), each site's organization address is geocoded and, because that address is the organization's rather than the
-#site's, the site's public name is searched with the Places API (02), the results are attached and one row per site with
-#its top stroke program is written (03, prep_jcAccreditationDF), and each site is assigned the nearest active acute or
-#critical access hospital within 0.5 km of its own point, else of its organization's address (a campus billing under its
-#parent), else, name checked, within 5 km (04, add_pos_ccn_info). get_ccn_jc_info then folds the sites into one row per
-#CCN, the ccnStrokeCertification parquet get_data loads and base.add_provider_stroke_certification_info joins on PROVIDER.
+#carries no CCN, so a site is matched to the POS hospital whose geocoded point is nearest to the site's; names are not
+#compared between the two sources except as a last resort. The POS hospital addresses are geocoded (01). The export's
+#address is the organization's, not the site's, so the site's own point comes from searching its public name with the
+#Places API, with the organization address geocoded as the fallback (02); both are attached and one row per site with
+#its top stroke program is written (03, prep_jcAccreditationDF). Each site then gets the nearest active acute or critical
+#access hospital within 0.5 km of its own point, else of its organization's address (a campus billing under its parent),
+#else within 5 km when the names agree (04, add_pos_ccn_info). get_ccn_jc_info folds the sites into one row per CCN,
+#the ccnStrokeCertification parquet get_data loads and base.add_provider_stroke_certification_info joins on PROVIDER.
 def get_ccn_jc_info(jcDF):
     '''One row per CCN that received a joint commission site (see add_pos_ccn_info), the table the claims join on
     PROVIDER: jcSites, jcBestProgramRank, jcBestProgram, jcBestProgramSite, jcBestProgramMatchMethod, jcSiteNames,
