@@ -16,6 +16,10 @@ PySpark functions for CMS and other health services-related data management.
 - When there are more than one dataframe arguments, then this is probably done using a join pyspark command or a command 
    that requires data shuffle (larger computational load)
 - Explanations and references for the methods implemented are included on the code, when available
+- Modules are imported with an F suffix, both inside the library and in analysis scripts: `import cms.base as baseF`,
+  `import cms.stays as staysF`, `import utilities as utilitiesF`, `import cms.utilities as cmsUtilitiesF`. The F stands
+  for functions and keeps the module name apart from the dataframes it operates on (`baseF.add_ishStroke(ipBase)`),
+  and tells the two utilities modules apart. It is unrelated to `pyspark.sql.functions as F`
 
 Examples:
 
