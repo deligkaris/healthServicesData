@@ -208,6 +208,7 @@ get_data_dictionary <- function() {
     "ahaSize",         "AHA bed-size category (0=<100,1=100-399,2=>=400, NULL=missing)",
     "ahaOwner",        "Ownership (0=govt non-fed,1=nonprofit,2=for-profit,3=govt federal)",
     "ahaCbsaType",     "CBSA type (0=metro,1=micro,2=rural)",
+    "ahaCOTH",         "Member of the AAMC Council of Teaching Hospitals (0/1, raw field MAPP8)",
     "ahaNisTeachingHospital","NIS teaching hospital (1 if COTH/ACGME/resident-to-bed>=0.25)",
     "ahaResidentToBedRatio","FTE residents-to-beds ratio",
     "ahaBedsIcu",      "Medical/surgical ICU bed count (AHA)",

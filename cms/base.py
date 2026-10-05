@@ -1813,6 +1813,7 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                ("ahaSize","ahaSize"),
                ("ahaOwner","ahaOwner"),
                ("ahaCbsaType","ahaCbsaType"),
+               ("ahaCOTH","ahaCOTH"),                             #member of the AAMC council of teaching hospitals
                ("ahaNisTeachingHospital","ahaNisTeachingHospital"),
                ("ahaResidentToBedRatio","ahaResidentToBedRatio"),
                ("ahaBedsIcu","ahaBedsIcu"),
