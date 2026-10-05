@@ -1089,8 +1089,10 @@ def add_pos_nearest_info(jcDF, posDF, latCol="jcLat", lngCol="jcLng", prefix="po
                                 F.col("posLat"), F.col("posLng")))
     #at equal distance (a successor CCN at the same address) the active hospital is preferred
     eachSite = Window.partitionBy(siteKey).orderBy(distance, F.desc(active), ccn)
-    #blocked on the state to avoid a full cross join, so a site whose nearest hospital is across a state line gets its
-    #nearest in-state one; the second nearest says whether the nearest is certain to be the site (same campus, successor CCN)
+    #joined on the state rather than every site against every hospital: no api call is involved, the coordinates are already
+    #in the parquets, but a full cross join is ~1.5k sites x ~9k hospitals = ~14 million distances where the state block is a
+    #few hundred per site. The price is that a site whose nearest hospital is across a state line gets its nearest in-state
+    #one. The second nearest says whether the nearest is certain to be the site (same campus, successor CCN)
     nearestDF = (jcDF.filter(F.col(latCol).isNotNull())
                      .select(*siteKey, "jcState", F.col(latCol).alias("siteLat"), F.col(lngCol).alias("siteLng")).distinct()
                      .join(hospitalsDF, on=["jcState"], how="inner")
