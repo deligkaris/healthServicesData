@@ -24,11 +24,12 @@ Examples:
 
 ## Linking Joint Commission stroke centers to CMS hospitals (scripts/)
 
-The Joint Commission export of stroke-certified sites carries no CCN, so sites are linked to the CMS Provider of
-Services (POS) hospitals by location rather than by name. `scripts/01_geocode_pos.py` geocodes the POS hospital
-addresses with the Google Geocoding API and builds `pos.parquet`; `scripts/02_lookup_jc.py` geocodes the export's
-addresses and, because those are the accredited organization's rather than the site's, also searches each site's public
-name with the Google Places API, filling two caches under `DATA/GEOCODING` so every paid lookup happens once;
+The Joint Commission export of stroke-certified sites carries no CCN, so a site is matched to the CMS Provider of
+Services (POS) hospital whose geocoded point is nearest the site's; names are not compared between the two sources
+except as a last resort. `scripts/01_geocode_pos.py` geocodes the POS hospital addresses with the Google Geocoding API
+and builds `pos.parquet`; `scripts/02_lookup_jc.py` geocodes the export's addresses and, because those are the accredited
+organization's rather than the site's, locates each site by searching its public name with the Google Places API,
+filling two caches under `DATA/GEOCODING` so every paid lookup happens once;
 `scripts/03_geocode_jc.py` attaches both results and builds `jcAccreditation.parquet` (one row per site, its top stroke
 certification); `scripts/04_match_jc_pos.py` assigns each site the nearest active acute or critical access hospital
 within 0.5 km of the point found for its name (`nearestSite`), else within 0.5 km of the organization's address, which
