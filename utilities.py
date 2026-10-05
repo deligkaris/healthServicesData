@@ -794,7 +794,6 @@ def prep_aamcHospitalsDF(aamcHospitalsDF):
 def add_processed_name(DF,colToProcess="providerName"):
 
     processedCol = colToProcess + "Processed"
-
     DF = (DF.withColumn(processedCol, 
                              F.regexp_replace(
                                  F.trim( F.lower(F.col(colToProcess)) ), r"\'s|\&|\.|\,| llc| inc| ltd| lp| lc|\(|\)| program", "") ) #replace with nothing
@@ -826,13 +825,11 @@ def prep_acgmeProgramsDF(acgmeProgramsDF):
     return acgmeProgramsDF
 
 def add_acgmeSitesInZip(acgmeSitesDF):
-
     eachZip = Window.partitionBy("institutionZip")
     acgmeSitesDF = acgmeSitesDF.withColumn("acgmeSitesInZip", F.collect_set( F.col("institutionNameProcessed")).over(eachZip)) 
     return acgmeSitesDF
 
 def add_acgmeProgramsInZip(acgmeProgramsDF):
-
     eachZip = Window.partitionBy("programZip")
     acgmeProgramsDF = acgmeProgramsDF.withColumn("acgmeProgramsInZip", F.collect_set( F.col("programNameProcessed")).over(eachZip)) 
     return acgmeProgramsDF
@@ -901,9 +898,7 @@ def add_gach(npiProvidersDF, primary=True):
     #GACH: general acute care hospital
     # https://taxonomy.nucc.org/?searchTerm=282N00000X&searchButton=search
     # all of them are listed here: https://taxonomy.nucc.org/
-
     gachTaxonomyCodes = ["282N00000X"] #my definition of general acute care hospitals
-
     if (primary):
         gachTaxonomyCondition = 'F.col("primaryTaxonomy").isin(gachTaxonomyCodes)'
     else:
@@ -963,20 +958,15 @@ def prep_npiProvidersDF(npiProvidersDF):
     return npiProvidersDF
 
 def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
-
     #note on data: the column name is CCN however some rows include 5 digit long codes and those cannot be CCN numbers 
     #(I checked the CMS documentation), the 5 digit long codes may be state IDs (the methods of their paper include
     #finding stroke centers from state data) or may be something else....
-
     strokeCentersCamargoDF = strokeCentersCamargoDF.select( F.col("CCN") ).distinct() #CCN 220074 appears twice for some reason... 
-
     #they probably used excel to get the list and excel removed 0 at the beginning of the CCN strings....
     strokeCentersCamargoDF = strokeCentersCamargoDF.withColumn("CCN",
                                                                F.when( F.length(F.col("CCN"))==5, F.concat(F.lit("0"),F.col("CCN")))
                                                                 .otherwise(F.col("CCN")))
-
     strokeCentersCamargoDF = strokeCentersCamargoDF.withColumn("strokeCenterCamargo", F.lit(1))
-
     return strokeCentersCamargoDF
 
 def prep_strokeCentersJCDF(strokeCentersJCDF):
@@ -1227,22 +1217,16 @@ def get_ccn_jc_info(jcDF):
     return ccnDF
 
 def add_ccn_from_pos(DF,posDF, providerZip="providerZip",providerName="providerNameProcessed"): #assumes a zipCode column, providerNameProcessed
-
     DF = DF.join(posDF
                      .select(F.col("FAC_NAMEProcessed"),F.col("ZIP_CD"),F.col("PRVDR_NUM")),
                  on=[F.col("ZIP_CD")==F.col(f"{providerZip}")],
                  how="inner")
-
     DF = DF.withColumn("levenshteinDistance",
                        F.levenshtein(F.col(f"{providerName}"), F.col("FAC_NAMEProcessed")))
-
     eachZip = Window.partitionBy(f"{providerZip}")
-
     DF = DF.withColumn("minLevenshteinDistance",
                        F.min(F.col("levenshteinDistance")).over(eachZip))
-
     DF = DF.filter(F.col("minLevenshteinDistance")==F.col("levenshteinDistance"))
-
     return DF
 
 def run_data_tests(data):
