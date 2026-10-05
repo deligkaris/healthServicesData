@@ -376,20 +376,19 @@ class TestJcProgramRank:
         monkeypatch.setattr(geocoding, "geocode_addresses", fake_geocode_addresses)
         result = prep_jcAccreditationDF(self._df(spark), pathToData=str(tmp_path), topProgramOnly=True)
         rows = {r["jcHcoId"]: r for r in result.collect()}
-        assert len(rows) == 7
+        assert set(rows) == {"1", "3", "4", "5", "7"}
         assert rows["1"]["jcProgram"] == "Advanced Comprehensive Stroke Center" and rows["1"]["jcEffectiveDate"] == "01/01/2021"
-        assert rows["2"]["jcProgram"] == "Ambulatory Care" and rows["2"]["jcProgramRank"] is None
         assert rows["3"]["jcProgram"] == "Acute Stroke Ready Hospital"
         assert rows["4"]["jcProgram"] == "thrombectomy-capable stroke center"
-        assert rows["5"]["jcProgramRank"] == 5 and rows["6"]["jcProgramRank"] is None
+        assert rows["5"]["jcProgramRank"] == 5
         assert rows["7"]["jcProgram"] == "Primary Stroke Center"
-        assert len(seen) == 7 and all(rows[h]["jcLat"] == 39.96 for h in rows)
+        assert len(seen) == 5 and all(rows[h]["jcLat"] == 39.96 for h in rows)
 
     def test_excludePrograms_drops_rows_before_collapse(self, spark):
         from utilities import prep_jcAccreditationDF
         result = prep_jcAccreditationDF(self._df(spark), topProgramOnly=True, excludePrograms=["Stroke Rehabilitation"])
         rows = {r["jcHcoId"]: r for r in result.collect()}
-        assert set(rows) == {"1", "2", "3", "4", "6", "7"}
+        assert set(rows) == {"1", "3", "4", "7"}
         assert rows["7"]["jcProgram"] == "Primary Stroke Center"
         allRows = prep_jcAccreditationDF(self._df(spark), excludePrograms=["stroke rehabilitation"]).collect()
         assert len(allRows) == 10 and not any("Rehabilitation" in r["jcProgram"] for r in allRows)

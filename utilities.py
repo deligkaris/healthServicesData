@@ -515,18 +515,14 @@ def prep_ahaDF(ahaDF, filename):
     return ahaDF
 
 def get_cbus_metro_ssa_counties():
-
     # definition of columbus metro area counties according to US Census bureau 
     # source: https://obamawhitehouse.archives.gov/sites/default/files/omb/bulletins/2013/b13-01.pdf (page 29)
     # city of Columbus may have a different definition
     return ["36250", "36210", "36230", "36460", "36500", "36660", "36810", "36650", "36600","36380"]
 
 def prep_zipToCountyDF(zipToCountyDF):
-
     #note: the method used below to assign a signle fips county code to a zip code should only be used as a last resort when all else has failed...
-
     eachZip = Window.partitionBy("zip")
-
     zipToCountyDF = (zipToCountyDF.withColumn("maxBusRatio",
                                               F.max(F.col("bus_ratio")).over(eachZip))
                                   .withColumn("countyOfMaxBusRatio",
@@ -1004,8 +1000,8 @@ def prep_jcAccreditationDF(jcDF, pathToData=None, filename=None, maxCalls=None, 
                            excludePrograms=None, placesLookup=False):
     '''Builds jcAccreditation.parquet, one row per joint commission site, from the raw export of accredited
     organizations, see scripts/03_geocode_jc.py; scripts/04_match_jc_pos.py reads it to build the per CCN table get_data loads. One row per site and program in the export; with
-    topProgramOnly each site keeps its top stroke program (jcProgramRank), excludePrograms drops programs by keyword
-    first. Adds the renamed raw columns (jc*), jcState, jcZip, jcAddress, jcSearchName, jcPlaceQuery, jcProgramRank and,
+    topProgramOnly each site keeps its top stroke program (jcProgramRank) and sites without one are dropped, excludePrograms
+    drops programs by keyword first. Adds the renamed raw columns (jc*), jcState, jcZip, jcAddress, jcSearchName, jcPlaceQuery, jcProgramRank and,
     with pathToData, the geocoded address (jcLat, jcLng, jcGeocode*) and, with placesLookup, the place found for the site
     name (jcPlace*) and the site location to use (jcSiteLat, jcSiteLng, jcSiteLocationSource).'''
     #parquet does not allow spaces and parentheses in column names
@@ -1048,9 +1044,10 @@ def prep_jcAccreditationDF(jcDF, pathToData=None, filename=None, maxCalls=None, 
     for keyword in (excludePrograms or []):
         jcDF = jcDF.filter(~F.coalesce(program.contains(keyword.lower()), F.lit(False)))
     if topProgramOnly:
-        #a site with only non stroke programs keeps one of them (alphabetically first) so that no site is lost
-        eachSite = Window.partitionBy("jcHcoId", "jcSiteName", "jcAddress").orderBy(F.asc_nulls_last("jcProgramRank"), "jcProgram")
-        jcDF = jcDF.withColumn("programRow", F.row_number().over(eachSite)).filter(F.col("programRow")==1).drop("programRow")
+        #one row per site, its best ranked stroke program; a site with only non stroke programs is dropped
+        eachSite = Window.partitionBy("jcHcoId", "jcSiteName", "jcAddress").orderBy("jcProgramRank", "jcProgram")
+        jcDF = (jcDF.filter(F.col("jcProgramRank").isNotNull())
+                    .withColumn("programRow", F.row_number().over(eachSite)).filter(F.col("programRow")==1).drop("programRow"))
     if pathToData is not None:
         jcDF = add_geocode_info(jcDF, "jcAddress", pathToData, "jc", maxCalls=maxCalls, keyFilename=keyFilename)
     if placesLookup:
