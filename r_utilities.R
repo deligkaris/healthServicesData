@@ -359,10 +359,11 @@ get_data_dictionary <- function() {
     "prior (network)", "Prior-year marker used by the network *Prior lags (1-year lag); distinct from the from/to claim 'prior'",
 
     # ---- patient comorbidity & hospitalization history (transferred beneficiary) ----
-    "hospitalizationsIn12Months","Count of inpatient stays in prior 365 days (NULL if <12mo enrollment)",
-    "hospitalizedIn12Months","1 if >=1 inpatient stay in prior 12 months, else 0",
-    "hospitalizationsIn6Months","Count of inpatient stays in prior 182 days (NULL if <6mo enrollment)",
-    "hospitalizedIn6Months","1 if >=1 inpatient stay in prior 6 months, else 0",
+    "hospitalizationsIn12Months","Count of inpatient stays in prior 365 days (NULL if <12mo FFS or ffsFirstMonth missing)",
+    "hospitalizedIn12Months","1 if >=1 inpatient stay in prior 12 months, else 0 (NULL if <12mo FFS or ffsFirstMonth missing)",
+    "hospitalizationsIn6Months","Count of inpatient stays in prior 182 days (NULL if <6mo FFS or ffsFirstMonth missing)",
+    "hospitalizedIn6Months","1 if >=1 inpatient stay in prior 6 months, else 0 (NULL if <6mo FFS or ffsFirstMonth missing)",
+    "hospiceIn12Months","1 if any hospice stay overlaps the 365 days ending on the anchor date (ip: admission, op: through), else 0 (NULL if <12mo FFS or ffsFirstMonth missing)",
     "myocardialInfraction","Myocardial infarction (0/1) [sic spelling]",
     "congestiveHeartFailure","Congestive heart failure (0/1)",
     "peripheralVascular","Peripheral vascular disease (0/1)",

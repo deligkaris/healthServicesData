@@ -2067,7 +2067,7 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
 def add_prior_hospitalization_info(baseDF, ipBaseDF):
     '''Calculates the number of inpatient claims in the 12 and 6 months prior to the admission date of the baseDF.
     It uses the inpatient claim through date and compares it to the baseDF admission date.
-    If there is not enough FFS coverage for a beneficiary, then the value is Null.
+    If there is not enough FFS coverage for a beneficiary, or ffsFirstMonth is missing, then the value is Null.
 
     The 6-month lookback window [1,182] is a strict subset of the 12-month window [1,365], so
     both counts are derived from a single ipBaseDF<->baseDF inner join filtered to the widest
@@ -2089,12 +2089,51 @@ def add_prior_hospitalization_info(baseDF, ipBaseDF):
                           on=["DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY"],
                           how="left_outer")
                     .fillna(0, subset=["hospitalizationsIn12Months", "hospitalizationsIn6Months"])
-                    .withColumn("hospitalizationsIn12Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") < 12, F.lit(None) )
-                                                               .otherwise( F.col("hospitalizationsIn12Months") ))
-                    .withColumn("hospitalizationsIn6Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") < 6, F.lit(None) )
-                                                              .otherwise( F.col("hospitalizationsIn6Months") ))
+                    #keep a count only for a fully covered lookback; a NULL ffsFirstMonth also gives NULL
+                    .withColumn("hospitalizationsIn12Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") >= 12,
+                                                                      F.col("hospitalizationsIn12Months") ))
+                    .withColumn("hospitalizationsIn6Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") >= 6,
+                                                                     F.col("hospitalizationsIn6Months") ))
                     .withColumn("hospitalizedIn12Months", (F.col("hospitalizationsIn12Months")>0).cast('int'))
                     .withColumn("hospitalizedIn6Months", (F.col("hospitalizationsIn6Months")>0).cast('int')))
+    return baseDF
+
+def add_hospiceIn12Months(baseDF, hospBaseDF, claimType="ip"):
+    '''Adds hospiceIn12Months: 1 if any hospice stay in hospBaseDF overlaps the 365 days ending on the anchor date
+    of the baseDF claim (ip: admission date, op: through date), 0 if none, NULL if the beneficiary has less than
+    12 months of FFS coverage before the anchor date.
+    baseDF needs DSYSRTKY, CLAIMNO, ffsFirstMonth and the anchor's _DAY and _MONTH columns,
+    hospBaseDF needs DSYSRTKY, ADMSN_DT_DAY and THRU_DT_DAY.'''
+    #op claims have no admission date, so they anchor on the through date
+    anchors = {"ip": "ADMSN_DT", "op": "THRU_DT"}
+    if claimType not in anchors:
+        raise ValueError(f"add_hospiceIn12Months: claimType must be one of {list(anchors)}, got {claimType!r}")
+    anchorDay, anchorMonth = f"{anchors[claimType]}_DAY", f"{anchors[claimType]}_MONTH"
+
+    #hospice ADMSN_DT is HSPCSTRT (see add_admission_date_info), so a stay is [hospice start, through date]
+    hospBaseDF = hospBaseDF.select(F.col("DSYSRTKY"),
+                                   F.col("ADMSN_DT_DAY").alias("hospStart"),
+                                   F.col("THRU_DT_DAY").alias("hospEnd"))
+
+    #overlap rather than through date alone, so a stay still running on the anchor date counts;
+    #the window [anchor-364, anchor] is 365 days and includes the anchor day itself
+    priorHospice = (hospBaseDF.join(baseDF.select("DSYSRTKY", "CLAIMNO", anchorDay),
+                                    on="DSYSRTKY",
+                                    how="inner")
+                              .filter((F.col("hospStart") <= F.col(anchorDay)) &
+                                      (F.col("hospEnd") >= F.col(anchorDay) - 364))
+                              .select("DSYSRTKY", "CLAIMNO", anchorDay)
+                              .distinct() #one row per base claim, so the join back cannot duplicate base rows
+                              .withColumn("hospiceIn12Months", F.lit(1)))
+
+    #without 12 months of FFS coverage a missing hospice claim cannot be read as no hospice, so NULL;
+    #a NULL ffsFirstMonth also gives NULL
+    baseDF = (baseDF.join(priorHospice,
+                          on=["DSYSRTKY", "CLAIMNO", anchorDay],
+                          how="left_outer")
+                    .withColumn("hospiceIn12Months",
+                                F.when(F.col(anchorMonth) - F.col("ffsFirstMonth") >= 12,
+                                       F.coalesce(F.col("hospiceIn12Months"), F.lit(0)))))
     return baseDF
 
 def add_adi_info(baseDF, adiDF):

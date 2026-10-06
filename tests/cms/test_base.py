@@ -2201,6 +2201,19 @@ class TestAddPriorHospitalizationInfoEndToEnd:
         assert by_claim[102]["hospitalizationsIn12Months"] is None
         assert by_claim[102]["hospitalizationsIn6Months"] == 1
 
+    def test_null_ffsFirstMonth_nulls_both_windows(self, spark):
+        # No FFS month known: coverage cannot be confirmed, so both lookbacks are null
+        # even though a qualifying prior stay exists.
+        from cms.base import add_prior_hospitalization_info
+        index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": 20210601, "ffsFirstMonth": None}]
+        prior_throughs = [{"DSYSRTKY": 1, "THRU_DT": 20210221}]  # diff 100, would be 1/1
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs)
+        r = add_prior_hospitalization_info(baseDF, ipBaseDF).collect()[0]
+        assert r["hospitalizationsIn12Months"] is None
+        assert r["hospitalizationsIn6Months"] is None
+        assert r["hospitalizedIn12Months"] is None
+        assert r["hospitalizedIn6Months"] is None
+
     def test_multiple_beneficiaries_counted_independently(self, spark):
         # Three beneficiaries in one run; each beneficiary's prior stays must not leak into
         # another's count (partition by DSYSRTKY/ADMSN_DT_DAY/CLAIMNO).
@@ -2275,6 +2288,101 @@ class TestAddPriorHospitalizationInfoEndToEnd:
             assert f in result_df.columns, f"original column {f} dropped"
         # No row duplication introduced by the join-back.
         assert result_df.count() == 1
+
+
+# ============================================================
+# End-to-end tests for add_hospiceIn12Months
+#
+# A hospice stay is [HSPCSTRT, THRU_DT]; it counts if it overlaps [anchor-364, anchor],
+# where the anchor is ADMSN_DT for ip and THRU_DT for op. With anchor 2021-06-01,
+# anchor-364 is 2020-06-02 and anchor-365 is 2020-06-01.
+# ============================================================
+
+def _setup_hospice_prior_dfs(spark, index_claims, hospice_stays, claimType="ip"):
+    """index_claims: dicts {DSYSRTKY, CLAIMNO, DT, ffsFirstMonth}, DT being the anchor date
+    (ADMSN_DT for ip, THRU_DT for op). hospice_stays: dicts {DSYSRTKY, HSPCSTRT, THRU_DT}."""
+    from cms.base import add_admission_date_info
+    from cms.utilities import add_through_date_info
+    anchorCol = "ADMSN_DT" if claimType == "ip" else "THRU_DT"
+    baseDF = make_real_claim_df(spark, f"{claimType}Base",
+                                [{"DSYSRTKY": c["DSYSRTKY"], "CLAIMNO": c["CLAIMNO"], anchorCol: c["DT"]}
+                                 for c in index_claims])
+    baseDF = add_admission_date_info(baseDF, "ip") if claimType == "ip" else add_through_date_info(baseDF)
+    ffs_rows = {c["DSYSRTKY"]: c["ffsFirstMonth"] for c in index_claims}
+    ffsDF = spark.createDataFrame([{"DSYSRTKY": k, "ffsFirstMonth": v} for k, v in ffs_rows.items()],
+                                  schema=_PRIOR_HOSP_FFS_SCHEMA)
+    baseDF = baseDF.join(ffsDF, on="DSYSRTKY", how="left_outer")
+    hospDF = make_real_claim_df(spark, "hospBase", hospice_stays)
+    hospDF = add_through_date_info(add_admission_date_info(hospDF, "hosp"))
+    return baseDF, hospDF
+
+
+class TestAddHospiceIn12Months:
+
+    ANCHOR = 20210601
+
+    def _flags(self, spark, hospice_stays, coverage=24, claimType="ip"):
+        """One index claim per hospice stay (beneficiary i gets stay i), so each stay is tested alone."""
+        from cms.base import add_hospiceIn12Months
+        index_claims = [{"DSYSRTKY": i, "CLAIMNO": 100 + i, "DT": self.ANCHOR,
+                         "ffsFirstMonth": _ffs_first_month(self.ANCHOR, coverage)}
+                        for i in range(1, len(hospice_stays) + 1)]
+        stays = [{"DSYSRTKY": i, "HSPCSTRT": s, "THRU_DT": t}
+                 for i, (s, t) in enumerate(hospice_stays, start=1)]
+        baseDF, hospDF = _setup_hospice_prior_dfs(spark, index_claims, stays, claimType)
+        rows = add_hospiceIn12Months(baseDF, hospDF, claimType=claimType).collect()
+        return [r["hospiceIn12Months"] for r in sorted(rows, key=lambda r: r["DSYSRTKY"])]
+
+    def test_window_boundaries(self, spark):
+        assert self._flags(spark, [(20200501, 20200602),   # ends at anchor-364 -> 1
+                                   (20200501, 20200601),   # ends at anchor-365 -> 0
+                                   (20210601, 20210630),   # starts on anchor day -> 1
+                                   (20210602, 20210630),   # starts at anchor+1 -> 0
+                                   (20210501, 20210701),   # running on the anchor day -> 1
+                                   (20200101, 20211231)]   # covers the whole window -> 1
+                           ) == [1, 0, 1, 0, 1, 1]
+
+    def test_multiple_overlapping_stays_do_not_duplicate_base_rows(self, spark):
+        from cms.base import add_hospiceIn12Months
+        index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "DT": self.ANCHOR,
+                         "ffsFirstMonth": _ffs_first_month(self.ANCHOR, 24)}]
+        stays = [{"DSYSRTKY": 1, "HSPCSTRT": 20210101, "THRU_DT": 20210131},
+                 {"DSYSRTKY": 1, "HSPCSTRT": 20210101, "THRU_DT": 20210228},
+                 {"DSYSRTKY": 1, "HSPCSTRT": 20210301, "THRU_DT": 20210331}]
+        baseDF, hospDF = _setup_hospice_prior_dfs(spark, index_claims, stays)
+        rows = add_hospiceIn12Months(baseDF, hospDF).collect()
+        assert len(rows) == 1 and rows[0]["hospiceIn12Months"] == 1
+
+    def test_other_beneficiary_hospice_is_not_counted(self, spark):
+        from cms.base import add_hospiceIn12Months
+        index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "DT": self.ANCHOR,
+                         "ffsFirstMonth": _ffs_first_month(self.ANCHOR, 24)}]
+        stays = [{"DSYSRTKY": 2, "HSPCSTRT": 20210101, "THRU_DT": 20210131}]
+        baseDF, hospDF = _setup_hospice_prior_dfs(spark, index_claims, stays)
+        assert add_hospiceIn12Months(baseDF, hospDF).collect()[0]["hospiceIn12Months"] == 0
+
+    def test_ffs_coverage_censoring(self, spark):
+        stay = [(20210101, 20210131)]
+        assert self._flags(spark, stay, coverage=11) == [None]
+        assert self._flags(spark, stay, coverage=12) == [1]
+
+    def test_null_ffsFirstMonth_is_null(self, spark):
+        from cms.base import add_hospiceIn12Months
+        index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "DT": self.ANCHOR, "ffsFirstMonth": None}]
+        stays = [{"DSYSRTKY": 1, "HSPCSTRT": 20210101, "THRU_DT": 20210131}]
+        baseDF, hospDF = _setup_hospice_prior_dfs(spark, index_claims, stays)
+        assert add_hospiceIn12Months(baseDF, hospDF).collect()[0]["hospiceIn12Months"] is None
+
+    def test_op_anchors_on_through_date(self, spark):
+        assert self._flags(spark, [(20200501, 20200602),   # ends at anchor-364 -> 1
+                                   (20200501, 20200601),   # ends at anchor-365 -> 0
+                                   (20210601, 20210630)],  # starts on anchor day -> 1
+                           claimType="op") == [1, 0, 1]
+
+    def test_unsupported_claimType_raises(self, spark):
+        from cms.base import add_hospiceIn12Months
+        with pytest.raises(ValueError):
+            add_hospiceIn12Months(None, None, claimType="snf")
 
 
 # ============================================================
