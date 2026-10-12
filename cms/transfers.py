@@ -113,7 +113,10 @@ def add_stroke_info(transfersDF):
     return transfersDF
 
 def add_firstTransfer(transfersDF):
-    '''Assumes that get_clean_transfers has been run on the transferDF.'''
+    '''Adds firstTransfer: 1 for the patient's earliest transfer (min fromTHRU_DT_DAY) within this set of
+    transfers -- the one get_transfers call / transferType -- not across all transfer types, so after an
+    edToInpatient + inpatientToInpatient union a patient can have firstTransfer=1 in each set.
+    Assumes that get_clean_transfers has been run on the transferDF.'''
     eachDsysrtky=Window.partitionBy("fromDSYSRTKY")
     transfersDF = transfersDF.withColumn("firstTransfer", (F.col("fromTHRU_DT_DAY") == F.min(F.col("fromTHRU_DT_DAY")).over(eachDsysrtky)).cast('int') )
     return transfersDF

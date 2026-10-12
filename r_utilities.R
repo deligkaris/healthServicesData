@@ -324,7 +324,7 @@ get_data_dictionary <- function() {
     "providerAnyStrokeAnnualVolumePrior","Hospital prior-year any-stroke volume",
 
     # ---- transfer network: node & dyad metrics ----
-    "firstTransfer",   "1 if this is the patient's earliest transfer (min from-through-day), else 0",
+    "firstTransfer",   "1 if this is the patient's earliest transfer (min from-through-day) within its transfer set (ED->IP or IP->IP), else 0",
     "nodeOutVol",      "Sending hospital: total transfers sent out that year",
     "nodeInVol",       "Receiving hospital: total transfers received that year",
     "nodeOutVolPrior", "Prior-year value of nodeOutVol (0 if it sent none that year; NULL in the hospital's first observed year)",
