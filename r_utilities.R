@@ -348,6 +348,7 @@ get_data_dictionary <- function() {
     "dyadVi",          "1 if sending & receiving share the same system (SYSID), else 0",
     "newDyad",         "1 if this is the earliest observed year of the (sending, receiving) pair, else 0 (left-censored by the loaded years; a pair returning after a gap is not re-flagged)",
     "dyadTransferVol", "Number of transfers along this specific dyad (year)",
+    "dyadTransferVolPrior","Prior-year value of dyadTransferVol (0 if the pair had no transfers that year; NULL in the dyad's first observed year)",
     "dyadProportionTransfersOut","dyadTransferVol / sending hospital's nodeOutVol",
     "dyadProportionTransfersIn","dyadTransferVol / receiving hospital's nodeInVol",
     "dyadProportionTransfersOutPrior","Prior-year value of dyadProportionTransfersOut",

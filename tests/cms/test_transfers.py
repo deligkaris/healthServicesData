@@ -1947,7 +1947,7 @@ class TestAddDyadInfo:
         df = add_dyad_info(df)
         for c in ("dyad", "dyadVi", "dyadTransferVol",
                   "dyadProportionTransfersOut", "dyadProportionTransfersIn",
-                  "dyadAcrossCounties", "dyadAcrossStates",
+                  "dyadAcrossCounties", "dyadAcrossStates", "dyadTransferVolPrior",
                   "dyadProportionTransfersOutPrior", "dyadProportionTransfersInPrior"):
             assert c in df.columns
 
@@ -1997,6 +1997,9 @@ class TestAddDyadInfo:
         # 2021 prior must equal the *same* dyad's 2020 value, not the partner's
         assert out[(200, 2021)][1] == 0.75
         assert out[(300, 2021)][1] == 0.25
+        vol = {(r["toORGNPINM"], r["fromTHRU_DT_YEAR"]): r["dyadTransferVolPrior"] for r in df.collect()}
+        assert vol[(200, 2020)] is None and vol[(300, 2020)] is None
+        assert vol[(200, 2021)] == 3 and vol[(300, 2021)] == 1
 
     def test_year_gap_prior_is_zero_not_null(self, spark):
         # add_dyad_info passes gapFill=0 for the dyad proportions. A dyad row exists
@@ -2043,6 +2046,9 @@ class TestAddDyadInfo:
         # (100->300): contiguous, so the real 2020 prior still flows to 2021 (not overwritten by 0)
         assert out[(300, 2020)] == (None, None)
         assert out[(300, 2021)][0] is not None and out[(300, 2021)][0] != 0.0
+        vol = {(r["toORGNPINM"], r["fromTHRU_DT_YEAR"]): r["dyadTransferVolPrior"] for r in df.collect()}
+        assert vol[(200, 2020)] is None and vol[(200, 2022)] == 0
+        assert vol[(300, 2020)] is None and vol[(300, 2021)] == 1
 
 
 class TestAddNodeInfo:
