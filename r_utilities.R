@@ -405,7 +405,7 @@ get_data_dictionary <- function() {
     "hiv",             "HIV (0/1; zeroed if aids=1)",
     "metastaticSolidTumor","Metastatic solid tumor (0/1)",
     "aids",            "AIDS (0/1)",
-    "comorbityIndex",  "Glasheen-2019 weighted comorbidity index (numeric) [sic spelling]",
+    "comorbidityIndex","Glasheen-2019 weighted comorbidity index (numeric)",
 
     # ---- Area Deprivation Index (hospital location) ----
     "ADI_NATRANK",     "Area Deprivation Index national percentile rank (1-100; higher = more deprived)",

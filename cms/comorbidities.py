@@ -292,7 +292,7 @@ def get_comorbidityIndex(conditionsDf, method="Glasheen2019"):
 
     if method=="Glasheen2019":
         conditionsDf = (conditionsDf
-                        .withColumn("comorbityIndex",
+                        .withColumn("comorbidityIndex",
                                 F.when(F.col("hemiplegia") == 1, 2).otherwise(F.col("cerebrovascular")) +
                                 F.when(F.col("liverSevere") == 1, 3).otherwise(F.col("liverMild")) +
                                 F.when(F.col("diabetesWithCC") == 1, 2).otherwise(F.col("diabetesWithoutCC")) +

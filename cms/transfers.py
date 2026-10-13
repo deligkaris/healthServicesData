@@ -325,7 +325,7 @@ def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseD
     return transfersDF
 
 def add_comorbidity_info(transfersDF, ipBase, opBase, claimType="ip", method="Glasheen2019"):
-    '''Adds comorbidity condition flags + comorbityIndex describing the TO (receiving)
+    '''Adds comorbidity condition flags + comorbidityIndex describing the TO (receiving)
     stay of each transfer. staysF.add_comorbidity_info reads its keys by canonical
     (un-prefixed) name, so we rename only the specific to-side columns it consults,
     then restore them after the call. hospitalizationsIn12Months is already un-prefixed
