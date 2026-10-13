@@ -285,22 +285,28 @@ def add_node_in_by_type_info(transfersDF, *, transferTypes):
         transfersDF = add_nodeToProportionFromEd(transfersDF)
     return transfersDF
 
-def add_prior_hospitalization_info(transfersDF, ipBaseDF):
-    '''Adds columns about prior hospitalizations for each transfer patient.
-    baseF.add_prior_hospitalization_info reads its keys by canonical (un-prefixed) name, so we rename only
-    the specific to-side columns it consults, then restore them after the call. Output columns it adds
-    (hospitalizationsIn12Months, hospitalizedIn12Months, hospitalizationsIn6Months, hospitalizedIn6Months)
-    describe the receiving stay and are kept un-prefixed.'''
-    toToCanonical = {
-        "toDSYSRTKY":        "DSYSRTKY",
-        "toCLAIMNO":         "CLAIMNO",
-        "toADMSN_DT_DAY":    "ADMSN_DT_DAY",
-        "toADMSN_DT_MONTH":  "ADMSN_DT_MONTH",
-        "toffsFirstMonth":   "ffsFirstMonth",
-    }
-    transfersDF = _rename_columns(transfersDF, toToCanonical)
-    transfersDF = baseF.add_prior_hospitalization_info(transfersDF, ipBaseDF)
-    transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
+def _side_to_canonical(side, claimType, caller):
+    '''Maps the side's columns that baseF.add_prior_hospitalization_info and staysF.add_comorbidity_info read
+    (keys, ffsFirstMonth and the claimType's anchor) to their canonical (un-prefixed) names, for _rename_columns.
+    Raises ValueError unless side is "from" or "to" and claimType is a setting that stay can have.'''
+    if side not in ("from", "to"):
+        raise ValueError(f"{caller}: side must be 'from' or 'to', got {side!r}")
+    # the to stay is always an inpatient admission (see TransferType)
+    if side == "to" and claimType != "ip":
+        raise ValueError(f"{caller}: side='to' is the receiving inpatient stay, so claimType must be 'ip'")
+    anchorDay, anchorMonth = baseF._anchor_columns(claimType, caller)
+    return {side + c: c for c in ["DSYSRTKY", "CLAIMNO", "THRU_DT_DAY", "ffsFirstMonth", anchorDay, anchorMonth]}
+
+def add_prior_hospitalization_info(transfersDF, ipBaseDF, *, side="to", claimType="ip"):
+    '''Adds hospitalizationsIn12Months, hospitalizedIn12Months, hospitalizationsIn6Months and
+    hospitalizedIn6Months (see baseF.add_prior_hospitalization_info), un-prefixed, for the side ("from" or
+    "to") stay of each transfer. claimType is that stay's setting: "op" for the from stay of edToInpatient
+    transfers, "ip" otherwise. Not needed before add_comorbidity_info, which adds these too.'''
+    # baseF reads its keys by canonical name, so rename the side's columns and restore them after
+    sideToCanonical = _side_to_canonical(side, claimType, "add_prior_hospitalization_info")
+    transfersDF = _rename_columns(transfersDF, sideToCanonical)
+    transfersDF = baseF.add_prior_hospitalization_info(transfersDF, ipBaseDF, claimType=claimType)
+    transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in sideToCanonical.items()})
     return transfersDF
 
 def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF, lastObservableDay):
@@ -324,22 +330,17 @@ def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseD
     transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
     return transfersDF
 
-def add_comorbidity_info(transfersDF, ipBase, opBase, claimType="ip", method="Glasheen2019"):
-    '''Adds comorbidity condition flags + comorbidityIndex describing the TO (receiving)
-    stay of each transfer. staysF.add_comorbidity_info reads its keys by canonical
-    (un-prefixed) name, so we rename only the specific to-side columns it consults,
-    then restore them after the call. hospitalizationsIn12Months is already un-prefixed
-    on transfersDF (see add_prior_hospitalization_info) and the comorbidity output
-    columns are likewise kept un-prefixed since they describe the receiving stay.
-    Requires add_prior_hospitalization_info to have run first.'''
-    toToCanonical = {
-        "toDSYSRTKY":    "DSYSRTKY",
-        "toTHRU_DT_DAY": "THRU_DT_DAY",
-    }
-    transfersDF = _rename_columns(transfersDF, toToCanonical)
+def add_comorbidity_info(transfersDF, ipBase, opBase, claimType="ip", method="Glasheen2019", *, side="to"):
+    '''Adds the prior hospitalization columns, the comorbidity condition flags and comorbidityIndex (see
+    staysF.add_comorbidity_info), un-prefixed, for the side ("from" or "to") stay of each transfer. claimType
+    is that stay's setting: "op" for the from stay of edToInpatient transfers, "ip" otherwise. Run on each
+    transfer set before any union.'''
+    # staysF reads its keys by canonical name, so rename the side's columns and restore them after
+    sideToCanonical = _side_to_canonical(side, claimType, "add_comorbidity_info")
+    transfersDF = _rename_columns(transfersDF, sideToCanonical)
     transfersDF = staysF.add_comorbidity_info(transfersDF, ipBase, opBase,
                                               claimType=claimType, method=method)
-    transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
+    transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in sideToCanonical.items()})
     return transfersDF
 
 def add_dyad(transfersDF):

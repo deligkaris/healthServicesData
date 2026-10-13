@@ -2289,6 +2289,36 @@ class TestAddPriorHospitalizationInfoEndToEnd:
         # No row duplication introduced by the join-back.
         assert result_df.count() == 1
 
+    def test_op_anchors_on_through_date(self, spark):
+        # claimType="op": op claims have no ADMSN_DT, so the window and the FFS gate key on
+        # THRU_DT_DAY / THRU_DT_MONTH. Beneficiary 2 has 11 months of coverage -> 12mo NULL, 6mo kept.
+        from cms.base import add_prior_hospitalization_info
+        from cms.utilities import add_through_date_info
+        thru = 20210601
+        baseDF = add_through_date_info(make_real_claim_df(spark, "opBase", [
+            {"DSYSRTKY": 1, "CLAIMNO": 101, "THRU_DT": thru},
+            {"DSYSRTKY": 2, "CLAIMNO": 102, "THRU_DT": thru}]))
+        ffsDF = spark.createDataFrame([{"DSYSRTKY": 1, "ffsFirstMonth": _ffs_first_month(thru, 24)},
+                                       {"DSYSRTKY": 2, "ffsFirstMonth": _ffs_first_month(thru, 11)}],
+                                      schema=_PRIOR_HOSP_FFS_SCHEMA)
+        baseDF = baseDF.join(ffsDF, on="DSYSRTKY")
+        ipBaseDF = add_through_date_info(make_real_claim_df(spark, "ipBase", [
+            {"DSYSRTKY": 1, "THRU_DT": 20210221},   # 100 days before -> 6mo + 12mo
+            {"DSYSRTKY": 1, "THRU_DT": 20201130},   # 183 days before -> 12mo only
+            {"DSYSRTKY": 1, "THRU_DT": 20210601},   # same day -> excluded
+            {"DSYSRTKY": 2, "THRU_DT": 20210221}]))
+        r = {row["DSYSRTKY"]: row for row in
+             add_prior_hospitalization_info(baseDF, ipBaseDF, claimType="op").collect()}
+        assert r[1]["hospitalizationsIn12Months"] == 2
+        assert r[1]["hospitalizationsIn6Months"] == 1
+        assert r[2]["hospitalizationsIn12Months"] is None
+        assert r[2]["hospitalizationsIn6Months"] == 1
+
+    def test_unsupported_claimType_raises(self, spark):
+        from cms.base import add_prior_hospitalization_info
+        with pytest.raises(ValueError):
+            add_prior_hospitalization_info(None, None, claimType="snf")
+
 
 # ============================================================
 # End-to-end tests for add_hospiceIn12Months

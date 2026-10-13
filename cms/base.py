@@ -2066,35 +2066,52 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
                                  .when( F.col("homeDaysIndependent365")<=365, 3)))
     return baseDF
 
-def add_prior_hospitalization_info(baseDF, ipBaseDF):
-    '''Calculates the number of inpatient claims in the 12 and 6 months prior to the admission date of the baseDF.
-    It uses the inpatient claim through date and compares it to the baseDF admission date.
+def _anchor_columns(claimType, caller):
+    '''Returns the (_DAY, _MONTH) columns a lookback ending on the claim is anchored on: ip claims on the
+    admission date, op claims on the through date.'''
+    #op claims have no admission date, so they anchor on the through date
+    anchors = {"ip": "ADMSN_DT", "op": "THRU_DT"}
+    if claimType not in anchors:
+        raise ValueError(f"{caller}: claimType must be one of {list(anchors)}, got {claimType!r}")
+    return f"{anchors[claimType]}_DAY", f"{anchors[claimType]}_MONTH"
+
+def add_prior_hospitalization_info(baseDF, ipBaseDF, claimType="ip"):
+    '''Calculates the number of inpatient claims in the 12 and 6 months prior to the anchor date of the baseDF
+    claim (ip: admission date, op: through date), comparing the inpatient claim through date to the anchor date.
     If there is not enough FFS coverage for a beneficiary, or ffsFirstMonth is missing, then the value is Null.
+    baseDF needs DSYSRTKY, CLAIMNO, ffsFirstMonth and the anchor's _DAY and _MONTH columns.
 
     The 6-month lookback window [1,182] is a strict subset of the 12-month window [1,365], so
     both counts are derived from a single ipBaseDF<->baseDF inner join filtered to the widest
     window, a single groupBy aggregation (count for 12 months, conditional sum for 6 months),
     and a single left_outer join back onto baseDF -- halving the join/shuffle work versus
     computing each lookback independently.'''
+    anchorDay, anchorMonth = _anchor_columns(claimType, "add_prior_hospitalization_info")
+    #a rerun would duplicate the outputs on the join back
+    newColumns = ["hospitalizationsIn12Months", "hospitalizedIn12Months", "hospitalizationsIn6Months", "hospitalizedIn6Months"]
+    existing = [c for c in newColumns if c in baseDF.columns]
+    if existing:
+        raise ValueError(f"add_prior_hospitalization_info: the dataframe already has {', '.join(existing)}, drop them "
+                         "to recompute (add_comorbidity_info adds them too).")
     ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_DAY").alias("ipTHRU_DT_DAY"))
 
-    priorHospitalizations = (ipBaseDF.join(baseDF.select("DSYSRTKY","ADMSN_DT_DAY","CLAIMNO"),
+    priorHospitalizations = (ipBaseDF.join(baseDF.select("DSYSRTKY",anchorDay,"CLAIMNO"),
                                            on="DSYSRTKY",
                                            how="inner")
-                                     .withColumn("daysSinceDischarge", F.col("ADMSN_DT_DAY") - F.col("ipTHRU_DT_DAY"))
+                                     .withColumn("daysSinceDischarge", F.col(anchorDay) - F.col("ipTHRU_DT_DAY"))
                                      .filter((F.col("daysSinceDischarge") >= 1) & (F.col("daysSinceDischarge") <= 365))
-                                     .groupBy("DSYSRTKY", "ADMSN_DT_DAY", "CLAIMNO")
+                                     .groupBy("DSYSRTKY", anchorDay, "CLAIMNO")
                                      .agg(F.count(F.lit(1)).alias("hospitalizationsIn12Months"),
                                           F.sum((F.col("daysSinceDischarge") <= 182).cast('int')).alias("hospitalizationsIn6Months")))
 
     baseDF = (baseDF.join(priorHospitalizations,
-                          on=["DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY"],
+                          on=["DSYSRTKY", "CLAIMNO", anchorDay],
                           how="left_outer")
                     .fillna(0, subset=["hospitalizationsIn12Months", "hospitalizationsIn6Months"])
                     #keep a count only for a fully covered lookback; a NULL ffsFirstMonth also gives NULL
-                    .withColumn("hospitalizationsIn12Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") >= 12,
+                    .withColumn("hospitalizationsIn12Months", F.when( F.col(anchorMonth) - F.col("ffsFirstMonth") >= 12,
                                                                       F.col("hospitalizationsIn12Months") ))
-                    .withColumn("hospitalizationsIn6Months", F.when( F.col("ADMSN_DT_MONTH") - F.col("ffsFirstMonth") >= 6,
+                    .withColumn("hospitalizationsIn6Months", F.when( F.col(anchorMonth) - F.col("ffsFirstMonth") >= 6,
                                                                      F.col("hospitalizationsIn6Months") ))
                     .withColumn("hospitalizedIn12Months", (F.col("hospitalizationsIn12Months")>0).cast('int'))
                     .withColumn("hospitalizedIn6Months", (F.col("hospitalizationsIn6Months")>0).cast('int')))
@@ -2106,11 +2123,7 @@ def add_hospiceIn12Months(baseDF, hospBaseDF, claimType="ip"):
     12 months of FFS coverage before the anchor date.
     baseDF needs DSYSRTKY, CLAIMNO, ffsFirstMonth and the anchor's _DAY and _MONTH columns,
     hospBaseDF needs DSYSRTKY, ADMSN_DT_DAY and THRU_DT_DAY.'''
-    #op claims have no admission date, so they anchor on the through date
-    anchors = {"ip": "ADMSN_DT", "op": "THRU_DT"}
-    if claimType not in anchors:
-        raise ValueError(f"add_hospiceIn12Months: claimType must be one of {list(anchors)}, got {claimType!r}")
-    anchorDay, anchorMonth = f"{anchors[claimType]}_DAY", f"{anchors[claimType]}_MONTH"
+    anchorDay, anchorMonth = _anchor_columns(claimType, "add_hospiceIn12Months")
 
     #hospice ADMSN_DT is HSPCSTRT (see add_admission_date_info), so a stay is [hospice start, through date]
     hospBaseDF = hospBaseDF.select(F.col("DSYSRTKY"),

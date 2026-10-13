@@ -3,6 +3,7 @@ from functools import reduce
 from pyspark.sql.window import Window
 from pyspark.storagelevel import StorageLevel
 import pyspark.sql.functions as F
+import cms.base as baseF
 import cms.revenue as revenueF
 import cms.claims as claimsF
 import cms.comorbidities as comorbiditiesF
@@ -693,23 +694,28 @@ def drop_unused_columns(staysDF):
 
 
 def add_comorbidity_info(staysDF, ipBase, opBase, claimType="ip", method="Glasheen2019"):
-    '''Adds the comorbidity condition flags (myocardialInfraction, congestiveHeartFailure, ...),
-    aids, and comorbidityIndex to staysDF.
+    '''Adds the prior hospitalization columns (hospitalizationsIn12Months, ..., see
+    baseF.add_prior_hospitalization_info), the comorbidity condition flags (myocardialInfraction,
+    congestiveHeartFailure, ...), aids, and comorbidityIndex to staysDF. claimType ("ip" or "op") is the
+    setting of the stays.
 
-    Requires staysDF to have DSYSRTKY, THRU_DT_DAY, and hospitalizationsIn12Months. The third
-    is added by baseF.add_prior_hospitalization_info (or transfersF.add_prior_hospitalization_info
-    for dyad tables) and must be present on staysDF before calling.
+    Requires staysDF to have DSYSRTKY, CLAIMNO, THRU_DT_DAY, ffsFirstMonth and the claimType's anchor
+    _DAY and _MONTH columns (ip: ADMSN_DT, op: THRU_DT).
 
     The day-level dgns indexes are built inline from ipBase/opBase via comorbiditiesF.get_dayDgnsDF.
     If add_comorbidity_info is called multiple times in the same script, prefer building the
-    indexes once and calling comorbiditiesF.get_conditions directly to avoid duplicated work.
-
-    claimType ("ip" or "op"): passed through to comorbiditiesF.get_conditions. "ip" excludes the
-    IP principal dgns falling on the stay's THRU_DT_DAY (the admission reason isn't a comorbidity
-    of itself). For "op", no principal exclusion is applied, so an incidental same-day IP discharge
-    counts as a real comorbidity for the index OP visit.'''
+    indexes once and calling comorbiditiesF.get_conditions directly to avoid duplicated work.'''
+    # a rerun would duplicate the flags on the join back
+    existing = [c for c in list(comorbiditiesF.get_codes(method)) + ["aids"] if c in staysDF.columns]
+    if existing:
+        raise ValueError(f"add_comorbidity_info: the dataframe already has {', '.join(existing)}, drop them to recompute.")
+    # get_conditions NULLs the flags when hospitalizationsIn12Months is NULL (under 12 months of FFS coverage), so
+    # computing it here with the same claimType keeps that gate on the same stay and anchor date
+    staysDF = baseF.add_prior_hospitalization_info(staysDF, ipBase, claimType=claimType)
     opDayDgnsDF = comorbiditiesF.get_dayDgnsDF(opBase)
     ipDayDgnsDF = comorbiditiesF.get_dayDgnsDF(ipBase)
+    # "ip" excludes the IP principal dgns falling on the stay's THRU_DT_DAY (the admission reason isn't a
+    # comorbidity of itself); "op" applies none, so an incidental same-day IP discharge counts for the OP visit
     conditions = comorbiditiesF.get_conditions(staysDF, opDayDgnsDF, ipDayDgnsDF,
                                                claimType=claimType, method=method)
     staysDF = staysDF.join(conditions,

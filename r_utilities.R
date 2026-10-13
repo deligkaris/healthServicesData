@@ -380,11 +380,11 @@ get_data_dictionary <- function() {
     "nodeHhiPrior",    "Prior-year value of nodeHhi",
     "prior (network)", "Prior-year marker used by the network *Prior lags (1-year lag); distinct from the from/to claim 'prior'",
 
-    # ---- patient comorbidity & hospitalization history (transferred beneficiary) ----
-    "hospitalizationsIn12Months","Count of inpatient stays in prior 365 days (NULL if <12mo FFS or ffsFirstMonth missing)",
-    "hospitalizedIn12Months","1 if >=1 inpatient stay in prior 12 months, else 0 (NULL if <12mo FFS or ffsFirstMonth missing)",
-    "hospitalizationsIn6Months","Count of inpatient stays in prior 182 days (NULL if <6mo FFS or ffsFirstMonth missing)",
-    "hospitalizedIn6Months","1 if >=1 inpatient stay in prior 6 months, else 0 (NULL if <6mo FFS or ffsFirstMonth missing)",
+    # ---- patient comorbidity & hospitalization history (transferred beneficiary, at the stay chosen by side: receiving by default) ----
+    "hospitalizationsIn12Months","Count of inpatient stays in the 365 days before the anchor date (ip: admission, op: through) (NULL if <12mo FFS or ffsFirstMonth missing)",
+    "hospitalizedIn12Months","1 if >=1 inpatient stay in the 12 months before the anchor date (ip: admission, op: through), else 0 (NULL if <12mo FFS or ffsFirstMonth missing)",
+    "hospitalizationsIn6Months","Count of inpatient stays in the 182 days before the anchor date (ip: admission, op: through) (NULL if <6mo FFS or ffsFirstMonth missing)",
+    "hospitalizedIn6Months","1 if >=1 inpatient stay in the 6 months before the anchor date (ip: admission, op: through), else 0 (NULL if <6mo FFS or ffsFirstMonth missing)",
     "hospiceIn12Months","1 if any hospice stay overlaps the 365 days ending on the anchor date (ip: admission, op: through), else 0 (NULL if <12mo FFS or ffsFirstMonth missing)",
     "myocardialInfraction","Myocardial infarction (0/1) [sic spelling]",
     "congestiveHeartFailure","Congestive heart failure (0/1)",

@@ -2652,6 +2652,129 @@ class TestAddPriorHospitalizationInfoTransfers:
         assert r["toevt"] == 1
         assert r["hospitalizationsIn12Months"] == 1
 
+    # Both sides on one row: the to stay admitted at day 1000 (month 50), the from stay admitted at
+    # day 990 (month 50) and discharged at day 999 (month 50). Same beneficiary, FFS from month 1.
+    _BOTH_SIDES_SCHEMA = StructType([StructField(side + c, IntegerType(), True)
+                                     for side in ("from", "to")
+                                     for c in ("DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY", "ADMSN_DT_MONTH",
+                                               "THRU_DT_DAY", "THRU_DT_MONTH", "ffsFirstMonth")])
+    _BOTH_SIDES_ROW = {"fromDSYSRTKY": 1, "fromCLAIMNO": 1, "fromADMSN_DT_DAY": 990, "fromADMSN_DT_MONTH": 50,
+                       "fromTHRU_DT_DAY": 999, "fromTHRU_DT_MONTH": 50, "fromffsFirstMonth": 1,
+                       "toDSYSRTKY": 1, "toCLAIMNO": 2, "toADMSN_DT_DAY": 1000, "toADMSN_DT_MONTH": 50,
+                       "toTHRU_DT_DAY": 1005, "toTHRU_DT_MONTH": 50, "toffsFirstMonth": 1}
+
+    def _both_sides(self, spark, ip_days, **overrides):
+        transfers_df = spark.createDataFrame([{**self._BOTH_SIDES_ROW, **overrides}], schema=self._BOTH_SIDES_SCHEMA)
+        ip_df = spark.createDataFrame([{"DSYSRTKY": 1, "THRU_DT_DAY": d} for d in ip_days],
+                                      schema=StructType([StructField("DSYSRTKY", IntegerType(), True),
+                                                         StructField("THRU_DT_DAY", IntegerType(), True)]))
+        return transfers_df, ip_df
+
+    def test_from_side_ip_anchors_on_from_admission(self, spark):
+        # day 985 is 5 days before the from admission (990); day 995 is after it but before the to
+        # admission, so only side="to" counts it.
+        from cms.transfers import add_prior_hospitalization_info
+        transfers_df, ip_df = self._both_sides(spark, [985, 995])
+        assert add_prior_hospitalization_info(transfers_df, ip_df).collect()[0]["hospitalizationsIn12Months"] == 2
+        r = add_prior_hospitalization_info(transfers_df, ip_df, side="from").collect()[0]
+        assert r["hospitalizationsIn12Months"] == 1
+        assert set(transfers_df.columns) <= set(r.asDict())
+
+    def test_from_side_op_anchors_on_from_through(self, spark):
+        # op from stay: anchor is fromTHRU_DT_DAY (999), so day 995 counts and the gate reads fromTHRU_DT_MONTH
+        from cms.transfers import add_prior_hospitalization_info
+        transfers_df, ip_df = self._both_sides(spark, [985, 995], fromADMSN_DT_DAY=None, fromADMSN_DT_MONTH=None)
+        r = add_prior_hospitalization_info(transfers_df, ip_df, side="from", claimType="op").collect()[0]
+        assert r["hospitalizationsIn12Months"] == 2
+        transfers_df, ip_df = self._both_sides(spark, [985], fromTHRU_DT_MONTH=12)  # 11 months of coverage
+        r = add_prior_hospitalization_info(transfers_df, ip_df, side="from", claimType="op").collect()[0]
+        assert r["hospitalizationsIn12Months"] is None
+
+    @pytest.mark.parametrize("side, claimType", [("receiving", "ip"), ("to", "op"), ("from", "snf")])
+    def test_invalid_side_or_claimType_raises(self, spark, side, claimType):
+        from cms.transfers import add_prior_hospitalization_info
+        transfers_df, ip_df = self._both_sides(spark, [985])
+        with pytest.raises(ValueError):
+            add_prior_hospitalization_info(transfers_df, ip_df, side=side, claimType=claimType)
+
+    def test_second_call_raises(self, spark):
+        # outputs are un-prefixed, so the other side (or a rerun) would collide
+        from cms.transfers import add_prior_hospitalization_info
+        transfers_df, ip_df = self._both_sides(spark, [985])
+        transfers_df = add_prior_hospitalization_info(transfers_df, ip_df)
+        with pytest.raises(ValueError, match="already has"):
+            add_prior_hospitalization_info(transfers_df, ip_df, side="from")
+
+
+# ============================================================
+# Tests for the transfers-level add_comorbidity_info, which
+# wraps stays.add_comorbidity_info on the side's stay.
+# ============================================================
+
+class TestAddComorbidityInfoTransfers:
+
+    _DGNS_SCHEMA = StructType([StructField("DSYSRTKY", IntegerType(), True),
+                               StructField("THRU_DT_DAY", IntegerType(), True)] +
+                              [StructField(f"ICD_DGNS_CD{i}", StringType(), True) for i in range(1, 26)])
+    _TRANSFERS_SCHEMA = StructType([StructField(side + c, IntegerType(), True)
+                                    for side in ("from", "to")
+                                    for c in ("DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY", "ADMSN_DT_MONTH",
+                                              "THRU_DT_DAY", "ffsFirstMonth")])
+
+    def _inputs(self, spark, ffsFirstMonth=1):
+        # well past ICD10 start so the 360-day lookback is complete; month 100 with ffsFirstMonth=1 is
+        # plenty of FFS coverage
+        from utilities import icd10Day
+        fromThru = icd10Day + 1000
+        toThru = fromThru + 5
+        ip_df = spark.createDataFrame([
+            # CHF principal 100 days before the from discharge -> in both lookbacks, and a prior hospitalization
+            {"DSYSRTKY": 1, "THRU_DT_DAY": fromThru - 100, "ICD_DGNS_CD1": "I500"},
+            # the to stay's own claim, MI as a secondary dx -> only in the to lookback
+            {"DSYSRTKY": 1, "THRU_DT_DAY": toThru, "ICD_DGNS_CD1": "I639", "ICD_DGNS_CD2": "I210"},
+        ], schema=self._DGNS_SCHEMA)
+        op_df = spark.createDataFrame([], schema=self._DGNS_SCHEMA)
+        transfers_df = spark.createDataFrame([{
+            "fromDSYSRTKY": 1, "fromCLAIMNO": 1, "fromADMSN_DT_DAY": fromThru - 3, "fromADMSN_DT_MONTH": 100,
+            "fromTHRU_DT_DAY": fromThru, "fromffsFirstMonth": ffsFirstMonth,
+            "toDSYSRTKY": 1, "toCLAIMNO": 2, "toADMSN_DT_DAY": fromThru, "toADMSN_DT_MONTH": 100,
+            "toTHRU_DT_DAY": toThru, "toffsFirstMonth": ffsFirstMonth}], schema=self._TRANSFERS_SCHEMA)
+        return transfers_df, ip_df, op_df
+
+    def _run(self, spark, side, ffsFirstMonth=1):
+        from cms.transfers import add_comorbidity_info
+        transfers_df, ip_df, op_df = self._inputs(spark, ffsFirstMonth)
+        return add_comorbidity_info(transfers_df, ip_df, op_df, side=side).collect()[0]
+
+    def test_to_side_lookback_ends_on_to_discharge(self, spark):
+        r = self._run(spark, "to")
+        assert r["hospitalizationsIn12Months"] == 1
+        assert r["congestiveHeartFailure"] == 1
+        assert r["myocardialInfraction"] == 1
+
+    def test_from_side_lookback_ends_on_from_discharge(self, spark):
+        r = self._run(spark, "from")
+        assert r["hospitalizationsIn12Months"] == 1
+        assert r["congestiveHeartFailure"] == 1
+        assert r["myocardialInfraction"] == 0
+        for c in self._TRANSFERS_SCHEMA.fieldNames():
+            assert c in r.asDict()
+
+    def test_short_ffs_coverage_nulls_flags(self, spark):
+        # month 100 - ffsFirstMonth 95 = 5 months of coverage
+        r = self._run(spark, "from", ffsFirstMonth=95)
+        assert r["hospitalizationsIn12Months"] is None
+        assert r["congestiveHeartFailure"] is None
+        assert r["comorbidityIndex"] is None
+
+    def test_after_prior_hospitalization_info_raises(self, spark):
+        # add_comorbidity_info adds the prior hospitalization columns itself
+        from cms.transfers import add_prior_hospitalization_info, add_comorbidity_info
+        transfers_df, ip_df, op_df = self._inputs(spark)
+        transfers_df = add_prior_hospitalization_info(transfers_df, ip_df)
+        with pytest.raises(ValueError, match="already has"):
+            add_comorbidity_info(transfers_df, ip_df, op_df)
+
 
 # ============================================================
 # Test for the transfers-level add_days_at_home_info, which

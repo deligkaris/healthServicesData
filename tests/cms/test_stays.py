@@ -3133,3 +3133,45 @@ class TestAddProviderHrrVIProportion:
         assert out[1] is None
         assert out[2] is None
         assert out[3] == 1.0
+
+
+# ============================================================
+# add_comorbidity_info computes hospitalizationsIn12Months itself, so the
+# comorbidity FFS gate is anchored like the prior hospitalizations.
+# ============================================================
+
+class TestAddComorbidityInfo:
+
+    _DGNS_SCHEMA = StructType([StructField("DSYSRTKY", IntegerType(), True),
+                               StructField("THRU_DT_DAY", IntegerType(), True)] +
+                              [StructField(f"ICD_DGNS_CD{i}", StringType(), True) for i in range(1, 26)])
+    _STAYS_SCHEMA = StructType([StructField(c, IntegerType(), True) for c in
+                                ("DSYSRTKY", "CLAIMNO", "THRU_DT_DAY", "THRU_DT_MONTH", "ffsFirstMonth")])
+
+    def test_op_stays_anchor_on_through_date(self, spark):
+        # op stays have no admission date: beneficiary 1 has 99 months of coverage before THRU_DT_MONTH,
+        # beneficiary 2 only 5 -> NULL hospitalizationsIn12Months and NULL flags
+        from utilities import icd10Day
+        from cms.stays import add_comorbidity_info
+        thru = icd10Day + 1000
+        ip_df = spark.createDataFrame([{"DSYSRTKY": b, "THRU_DT_DAY": thru - 100, "ICD_DGNS_CD1": "I500"}
+                                       for b in (1, 2)], schema=self._DGNS_SCHEMA)
+        op_df = spark.createDataFrame([], schema=self._DGNS_SCHEMA)
+        stays_df = spark.createDataFrame([(1, 1, thru, 100, 1), (2, 2, thru, 100, 95)], schema=self._STAYS_SCHEMA)
+        r = {row["DSYSRTKY"]: row for row in add_comorbidity_info(stays_df, ip_df, op_df, claimType="op").collect()}
+        assert r[1]["hospitalizationsIn12Months"] == 1
+        assert r[1]["congestiveHeartFailure"] == 1
+        assert r[2]["hospitalizationsIn12Months"] is None
+        assert r[2]["congestiveHeartFailure"] is None
+
+    def test_rerun_raises(self, spark):
+        from utilities import icd10Day
+        from cms.stays import add_comorbidity_info
+        thru = icd10Day + 1000
+        ip_df = spark.createDataFrame([{"DSYSRTKY": 1, "THRU_DT_DAY": thru - 100, "ICD_DGNS_CD1": "I500"}],
+                                      schema=self._DGNS_SCHEMA)
+        op_df = spark.createDataFrame([], schema=self._DGNS_SCHEMA)
+        stays_df = spark.createDataFrame([(1, 1, thru, 100, 1)], schema=self._STAYS_SCHEMA)
+        stays_df = add_comorbidity_info(stays_df, ip_df, op_df, claimType="op")
+        with pytest.raises(ValueError, match="already has"):
+            add_comorbidity_info(stays_df, ip_df, op_df, claimType="op")
