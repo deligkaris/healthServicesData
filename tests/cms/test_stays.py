@@ -626,8 +626,8 @@ class TestAddProviderStrokeAnnualVolume:
 
 
 # ============================================================
-# Tests for add_providerAnnualStays -- a plain row count per
-# ORGNPINM x THRU_DT_YEAR (staysDF is one row per stay post
+# Tests for add_providerAnnualDischarges / add_providerAnnualAdmissions -- a plain row
+# count per ORGNPINM x THRU_DT_YEAR / ADMSN_DT_YEAR (staysDF is one row per stay post
 # get_unique_stays, so the count is the number of stays).
 # ============================================================
 
@@ -641,62 +641,80 @@ def _stays_df(spark, rows):
     return spark.createDataFrame(rows, schema=schema)
 
 
-class TestAddProviderAnnualStays:
+class TestAddProviderAnnualDischarges:
 
     def test_column_added_named_by_convention(self, spark):
-        from cms.stays import add_providerAnnualStays
-        df = add_providerAnnualStays(_stays_df(spark, [(1, 100, 2020)]))
-        assert "providerAnnualStays" in df.columns
+        from cms.stays import add_providerAnnualDischarges
+        df = add_providerAnnualDischarges(_stays_df(spark, [(1, 100, 2020)]))
+        assert "providerAnnualDischarges" in df.columns
 
     def test_counts_stays_per_provider_year(self, spark):
-        from cms.stays import add_providerAnnualStays
+        from cms.stays import add_providerAnnualDischarges
         rows = [(1, 100, 2020), (2, 100, 2020), (3, 100, 2020)]
-        df = add_providerAnnualStays(_stays_df(spark, rows))
+        df = add_providerAnnualDischarges(_stays_df(spark, rows))
         for r in df.collect():
-            assert r["providerAnnualStays"] == 3
+            assert r["providerAnnualDischarges"] == 3
 
     def test_partition_independent_per_provider_and_year(self, spark):
-        from cms.stays import add_providerAnnualStays
+        from cms.stays import add_providerAnnualDischarges
         # 100/2020 -> 2 stays; 100/2021 -> 1; 200/2020 -> 3.
         rows = [
             (1, 100, 2020), (2, 100, 2020),
             (3, 100, 2021),
             (4, 200, 2020), (5, 200, 2020), (6, 200, 2020),
         ]
-        df = add_providerAnnualStays(_stays_df(spark, rows))
-        by_claim = {r["CLAIMNO"]: r["providerAnnualStays"] for r in df.collect()}
+        df = add_providerAnnualDischarges(_stays_df(spark, rows))
+        by_claim = {r["CLAIMNO"]: r["providerAnnualDischarges"] for r in df.collect()}
         assert by_claim[1] == 2 and by_claim[2] == 2
         assert by_claim[3] == 1
         assert by_claim[4] == 3 and by_claim[5] == 3 and by_claim[6] == 3
 
     def test_single_stay_counts_one(self, spark):
-        from cms.stays import add_providerAnnualStays
-        df = add_providerAnnualStays(_stays_df(spark, [(1, 100, 2020)]))
-        assert df.collect()[0]["providerAnnualStays"] == 1
+        from cms.stays import add_providerAnnualDischarges
+        df = add_providerAnnualDischarges(_stays_df(spark, [(1, 100, 2020)]))
+        assert df.collect()[0]["providerAnnualDischarges"] == 1
 
     def test_value_broadcast_to_every_row_in_partition(self, spark):
-        from cms.stays import add_providerAnnualStays
+        from cms.stays import add_providerAnnualDischarges
         # Window count attaches to every row in the partition, not just one.
         rows = [(1, 100, 2020), (2, 100, 2020), (3, 100, 2020), (4, 100, 2020)]
-        df = add_providerAnnualStays(_stays_df(spark, rows))
-        assert [r["providerAnnualStays"] for r in df.collect()] == [4, 4, 4, 4]
+        df = add_providerAnnualDischarges(_stays_df(spark, rows))
+        assert [r["providerAnnualDischarges"] for r in df.collect()] == [4, 4, 4, 4]
 
-    def test_year_admission_counts_by_admission_year(self, spark):
-        from cms.stays import add_providerAnnualStays
-        # rows: (CLAIMNO, ORGNPINM, ADMSN_DT_YEAR, THRU_DT_YEAR); claim 1 crosses New Year.
-        schema = StructType([
-            StructField("CLAIMNO", IntegerType()),
-            StructField("ORGNPINM", IntegerType()),
-            StructField("ADMSN_DT_YEAR", IntegerType()),
-            StructField("THRU_DT_YEAR", IntegerType()),
-        ])
-        stays = spark.createDataFrame([(1, 100, 2020, 2021), (2, 100, 2020, 2020), (3, 100, 2021, 2021)], schema=schema)
-        byAdmission = {r["CLAIMNO"]: r["providerAnnualStays"]
-                       for r in add_providerAnnualStays(stays, year="ADMSN_DT_YEAR").collect()}
-        byDischarge = {r["CLAIMNO"]: r["providerAnnualStays"]
-                       for r in add_providerAnnualStays(stays).collect()}
-        assert byAdmission == {1: 2, 2: 2, 3: 1}
-        assert byDischarge == {1: 2, 2: 1, 3: 2}
+    def test_counts_by_discharge_year(self, spark):
+        # 100/2020 -> claim 2; 100/2021 -> claims 1, 3; 200/2020 -> claim 4
+        from cms.stays import add_providerAnnualDischarges
+        df = add_providerAnnualDischarges(_stays_years_df(spark, _NEW_YEAR_ROWS))
+        assert {r["CLAIMNO"]: r["providerAnnualDischarges"] for r in df.collect()} == {1: 2, 2: 1, 3: 2, 4: 1}
+
+
+def _stays_years_df(spark, rows):
+    """rows: list of (CLAIMNO, ORGNPINM, ADMSN_DT_YEAR, THRU_DT_YEAR). CLAIMNO is only a row id."""
+    schema = StructType([
+        StructField("CLAIMNO", IntegerType()),
+        StructField("ORGNPINM", IntegerType()),
+        StructField("ADMSN_DT_YEAR", IntegerType()),
+        StructField("THRU_DT_YEAR", IntegerType()),
+    ])
+    return spark.createDataFrame(rows, schema=schema)
+
+
+# claim 1 crosses New Year: admitted 2020, discharged 2021
+_NEW_YEAR_ROWS = [(1, 100, 2020, 2021), (2, 100, 2020, 2020), (3, 100, 2021, 2021), (4, 200, 2020, 2020)]
+
+
+class TestAddProviderAnnualAdmissions:
+
+    def test_column_added_named_by_convention(self, spark):
+        from cms.stays import add_providerAnnualAdmissions
+        df = add_providerAnnualAdmissions(_stays_years_df(spark, _NEW_YEAR_ROWS))
+        assert "providerAnnualAdmissions" in df.columns
+
+    def test_counts_by_admission_year(self, spark):
+        # 100/2020 -> claims 1, 2; 100/2021 -> claim 3; 200/2020 -> claim 4
+        from cms.stays import add_providerAnnualAdmissions
+        df = add_providerAnnualAdmissions(_stays_years_df(spark, _NEW_YEAR_ROWS))
+        assert {r["CLAIMNO"]: r["providerAnnualAdmissions"] for r in df.collect()} == {1: 2, 2: 2, 3: 1, 4: 1}
 
 
 # ============================================================

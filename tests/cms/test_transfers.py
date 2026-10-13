@@ -4002,9 +4002,12 @@ class TestGetNodeListWithAddress:
 
 # ============================================================
 # Tests for add_providerAnnualStays_info -- counts staysDF per provider-year and joins
-# it onto the from side by discharge year and the to side by admission year, both
-# matched to fromTHRU_DT_YEAR, with a 0-fill for provider-years without stays.
+# the sender's discharges and admissions and the receiver's admissions, all matched to
+# fromTHRU_DT_YEAR, with a 0-fill for provider-years without stays.
 # ============================================================
+
+_STAYS_INFO_COLS = ["fromproviderAnnualDischarges", "fromproviderAnnualAdmissions", "toproviderAnnualAdmissions"]
+
 
 def _transfers_keys_schema():
     return StructType([
@@ -4042,6 +4045,12 @@ def _same_year_stays(provider, year, n):
     return [(provider, year, year)] * n
 
 
+def _stays_info(spark, transferRows, stayRows):
+    from cms.transfers import add_providerAnnualStays_info
+    out = add_providerAnnualStays_info(make_transfers_keys_df(spark, transferRows), make_stays_years_df(spark, stayRows))
+    return {r["rowId"]: r for r in out.collect()}
+
+
 class TestAddProviderAnnualStaysInfo:
 
     def test_columns_added(self, spark):
@@ -4049,71 +4058,74 @@ class TestAddProviderAnnualStaysInfo:
         transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
         stays = make_stays_years_df(spark, _same_year_stays(100, 2020, 1) + _same_year_stays(200, 2020, 1))
         out = add_providerAnnualStays_info(transfers, stays)
-        assert "fromproviderAnnualStays" in out.columns
-        assert "toproviderAnnualStays" in out.columns
+        for c in _STAYS_INFO_COLS:
+            assert c in out.columns
 
     def test_stays_counted(self, spark):
-        from cms.transfers import add_providerAnnualStays_info
-        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
-        stays = make_stays_years_df(spark, _same_year_stays(100, 2020, 5) + _same_year_stays(200, 2020, 9))
-        r = add_providerAnnualStays_info(transfers, stays).collect()[0]
-        assert r["fromproviderAnnualStays"] == 5
-        assert r["toproviderAnnualStays"] == 9
+        r = _stays_info(spark, [("t1", 100, 2020, 200, 2020)],
+                        _same_year_stays(100, 2020, 5) + _same_year_stays(200, 2020, 9))["t1"]
+        assert r["fromproviderAnnualDischarges"] == 5
+        assert r["fromproviderAnnualAdmissions"] == 5
+        assert r["toproviderAnnualAdmissions"] == 9
 
     def test_to_side_counts_by_admission_year(self, spark):
         # Receiving stay admitted 2020, discharged 2021: it counts in the 2020 transfer year.
-        from cms.transfers import add_providerAnnualStays_info
-        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2021)])
-        stays = make_stays_years_df(spark, [(200, 2020, 2021), (200, 2020, 2020), (200, 2021, 2021)])
-        r = add_providerAnnualStays_info(transfers, stays).collect()[0]
-        assert r["toproviderAnnualStays"] == 2
+        r = _stays_info(spark, [("t1", 100, 2020, 200, 2021)],
+                        [(200, 2020, 2021), (200, 2020, 2020), (200, 2021, 2021)])["t1"]
+        assert r["toproviderAnnualAdmissions"] == 2
 
-    def test_from_side_counts_by_discharge_year(self, spark):
-        # Sending-hospital stay admitted 2019, discharged 2020: it counts in the 2020 transfer year.
+    def test_from_side_discharges_by_discharge_year(self, spark):
+        # Sending-hospital stay admitted 2019, discharged 2020 counts; the one discharged 2021 does not.
+        r = _stays_info(spark, [("t1", 100, 2020, 200, 2020)],
+                        [(100, 2019, 2020), (100, 2020, 2020), (100, 2020, 2021)])["t1"]
+        assert r["fromproviderAnnualDischarges"] == 2
+
+    def test_from_side_admissions_by_admission_year(self, spark):
+        # Sending-hospital stay admitted 2020, discharged 2021 counts; the one admitted 2019 does not.
+        r = _stays_info(spark, [("t1", 100, 2020, 200, 2020)],
+                        [(100, 2020, 2021), (100, 2020, 2020), (100, 2019, 2020)])["t1"]
+        assert r["fromproviderAnnualAdmissions"] == 2
+
+    def test_union_one_value_per_provider_year(self, spark):
+        # ED and IP rows of the same sender-year get the same counts, whatever their transferType.
         from cms.transfers import add_providerAnnualStays_info
-        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
-        stays = make_stays_years_df(spark, [(100, 2019, 2020), (100, 2020, 2020), (100, 2020, 2021)])
-        r = add_providerAnnualStays_info(transfers, stays).collect()[0]
-        assert r["fromproviderAnnualStays"] == 2
+        transfers = (make_transfers_keys_df(spark, [("ed", 100, 2020, 200, 2020)]).withColumn("transferType", F.lit(1))
+                     .unionByName(make_transfers_keys_df(spark, [("ip", 100, 2020, 200, 2020)]).withColumn("transferType", F.lit(2))))
+        stays = make_stays_years_df(spark, [(100, 2020, 2021), (100, 2020, 2020), (100, 2019, 2020), (100, 2019, 2020)])
+        by_row = {r["rowId"]: r for r in add_providerAnnualStays_info(transfers, stays).collect()}
+        assert len(by_row) == 2
+        for rowId in ("ed", "ip"):
+            assert by_row[rowId]["fromproviderAnnualDischarges"] == 3
+            assert by_row[rowId]["fromproviderAnnualAdmissions"] == 2
 
     def test_missing_from_filled_zero(self, spark):
-        from cms.transfers import add_providerAnnualStays_info
-        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
-        stays = make_stays_years_df(spark, _same_year_stays(200, 2020, 9))
-        r = add_providerAnnualStays_info(transfers, stays).collect()[0]
-        assert r["fromproviderAnnualStays"] == 0
-        assert r["toproviderAnnualStays"] == 9
+        r = _stays_info(spark, [("t1", 100, 2020, 200, 2020)], _same_year_stays(200, 2020, 9))["t1"]
+        assert r["fromproviderAnnualDischarges"] == 0
+        assert r["fromproviderAnnualAdmissions"] == 0
+        assert r["toproviderAnnualAdmissions"] == 9
 
     def test_missing_to_filled_zero(self, spark):
-        from cms.transfers import add_providerAnnualStays_info
-        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
-        stays = make_stays_years_df(spark, _same_year_stays(100, 2020, 5))
-        r = add_providerAnnualStays_info(transfers, stays).collect()[0]
-        assert r["fromproviderAnnualStays"] == 5
-        assert r["toproviderAnnualStays"] == 0
+        r = _stays_info(spark, [("t1", 100, 2020, 200, 2020)], _same_year_stays(100, 2020, 5))["t1"]
+        assert r["fromproviderAnnualDischarges"] == 5
+        assert r["fromproviderAnnualAdmissions"] == 5
+        assert r["toproviderAnnualAdmissions"] == 0
 
     def test_both_missing_filled_zero(self, spark):
-        from cms.transfers import add_providerAnnualStays_info
-        transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)])
-        stays = make_stays_years_df(spark, _same_year_stays(300, 2020, 3))
-        r = add_providerAnnualStays_info(transfers, stays).collect()[0]
-        assert r["fromproviderAnnualStays"] == 0
-        assert r["toproviderAnnualStays"] == 0
+        r = _stays_info(spark, [("t1", 100, 2020, 200, 2020)], _same_year_stays(300, 2020, 3))["t1"]
+        for c in _STAYS_INFO_COLS:
+            assert r[c] == 0
 
     def test_no_transfer_rows_dropped(self, spark):
         # left_outer: every transfer row survives even with an empty staysDF.
-        from cms.transfers import add_providerAnnualStays_info
-        transfers = make_transfers_keys_df(spark, [
+        by_row = _stays_info(spark, [
             ("t1", 100, 2020, 200, 2020),
             ("t2", 101, 2020, 201, 2020),
             ("t3", 102, 2021, 202, 2021),
-        ])
-        out = add_providerAnnualStays_info(transfers, make_stays_years_df(spark, []))
-        rows = out.collect()
-        assert {r["rowId"] for r in rows} == {"t1", "t2", "t3"} and len(rows) == 3
-        for r in rows:
-            assert r["fromproviderAnnualStays"] == 0
-            assert r["toproviderAnnualStays"] == 0
+        ], [])
+        assert set(by_row) == {"t1", "t2", "t3"}
+        for r in by_row.values():
+            for c in _STAYS_INFO_COLS:
+                assert r[c] == 0
 
     def test_many_stays_do_not_duplicate_transfers(self, spark):
         from cms.transfers import add_providerAnnualStays_info
@@ -4125,21 +4137,17 @@ class TestAddProviderAnnualStaysInfo:
         assert add_providerAnnualStays_info(transfers, stays).count() == 2
 
     def test_partition_independent_per_provider_year(self, spark):
-        from cms.transfers import add_providerAnnualStays_info
-        transfers = make_transfers_keys_df(spark, [
+        by_row = _stays_info(spark, [
             ("t1", 100, 2020, 200, 2020),
             ("t2", 100, 2021, 200, 2021),
-        ])
-        stays = make_stays_years_df(spark,
-            _same_year_stays(100, 2020, 5) + _same_year_stays(100, 2021, 7)
-            + _same_year_stays(200, 2020, 9) + _same_year_stays(200, 2021, 2))
-        by_row = {r["rowId"]: r for r in add_providerAnnualStays_info(transfers, stays).collect()}
-        assert by_row["t1"]["fromproviderAnnualStays"] == 5 and by_row["t1"]["toproviderAnnualStays"] == 9
-        assert by_row["t2"]["fromproviderAnnualStays"] == 7 and by_row["t2"]["toproviderAnnualStays"] == 2
+        ], _same_year_stays(100, 2020, 5) + _same_year_stays(100, 2021, 7)
+           + _same_year_stays(200, 2020, 9) + _same_year_stays(200, 2021, 2))
+        assert by_row["t1"]["fromproviderAnnualDischarges"] == 5 and by_row["t1"]["toproviderAnnualAdmissions"] == 9
+        assert by_row["t2"]["fromproviderAnnualDischarges"] == 7 and by_row["t2"]["toproviderAnnualAdmissions"] == 2
 
-    @pytest.mark.parametrize("col", ["fromproviderAnnualStays", "toproviderAnnualStays"])
+    @pytest.mark.parametrize("col", _STAYS_INFO_COLS)
     def test_existing_column_raises(self, spark, col):
-        # e.g. staysF.add_providerAnnualStays run on the stays before get_transfers
+        # e.g. staysF.add_providerAnnual{Discharges,Admissions} run on the stays before get_transfers
         from cms.transfers import add_providerAnnualStays_info
         transfers = make_transfers_keys_df(spark, [("t1", 100, 2020, 200, 2020)]).withColumn(col, F.lit(1))
         stays = make_stays_years_df(spark, _same_year_stays(100, 2020, 1))
@@ -4149,8 +4157,8 @@ class TestAddProviderAnnualStaysInfo:
 
 # ============================================================
 # Tests for add_nodeProportionTransferredOut -- per transfer type: IP->IP divides by
-# the sender's stays (the transferred-out stays are among them), ED->IP by stays +
-# transfers out (ED patients sent out were never admitted there).
+# the sender's discharges (the transferred-out stays are among them), ED->IP by its
+# admissions + transfers out (ED patients sent out were never admitted there).
 # ============================================================
 
 _OUT_ED = 1  # TransferType.edToInpatient
@@ -4159,16 +4167,20 @@ _OUT_IP = 2  # TransferType.inpatientToInpatient
 
 def _prop_out_schema():
     return StructType([
-        StructField("rowId",                   StringType(),  True),
-        StructField("transferType",            IntegerType(), True),
-        StructField("nodeOutVol",              IntegerType(), True),
-        StructField("fromproviderAnnualStays", IntegerType(), True),
+        StructField("rowId",                        StringType(),  True),
+        StructField("transferType",                 IntegerType(), True),
+        StructField("nodeOutVol",                   IntegerType(), True),
+        StructField("fromproviderAnnualDischarges", IntegerType(), True),
+        StructField("fromproviderAnnualAdmissions", IntegerType(), True),
     ])
 
 
 def make_prop_out_df(spark, rows):
-    """rows: list of (rowId, transferType, nodeOutVol, fromproviderAnnualStays)."""
-    cols = ["rowId", "transferType", "nodeOutVol", "fromproviderAnnualStays"]
+    """rows: list of (rowId, transferType, nodeOutVol, stays) -- stays used for both
+    fromproviderAnnualDischarges and fromproviderAnnualAdmissions -- or
+    (rowId, transferType, nodeOutVol, fromproviderAnnualDischarges, fromproviderAnnualAdmissions)."""
+    cols = ["rowId", "transferType", "nodeOutVol", "fromproviderAnnualDischarges", "fromproviderAnnualAdmissions"]
+    rows = [r if len(r) == 5 else (*r, r[3]) for r in rows]
     return spark.createDataFrame([dict(zip(cols, r)) for r in rows], schema=_prop_out_schema())
 
 
@@ -4221,6 +4233,12 @@ class TestAddNodeProportionTransferredOut:
         # Same sender-year in both sets: each row divides by its own type's denominator.
         by = _prop_out(spark, [("ed", _OUT_ED, 10, 100), ("ip", _OUT_IP, 10, 100)])
         assert by["ed"] == pytest.approx(10 / 110)
+        assert by["ip"] == pytest.approx(10 / 100)
+
+    def test_ed_uses_admissions_ip_uses_discharges(self, spark):
+        # sender-year with 100 discharges and 90 admissions
+        by = _prop_out(spark, [("ed", _OUT_ED, 10, 100, 90), ("ip", _OUT_IP, 10, 100, 90)])
+        assert by["ed"] == pytest.approx(10 / (90 + 10))
         assert by["ip"] == pytest.approx(10 / 100)
 
     def test_other_type_is_null(self, spark):
@@ -4299,15 +4317,15 @@ class TestAddNodeToProportionFromEd:
 # ============================================================
 # Tests for the per-type receiving volumes and proportions transferred in
 # (add_nodeInVolFrom*, add_nodeProportionTransferredInFrom*) and their wrapper
-# add_node_in_by_type_info. toproviderAnnualStays counts all admissions, so each
-# proportion is volume / toproviderAnnualStays.
+# add_node_in_by_type_info. toproviderAnnualAdmissions counts all admissions, so each
+# proportion is volume / toproviderAnnualAdmissions.
 # ============================================================
 
 _ED = int(TransferType.edToInpatient)
 _IP = int(TransferType.inpatientToInpatient)
 
 _NODE_IN_BY_TYPE_COLS = ["toORGNPINM", "fromTHRU_DT_YEAR", "transferType",
-                         "toDSYSRTKY", "toCLAIMNO", "toTHRU_DT_DAY", "toproviderAnnualStays"]
+                         "toDSYSRTKY", "toCLAIMNO", "toTHRU_DT_DAY", "toproviderAnnualAdmissions"]
 
 
 def _node_in_by_type_schema():
@@ -4316,7 +4334,7 @@ def _node_in_by_type_schema():
 
 def make_node_in_by_type_df(spark, rows):
     """rows: list of (toORGNPINM, fromTHRU_DT_YEAR, transferType, toDSYSRTKY, toCLAIMNO,
-    toTHRU_DT_DAY, toproviderAnnualStays)."""
+    toTHRU_DT_DAY, toproviderAnnualAdmissions)."""
     return spark.createDataFrame([dict(zip(_NODE_IN_BY_TYPE_COLS, r)) for r in rows],
                                  schema=_node_in_by_type_schema())
 
@@ -4440,7 +4458,7 @@ class TestAddNodeInVolFromEdOrIp:
 
 
 def _ed15_ip5(spark, stays=100):
-    """Receiver 200 in 2020: 15 ED->IP and 5 IP->IP admissions, toproviderAnnualStays = stays."""
+    """Receiver 200 in 2020: 15 ED->IP and 5 IP->IP admissions, toproviderAnnualAdmissions = stays."""
     return make_node_in_by_type_df(spark, _admissions(200, 2020, _ED, 15, stays)
                                           + _admissions(200, 2020, _IP, 5, stays, first=15))
 

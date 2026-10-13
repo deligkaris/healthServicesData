@@ -300,6 +300,10 @@ get_data_dictionary <- function() {
     "firstObservableDay","First day covered by the loaded claims (Jan 1 of the first loaded year, cumulative day number)",
     "lastObservableDay","Last day covered by the loaded claims (Dec 31 of the last loaded year, cumulative day number)",
 
+    # ---- provider stay counts ----
+    "providerAnnualDischarges","Hospital stays discharged that year (THRU_DT_YEAR)",
+    "providerAnnualAdmissions","Hospital stays admitted that year (ADMSN_DT_YEAR)",
+
     # ---- provider capability / volume (sepsis-shock cohort) ----
     # AnnualCapability = performed it at least once that year (each year independent, does not carry forward);
     # EverCapability = performed it in any year up to and including this one (never resets, no backfill).
@@ -325,7 +329,7 @@ get_data_dictionary <- function() {
 
     # ---- transfer network: node & dyad metrics ----
     # transfer set = one get_transfers call (ED->IP or IP->IP); entries are per transfer set unless they say
-    # pooled; fromproviderAnnualStays/toproviderAnnualStays count the hospital's stays, not transfers
+    # pooled; fromproviderAnnualDischarges/Admissions and toproviderAnnualAdmissions count the hospital's stays, not transfers
     "transferType",    "Transfer set the row belongs to: 1=ED->IP (ED visit to inpatient admission), 2=IP->IP (inpatient to inpatient)",
     "firstTransfer",   "1 if this is the patient's earliest transfer (min from-through-day) within its transfer set (ED->IP or IP->IP), else 0",
     "nodeOutVol",      "Sending hospital: transfers sent out that year within its transfer set",
@@ -352,12 +356,13 @@ get_data_dictionary <- function() {
     "nodeInVolFromEd", "Receiving hospital: ED->IP transfers received that year (0 if none; present when ED->IP transfers were included)",
     "nodeInVolFromIp", "Receiving hospital: IP->IP transfers received that year (0 if none; present when IP->IP transfers were included)",
     "nodeInVolFromEdOrIp","Receiving hospital: distinct admissions received that year by ED->IP or IP->IP transfer, pooled across both transfer sets (an admission in both counts once; present only when both were included)",
-    "fromproviderAnnualStays","Sending hospital: its inpatient stays discharged in the transfer year (0 if none)",
-    "toproviderAnnualStays","Receiving hospital: its inpatient stays admitted in the transfer year, transferred-in included (0 if none)",
-    "nodeProportionTransferredOut","Sending hospital: share of its patients that year it transferred out within the row's transfer set; IP->IP: nodeOutVol / fromproviderAnnualStays (NULL if 0), ED->IP: nodeOutVol / (fromproviderAnnualStays + nodeOutVol)",
-    "nodeProportionTransferredInFromEd","nodeInVolFromEd / toproviderAnnualStays, the receiving hospital's admissions that year incl. transferred-in (NULL if toproviderAnnualStays is 0)",
-    "nodeProportionTransferredInFromIp","nodeInVolFromIp / toproviderAnnualStays (NULL if toproviderAnnualStays is 0)",
-    "nodeProportionTransferredInFromEdOrIp","nodeInVolFromEdOrIp / toproviderAnnualStays, pooled across both transfer sets (NULL if toproviderAnnualStays is 0; present only when both were included)",
+    "fromproviderAnnualDischarges","Sending hospital: its inpatient stays discharged in the transfer year (0 if none)",
+    "fromproviderAnnualAdmissions","Sending hospital: its inpatient stays admitted in the transfer year (0 if none)",
+    "toproviderAnnualAdmissions","Receiving hospital: its inpatient stays admitted in the transfer year, transferred-in included (0 if none)",
+    "nodeProportionTransferredOut","Sending hospital: share of its patients that year it transferred out within the row's transfer set; IP->IP: nodeOutVol / fromproviderAnnualDischarges (NULL if 0), ED->IP: nodeOutVol / (fromproviderAnnualAdmissions + nodeOutVol)",
+    "nodeProportionTransferredInFromEd","nodeInVolFromEd / toproviderAnnualAdmissions, the receiving hospital's admissions that year incl. transferred-in (NULL if toproviderAnnualAdmissions is 0)",
+    "nodeProportionTransferredInFromIp","nodeInVolFromIp / toproviderAnnualAdmissions (NULL if toproviderAnnualAdmissions is 0)",
+    "nodeProportionTransferredInFromEdOrIp","nodeInVolFromEdOrIp / toproviderAnnualAdmissions, pooled across both transfer sets (NULL if toproviderAnnualAdmissions is 0; present only when both were included)",
     "dyadVi",          "1 if sending & receiving share the same system (SYSID), else 0",
     "newDyad",         "1 if this is the earliest observed year of the (sending, receiving) pair within its transfer set, else 0 (left-censored by the loaded years; a pair returning after a gap is not re-flagged)",
     "dyadTransferVol", "Number of transfers along this specific dyad (year) within its transfer set",

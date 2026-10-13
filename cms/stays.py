@@ -34,16 +34,19 @@ def add_providerAnnualVolume(staysDF, col="anyStroke"):
     staysDF = staysDF.withColumn(colName, F.sum( F.col(col) ).over(eachProvider))
     return staysDF
 
-def add_providerAnnualStays(staysDF, year="THRU_DT_YEAR"):
-    '''Adds providerAnnualStays -- the number of stays the organization had in that year, a stay counting
-    in the year named by `year`: THRU_DT_YEAR (discharge, the default) or ADMSN_DT_YEAR (admission).
-    Assumes staysDF is at stay granularity (post get_unique_stays), so each row is one stay and
-    the count is a plain row count. With the default, same per-year window as add_providerAnnualVolume
-    (ORGNPINM AND THRU_DT_YEAR): each year is evaluated independently and the count does NOT carry
-    forward. Unlike add_providerAnnualVolume, which sums a per-stay flag, this counts every stay.'''
-    eachProvider = Window.partitionBy(["ORGNPINM", year])
-    staysDF = staysDF.withColumn("providerAnnualStays", F.count(F.lit(1)).over(eachProvider))
-    return staysDF
+def add_providerAnnualDischarges(staysDF):
+    '''Adds providerAnnualDischarges -- the number of stays the organization discharged that year
+    (THRU_DT_YEAR, the stay's last through date). Assumes staysDF is at stay granularity (post
+    get_unique_stays), so each row is one stay; each year is evaluated independently.'''
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    return staysDF.withColumn("providerAnnualDischarges", F.count(F.lit(1)).over(eachProvider))
+
+def add_providerAnnualAdmissions(staysDF):
+    '''Adds providerAnnualAdmissions -- the number of stays the organization admitted that year
+    (ADMSN_DT_YEAR). Assumes staysDF is at stay granularity (post get_unique_stays), so each row is one
+    stay; each year is evaluated independently.'''
+    eachProvider = Window.partitionBy(["ORGNPINM","ADMSN_DT_YEAR"])
+    return staysDF.withColumn("providerAnnualAdmissions", F.count(F.lit(1)).over(eachProvider))
 
 def add_providerHrrVIProportion(staysDF):
     '''Adds providerHrrVIProportion -- among the hospitals of the provider's hospital referral region that
