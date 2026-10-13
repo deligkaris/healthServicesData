@@ -58,7 +58,9 @@ def get_transfers(*, fromStaysDf, toStaysDf, transferType):
     Merges the two dataframes to create transfers from the from provider to the to provider.
     transferType is a TransferType member describing the origin->destination setting of this whole
     dataframe -- it is a property of fromStaysDf (all-OP-ED vs all-IP), known here to the caller, not
-    derivable per row -- and is stamped on every transfer (see add_transferType).'''
+    derivable per row -- and is stamped on every transfer (see add_transferType).
+    firstTransfer and the node/dyad columns describe this transfer set only; they stay per-set after a
+    union of sets, so do not recompute them on the union.'''
     # rename the dataframe columns because pandas cannot handle two columns with the same name, just in case pd is used in analysis
     toStaysDf = toStaysDf.toDF(*("to"+c for c in toStaysDf.columns))
     fromStaysDf = fromStaysDf.toDF(*("from"+c for c in fromStaysDf.columns))
@@ -102,6 +104,8 @@ def add_transferEvtOrTpa(transfersDF):
     return transfersDF.withColumn("transferEvtOrTpa", F.when( (F.col("toevt")==1) | (F.col("transfertpa")==1), 1).otherwise(0))
 
 def add_stroke_info(transfersDF):
+    '''Adds transfer-level stroke flags and their node/dyad aggregates. Run it on each transfer set before
+    any union so the aggregates stay per-set, like those get_transfers adds.'''
     transfersDF = add_transferct(transfersDF)
     transfersDF = add_transfermri(transfersDF)
     transfersDF = add_transfertpa(transfersDF)
@@ -138,83 +142,57 @@ def add_node_volume_info(transfersDF):
     transfersDF = add_column_prior(transfersDF, column="nodeInVol", who="toORGNPINM", when="fromTHRU_DT_YEAR", gapFill=0)
     return transfersDF
 
-def add_providerAnnualStays_info(transfersDF, providerYearsDF):
-    '''Joins providerAnnualStays onto transfersDF for both the sending (from) and receiving (to)
-    provider, as fromproviderAnnualStays and toproviderAnnualStays.
-
-    providerYearsDF is one row per (ORGNPINM, THRU_DT_YEAR) carrying providerAnnualStays (see
-    staysF.add_providerAnnualStays), already distinct at that grain. It is obtained independently of
-    transfersDF -- this is the post-hoc path, for when the two dataframes were built by different
-    mechanisms and the column cannot ride along through get_transfers' from/to rename.
-
-    Both sides join on fromTHRU_DT_YEAR -- the transfer's single canonical year (see add_dyad /
-    add_node_volume_info, where even the to-side node windows key on fromTHRU_DT_YEAR). The from
-    side's own year IS fromTHRU_DT_YEAR, so that join is exact; the to side is looked up for the
-    transfer's year rather than its own toTHRU_DT_YEAR, which differs only for the rare year-boundary
-    transfer and keeps toproviderAnnualStays on the same year basis as nodeInVol and every other
-    to-side node metric.
-
-    left_outer keeps every transfer row; a provider-year absent from providerYearsDF is then filled
-    with 0 for both fromproviderAnnualStays and toproviderAnnualStays. That 0 is a provably-existing
-    zero, not an unobserved null: the from and to providers both appear in the transfer itself, so
-    they operated that year, and a missing count means they had zero stays in providerYearsDF's
-    universe -- the "transferred everyone out / admitted no one" case -- a real 0 (cf. the gapFill=0
-    rule elsewhere, which likewise treats a provably-present entity's missing count as 0).
-    Assumes providerAnnualStays is disjoint from the transferred stays (it counts admissions, not the
-    from-side stays that became transfers); if it already includes them the join never misses and the
-    fill is moot.'''
-    def lookup(side):
-        return providerYearsDF.select(
-            F.col("ORGNPINM").alias(side + "ORGNPINM"),
-            F.col("THRU_DT_YEAR").alias("fromTHRU_DT_YEAR"),
-            F.col("providerAnnualStays").alias(side + "providerAnnualStays"))
+def add_providerAnnualStays_info(transfersDF, staysDF):
+    '''Adds fromproviderAnnualStays and toproviderAnnualStays, the sending and receiving providers' stays
+    in staysDF for the transfer's year (fromTHRU_DT_YEAR). staysDF is inpatient stays, one row per stay
+    (staysF.get_stays), carrying THRU_DT_YEAR and ADMSN_DT_YEAR. Raises ValueError if transfersDF already
+    has either column.'''
+    # they ride along from stays given staysF.add_providerAnnualStays before get_transfers, and would
+    # collide with the joined columns
+    existing = [c for c in ("fromproviderAnnualStays", "toproviderAnnualStays") if c in transfersDF.columns]
+    if existing:
+        raise ValueError(f"transfersDF already has {', '.join(existing)}. staysF.add_providerAnnualStays is for "
+                         "stays; for transfers, drop these and call add_providerAnnualStays_info(transfersDF, staysDF).")
+    # the transfer year is the year the sending visit/stay ended: the from side matches it by discharge
+    # year; the to side by admission year, since a receiving stay crossing New Year is admitted in the
+    # transfer year but discharged in the next
+    def lookup(side, year):
+        return (staysF.add_providerAnnualStays(staysDF, year=year)
+                .select(F.col("ORGNPINM").alias(side + "ORGNPINM"),
+                        F.col(year).alias("fromTHRU_DT_YEAR"),
+                        F.col("providerAnnualStays").alias(side + "providerAnnualStays"))
+                .distinct())
+    # left_outer keeps every transfer; a provider-year with no stays in staysDF gets 0
     transfersDF = (transfersDF
-                   .join(lookup("from"), on=["fromORGNPINM", "fromTHRU_DT_YEAR"], how="left_outer")
-                   .join(lookup("to"),   on=["toORGNPINM",   "fromTHRU_DT_YEAR"], how="left_outer")
+                   .join(lookup("from", "THRU_DT_YEAR"),  on=["fromORGNPINM", "fromTHRU_DT_YEAR"], how="left_outer")
+                   .join(lookup("to",   "ADMSN_DT_YEAR"), on=["toORGNPINM",   "fromTHRU_DT_YEAR"], how="left_outer")
                    .fillna(0, subset=["fromproviderAnnualStays", "toproviderAnnualStays"]))
     return transfersDF
 
 def add_nodeProportionTransferredOut(transfersDF):
-    '''For each sending provider and year, the fraction of that provider's patients who were
-    transferred out: nodeOutVol / (fromproviderAnnualStays + nodeOutVol). The denominator is the
-    provider's total patients that year -- those it admitted/kept (fromproviderAnnualStays) plus those
-    it transferred out (nodeOutVol) -- so a transferred patient counts in the numerator and once in
-    the denominator, never in fromproviderAnnualStays.
+    '''Adds nodeProportionTransferredOut, the fraction of the sending provider's patients that year it
+    transferred out within the row's transfer set: nodeOutVol / fromproviderAnnualStays for
+    inpatientToInpatient rows, nodeOutVol / (fromproviderAnnualStays + nodeOutVol) for edToInpatient rows.
+    Requires transferType, nodeOutVol (add_node_volume_info) and fromproviderAnnualStays
+    (add_providerAnnualStays_info).'''
+    # a transferred-out inpatient stay is one of the sender's stays, so it is already in
+    # fromproviderAnnualStays; an ED patient transferred out was never admitted there, so it is added
+    ipDenominator = F.col("fromproviderAnnualStays")
+    edDenominator = F.col("fromproviderAnnualStays") + F.col("nodeOutVol")
+    # an ip denominator of 0 means staysDF lacks the sender-year (a cohort mismatch) -> null, and an ip
+    # value > 1 that staysDF misses stays the transfers include; the ed denominator is >= 1 since
+    # nodeOutVol >= 1 on a transfer row
+    proportion = (F.when(F.col("transferType") == int(TransferType.inpatientToInpatient),
+                         F.when(ipDenominator != 0, F.col("nodeOutVol") / ipDenominator))
+                   .when(F.col("transferType") == int(TransferType.edToInpatient),
+                         F.col("nodeOutVol") / edDenominator))
+    return transfersDF.withColumn("nodeProportionTransferredOut", proportion)
 
-    Requires nodeOutVol (add_node_volume_info) and fromproviderAnnualStays
-    (add_providerAnnualStays_info, which 0-fills it). Both are non-null and constant within
-    (fromORGNPINM, fromTHRU_DT_YEAR) -- nodeOutVol is a count >= 1 on every transfer row and
-    fromproviderAnnualStays is 0-filled -- so the denominator is always >= 1 and no divide-by-zero
-    guard is needed. The result is likewise per-(fromORGNPINM, fromTHRU_DT_YEAR), range (0, 1]:
-    > 0 because every such row has >= 1 transfer out, and exactly 1 when the provider admitted no one
-    (fromproviderAnnualStays == 0, the "transferred everyone out" case).
-
-    Assumes fromproviderAnnualStays is disjoint from the transferred-out stays (see
-    add_providerAnnualStays_info); if it already includes them they are double-counted below.'''
-    transfersDF = transfersDF.withColumn(
-        "nodeProportionTransferredOut",
-        F.col("nodeOutVol") / (F.col("fromproviderAnnualStays") + F.col("nodeOutVol")))
-    return transfersDF
-
-def add_nodeProportionTransferredIn(transfersDF):
-    '''For each receiving provider and year, the fraction of that provider's patients who arrived by
-    transfer: nodeInVol / (toproviderAnnualStays + nodeInVol). The to-side mirror of
-    add_nodeProportionTransferredOut.
-
-    Requires nodeInVol (add_node_volume_info) and toproviderAnnualStays
-    (add_providerAnnualStays_info, which 0-fills it). Both are non-null and constant within
-    (toORGNPINM, fromTHRU_DT_YEAR) -- nodeInVol is a count >= 1 on every transfer row and
-    toproviderAnnualStays is 0-filled -- so the denominator is always >= 1 and no guard is needed.
-    Result per-(toORGNPINM, fromTHRU_DT_YEAR), range (0, 1]: exactly 1 when the provider admitted no
-    one directly (toproviderAnnualStays == 0, every patient arrived by transfer).
-
-    Assumes toproviderAnnualStays is disjoint from the transferred-in stays (see
-    add_providerAnnualStays_info); if it already includes those receiving admissions they are
-    double-counted below -- use nodeInVol / toproviderAnnualStays instead in that case.'''
-    transfersDF = transfersDF.withColumn(
-        "nodeProportionTransferredIn",
-        F.col("nodeInVol") / (F.col("toproviderAnnualStays") + F.col("nodeInVol")))
-    return transfersDF
+def _nodeInVolOfTypes(*transferTypes):
+    '''Windowed count of the rows whose transferType is one of transferTypes, per receiving provider and
+    transfer year (the to-side node basis, see add_node_volume_info).'''
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
+    return F.sum(F.when(F.col("transferType").isin([int(t) for t in transferTypes]), 1).otherwise(0)).over(eachToProvider)
 
 def add_nodeToProportionFromEd(transfersDF):
     '''For each receiving provider and year, the fraction of transfers it received that came from the ED
@@ -225,16 +203,79 @@ def add_nodeToProportionFromEd(transfersDF):
     inpatientToInpatient transfers have been unioned into one dataframe -- a single transfersDF carries
     one constant transferType, so before the union either the numerator or denominator is degenerate.
     Windowed on (toORGNPINM, fromTHRU_DT_YEAR), the to-side / transfer-year basis every other node
-    metric uses (see add_node_volume_info). With only these two members present the denominator equals
-    nodeInVol, but it is counted explicitly so a future third TransferType member is excluded rather
-    than silently folded into the denominator. Returns null for a receiver-year with no
-    ed/inpatient-origin transfers (denominator 0) -- an undefined proportion, not a zero.'''
-    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
-    edVol = F.sum(F.when(F.col("transferType")==int(TransferType.edToInpatient), 1).otherwise(0)).over(eachToProvider)
-    edOrIpVol = F.sum(F.when(F.col("transferType").isin(int(TransferType.edToInpatient), int(TransferType.inpatientToInpatient)), 1).otherwise(0)).over(eachToProvider)
+    metric uses (see add_node_volume_info). The denominator is the receiver-year's ED + IP total across
+    both sets, so it is not nodeInVol, which stays per-set (see get_transfers); it is counted by
+    transferType so a future third TransferType member is excluded rather than folded in. Returns null
+    for a receiver-year with no ed/inpatient-origin transfers (denominator 0) -- an undefined
+    proportion, not a zero.'''
+    edVol = _nodeInVolOfTypes(TransferType.edToInpatient)
+    edOrIpVol = _nodeInVolOfTypes(TransferType.edToInpatient, TransferType.inpatientToInpatient)
     transfersDF = transfersDF.withColumn(
         "nodeToProportionFromEd",
         F.when(edOrIpVol != 0, edVol / edOrIpVol).otherwise(F.lit(None)))
+    return transfersDF
+
+def add_nodeInVolFromEd(transfersDF):
+    '''Adds nodeInVolFromEd: edToInpatient transfers received by the receiving provider that year.'''
+    # within one set get_clean_transfers leaves each to-claim once, so rows are admissions
+    return transfersDF.withColumn("nodeInVolFromEd", _nodeInVolOfTypes(TransferType.edToInpatient))
+
+def add_nodeInVolFromIp(transfersDF):
+    '''Adds nodeInVolFromIp: inpatientToInpatient transfers received by the receiving provider that year.'''
+    return transfersDF.withColumn("nodeInVolFromIp", _nodeInVolOfTypes(TransferType.inpatientToInpatient))
+
+def add_nodeInVolFromEdOrIp(transfersDF):
+    '''Adds nodeInVolFromEdOrIp: admissions the receiving provider received that year by an edToInpatient
+    or inpatientToInpatient transfer. Meant for the union of both sets.'''
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
+    # one admission can be the to-claim of a transfer in both sets, so count distinct admissions, not
+    # rows; other types map to null, which collect_set drops
+    admission = F.when(F.col("transferType").isin(int(TransferType.edToInpatient), int(TransferType.inpatientToInpatient)),
+                       F.struct("toDSYSRTKY", "toCLAIMNO", "toTHRU_DT_DAY"))
+    return transfersDF.withColumn("nodeInVolFromEdOrIp", F.size(F.collect_set(admission).over(eachToProvider)))
+
+def _proportionOfToStays(volume):
+    # toproviderAnnualStays counts all of the receiver's admissions, transferred-in ones included, so it
+    # is the whole denominator. It is 0 only when staysDF of add_providerAnnualStays_info lacks the
+    # receiver-year (a cohort mismatch) -> null; a value > 1 likewise means staysDF misses admissions
+    # the transfers include.
+    return F.when(F.col("toproviderAnnualStays") != 0,
+                  F.col(volume) / F.col("toproviderAnnualStays")).otherwise(F.lit(None))
+
+def add_nodeProportionTransferredInFromEd(transfersDF):
+    '''Adds nodeProportionTransferredInFromEd: nodeInVolFromEd / toproviderAnnualStays.
+    Requires add_nodeInVolFromEd and add_providerAnnualStays_info.'''
+    return transfersDF.withColumn("nodeProportionTransferredInFromEd", _proportionOfToStays("nodeInVolFromEd"))
+
+def add_nodeProportionTransferredInFromIp(transfersDF):
+    '''Adds nodeProportionTransferredInFromIp: nodeInVolFromIp / toproviderAnnualStays.
+    Requires add_nodeInVolFromIp and add_providerAnnualStays_info.'''
+    return transfersDF.withColumn("nodeProportionTransferredInFromIp", _proportionOfToStays("nodeInVolFromIp"))
+
+def add_nodeProportionTransferredInFromEdOrIp(transfersDF):
+    '''Adds nodeProportionTransferredInFromEdOrIp: nodeInVolFromEdOrIp / toproviderAnnualStays.
+    Requires add_nodeInVolFromEdOrIp and add_providerAnnualStays_info.'''
+    return transfersDF.withColumn("nodeProportionTransferredInFromEdOrIp", _proportionOfToStays("nodeInVolFromEdOrIp"))
+
+def add_node_in_by_type_info(transfersDF, *, transferTypes):
+    '''Adds the receiving provider's transfer volumes and proportions transferred in for the TransferType
+    members in transferTypes, the types transfersDF holds (known to the caller, as in get_transfers).
+    Works on one transfer set or their union. Run after add_providerAnnualStays_info.'''
+    transferTypes = set(transferTypes)
+    if not transferTypes or not all(isinstance(t, TransferType) for t in transferTypes):
+        raise ValueError("transferTypes must be a non-empty list of TransferType members")
+    # only the columns the given types support: a type absent from transfersDF would read as a false 0
+    if TransferType.edToInpatient in transferTypes:
+        transfersDF = add_nodeInVolFromEd(transfersDF)
+        transfersDF = add_nodeProportionTransferredInFromEd(transfersDF)
+    if TransferType.inpatientToInpatient in transferTypes:
+        transfersDF = add_nodeInVolFromIp(transfersDF)
+        transfersDF = add_nodeProportionTransferredInFromIp(transfersDF)
+    # the pooled total and the ED share need both sets
+    if {TransferType.edToInpatient, TransferType.inpatientToInpatient} <= transferTypes:
+        transfersDF = add_nodeInVolFromEdOrIp(transfersDF)
+        transfersDF = add_nodeProportionTransferredInFromEdOrIp(transfersDF)
+        transfersDF = add_nodeToProportionFromEd(transfersDF)
     return transfersDF
 
 def add_prior_hospitalization_info(transfersDF, ipBaseDF):
@@ -517,7 +558,7 @@ def add_node_info(transfersDF):
     return transfersDF
 
 def add_node_and_dyad_info(transfersDF):
-    '''Adds various columns about nodes and dyads'''
+    '''Adds various columns about nodes and dyads, computed within one transfer set (see get_transfers).'''
     transfersDF = add_node_info(transfersDF)
     transfersDF = add_dyad_info(transfersDF)
     transfersDF = add_node_hhi_info(transfersDF)

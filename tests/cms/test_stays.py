@@ -681,6 +681,23 @@ class TestAddProviderAnnualStays:
         df = add_providerAnnualStays(_stays_df(spark, rows))
         assert [r["providerAnnualStays"] for r in df.collect()] == [4, 4, 4, 4]
 
+    def test_year_admission_counts_by_admission_year(self, spark):
+        from cms.stays import add_providerAnnualStays
+        # rows: (CLAIMNO, ORGNPINM, ADMSN_DT_YEAR, THRU_DT_YEAR); claim 1 crosses New Year.
+        schema = StructType([
+            StructField("CLAIMNO", IntegerType()),
+            StructField("ORGNPINM", IntegerType()),
+            StructField("ADMSN_DT_YEAR", IntegerType()),
+            StructField("THRU_DT_YEAR", IntegerType()),
+        ])
+        stays = spark.createDataFrame([(1, 100, 2020, 2021), (2, 100, 2020, 2020), (3, 100, 2021, 2021)], schema=schema)
+        byAdmission = {r["CLAIMNO"]: r["providerAnnualStays"]
+                       for r in add_providerAnnualStays(stays, year="ADMSN_DT_YEAR").collect()}
+        byDischarge = {r["CLAIMNO"]: r["providerAnnualStays"]
+                       for r in add_providerAnnualStays(stays).collect()}
+        assert byAdmission == {1: 2, 2: 2, 3: 1}
+        assert byDischarge == {1: 2, 2: 1, 3: 2}
+
 
 # ============================================================
 # End-to-end tests for add_provider_stroke_treatment_info

@@ -34,13 +34,14 @@ def add_providerAnnualVolume(staysDF, col="anyStroke"):
     staysDF = staysDF.withColumn(colName, F.sum( F.col(col) ).over(eachProvider))
     return staysDF
 
-def add_providerAnnualStays(staysDF):
-    '''Adds providerAnnualStays -- the number of stays the organization had in that year.
+def add_providerAnnualStays(staysDF, year="THRU_DT_YEAR"):
+    '''Adds providerAnnualStays -- the number of stays the organization had in that year, a stay counting
+    in the year named by `year`: THRU_DT_YEAR (discharge, the default) or ADMSN_DT_YEAR (admission).
     Assumes staysDF is at stay granularity (post get_unique_stays), so each row is one stay and
-    the count is a plain row count. Same per-year window as add_providerAnnualVolume
+    the count is a plain row count. With the default, same per-year window as add_providerAnnualVolume
     (ORGNPINM AND THRU_DT_YEAR): each year is evaluated independently and the count does NOT carry
     forward. Unlike add_providerAnnualVolume, which sums a per-stay flag, this counts every stay.'''
-    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    eachProvider = Window.partitionBy(["ORGNPINM", year])
     staysDF = staysDF.withColumn("providerAnnualStays", F.count(F.lit(1)).over(eachProvider))
     return staysDF
 
@@ -239,9 +240,7 @@ def get_stays(baseDF, summaryDF, claimType="op", opBase=None, opRevenue=None):
 
 def get_admittedStays(staysDF, transfersDF):
     '''Returns staysDF (inpatient) with the transferred-in admissions removed -- the directly-admitted
-    patients, i.e. the ip stays that were NOT the receiving (to) side of any transfer. This is the
-    population add_providerAnnualStays should count so that providerAnnualStays is disjoint from the
-    transfers, which transfersF.add_providerAnnualStays_info / add_nodeProportionTransferred* assume.
+    patients, i.e. the ip stays that were NOT the receiving (to) side of any transfer.
 
     Removal is a left_anti join on the ip stay identity (DSYSRTKY, ORGNPINM, ADMSN_DT_DAY) against the
     to-prefixed columns of transfersDF (get_transfers prefixes every to-stays column with "to"). For
