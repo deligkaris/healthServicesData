@@ -457,7 +457,7 @@ def prep_ahaDF(ahaDF, filename):
                   .withColumn("ahaCah", F.col("MAPP18").cast('int'))         #critical access hospital
                   .withColumn("ahaCah", F.when( F.col("ahaCah")==2, 0).otherwise(F.col("ahaCah")))
                   .withColumn("ahaTotalMinusNursingBeds", F.col("BDH").cast('int'))           #total facility beds - nursing home beds, ton of missingness, useless
-                  .withColumn("ahaTotalHospitalBeds", F.col("HOSPBD").cast('int')) #total hospital beds
+                  .withColumn("ahaTotalHospitalBeds", F.col("HOSPBD").cast('int')) #total hospital beds, set up and staffed
                   .withColumn("ahaSize", F.when( F.col("ahaTotalMinusNursingBeds").isNull(), F.lit(None))
                                           .when( F.col("ahaTotalMinusNursingBeds")<100, 0)
                                           .when( (F.col("ahaTotalMinusNursingBeds")>=100)&(F.col("ahaTotalMinusNursingBeds")<400), 1)
@@ -467,7 +467,7 @@ def prep_ahaDF(ahaDF, filename):
                   .withColumn("LAT", F.col("LAT").cast('double'))
                   .withColumn("LONG", F.col("LONG").cast('double'))
                   .withColumn("ahaResidentToBedRatio", F.col("FTERES")/F.col("ahaTotalMinusNursingBeds"))
-                  .withColumn("ahaBedsIcu", F.col("MSICBD").cast('int')) #number of medical/surgical intensive care beds
+                  .withColumn("ahaBedsIcu", F.col("MSICBD").cast('int')) #number of staffed medical/surgical intensive care beds
                   .withColumn("ahaIcuHos", F.col("MSICHOS").cast('int'))
                   #NIS definition of teaching hospitals: https://hcup-us.ahrq.gov/db/vars/hosp_teach/nisnote.jsp
                   #the definition was somewhat unclear so I asked for clarification, see email on 7/25/2024:
@@ -611,9 +611,13 @@ def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=N
 
     #nmrc is one row per worksheet cell keyed by (RPT_REC_NUM, WKSHT_CD, LINE_NUM, CLMN_NUM), LINE_NUM and CLMN_NUM are
     #fixed width zero padded strings so ranges are string comparisons. Beds: Worksheet S-3 Part I column 2 (beds available
-    #at the END of the period, 42 CFR 412.105(b)), column 3 bed days available (beds times days in the period); lines 8-13
+    #at the END of the period, 42 CFR 412.105(b)), column 3 bed days available (beds times days in the period). Available
+    #is not staffed: PRM-II 4005.1 counts beds maintained for lodging inpatients and 412.105(b) drops only a unit unoccupied
+    #for the 3 preceding months or a bed that could not be made available within 24 hours for 30 consecutive days, so the
+    #count follows the size of the facility rather than its staffing (AHA's counts are beds set up and staffed). Lines 8-13
     #are intensive care, coronary care, burn intensive care, surgical intensive care, other special care, nursery, line 14
-    #the form's own Total (lines 7-13, so adults and pediatrics and the nursery too). The units are not cost center coded,
+    #the form's own Total (lines 7-13). The nursery line should add no beds to it: column 2 excludes healthy newborn
+    #bassinets (412.105(b)(5)), a newborn ICU bed is the only newborn bed counted. The units are not cost center coded,
     #so the line number is used, and as a block (00800-00899, ...) because a hospital with several units of a kind
     #subscripts the line (00801, 00802, ... up to 00850 seen). Residents: S-3 Part I line 27 column 9, Interns & Residents
     #FTEs for the whole facility (line 14 is the hospital component alone and disagrees with the public use file on 31 of

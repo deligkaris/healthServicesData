@@ -1884,11 +1884,13 @@ def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provi
     its own Bed Days Available cell contradicts by more than 5 times. What that check does NOT touch, and
     what a comparison against the AHA bed counts still turns up, is a hospital whose cost report is
     internally consistent and several times larger than its AHA record anyway: the cost report counts the
-    beds available for use at the end of the reporting period per 42 CFR 412.105(b), which is close to the
-    licensed count and is often left unchanged for years, while AHA's ahaTotalHospitalBeds counts the beds
-    set up and staffed. A hospital that shrank keeps filing the old count (490117 filed 56 beds in a year
-    it had 2143 patient days, an average daily census of 6, and AHA said 4), so the two disagreeing by a
-    factor of ten is a real difference between the sources rather than a bad cell.'''
+    beds available for use at the end of the reporting period per 42 CFR 412.105(b), which keeps an
+    unstaffed bed unless its unit went unoccupied for 3 months or it could not be opened within 24 hours
+    for 30 consecutive days, so it follows the size of the facility and is often left unchanged for years,
+    while AHA's ahaTotalHospitalBeds counts the beds set up and staffed. A hospital that shrank keeps
+    filing the old count (490117 filed 56 beds in a year it had 2143 patient days, an average daily census
+    of 6, and AHA said 4), so the two disagreeing by a factor of ten is a real difference between the
+    sources rather than a bad cell.'''
     baseDF = baseDF.join(hcrisDF.select(F.col("PRVDR_NUM").alias("PROVIDER"),
                                         F.col("hcrisYear").alias("THRU_DT_YEAR"),
                                         F.col("providerHcrisBedsIcu"),
