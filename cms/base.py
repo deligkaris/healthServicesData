@@ -2095,7 +2095,8 @@ def add_prior_hospitalization_info(baseDF, ipBaseDF, claimType="ip"):
                          "to recompute (add_comorbidity_info adds them too).")
     ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_DAY").alias("ipTHRU_DT_DAY"))
 
-    priorHospitalizations = (ipBaseDF.join(baseDF.select("DSYSRTKY",anchorDay,"CLAIMNO"),
+    #one row per claim, so a claim on several baseDF rows (an admission in two transfers) is not counted twice
+    priorHospitalizations = (ipBaseDF.join(baseDF.select("DSYSRTKY",anchorDay,"CLAIMNO").distinct(),
                                            on="DSYSRTKY",
                                            how="inner")
                                      .withColumn("daysSinceDischarge", F.col(anchorDay) - F.col("ipTHRU_DT_DAY"))

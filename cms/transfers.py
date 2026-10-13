@@ -285,29 +285,34 @@ def add_node_in_by_type_info(transfersDF, *, transferTypes):
         transfersDF = add_nodeToProportionFromEd(transfersDF)
     return transfersDF
 
-def _side_to_canonical(side, claimType, caller):
-    '''Maps the side's columns that baseF.add_prior_hospitalization_info and staysF.add_comorbidity_info read
-    (keys, ffsFirstMonth and the claimType's anchor) to their canonical (un-prefixed) names, for _rename_columns.
-    Raises ValueError unless side is "from" or "to" and claimType is a setting that stay can have.'''
-    if side not in ("from", "to"):
-        raise ValueError(f"{caller}: side must be 'from' or 'to', got {side!r}")
-    # the to stay is always an inpatient admission (see TransferType)
-    if side == "to" and claimType != "ip":
-        raise ValueError(f"{caller}: side='to' is the receiving inpatient stay, so claimType must be 'ip'")
-    anchorDay, anchorMonth = baseF._anchor_columns(claimType, caller)
-    return {side + c: c for c in ["DSYSRTKY", "CLAIMNO", "THRU_DT_DAY", "ffsFirstMonth", anchorDay, anchorMonth]}
+# the side holding the episode's first inpatient admission: an edToInpatient from stay is the ED visit, so the to
+# stay; an inpatientToInpatient from stay is already one, so the from stay, which leaves the receiving hospital's
+# dgns (they come after it) out of its lookbacks
+_FIRST_ADMISSION_SIDE = {TransferType.edToInpatient: "to", TransferType.inpatientToInpatient: "from"}
 
-def add_prior_hospitalization_info(transfersDF, ipBaseDF, *, side="to", claimType="ip"):
+def _on_first_admission(transfersDF, columns, caller, add):
+    '''Returns add(transfersDF) with columns added un-prefixed from each transfer's first inpatient admission
+    (see _FIRST_ADMISSION_SIDE) for add to read, and dropped after.'''
+    if "transferType" not in transfersDF.columns:
+        raise ValueError(f"{caller}: needs transferType (see add_transferType) to pick each transfer's first admission")
+    # picked per row so one call covers the union of both sets; another transfer type gets NULLs, so NULL outputs
+    def firstAdmission(c):
+        (firstType, firstSide), *rest = _FIRST_ADMISSION_SIDE.items()
+        column = F.when(F.col("transferType") == int(firstType), F.col(firstSide + c))
+        for transferType, side in rest:
+            column = column.when(F.col("transferType") == int(transferType), F.col(side + c))
+        return column
+    transfersDF = transfersDF.withColumns({c: firstAdmission(c) for c in columns})
+    return add(transfersDF).drop(*columns)
+
+def add_prior_hospitalization_info(transfersDF, ipBaseDF):
     '''Adds hospitalizationsIn12Months, hospitalizedIn12Months, hospitalizationsIn6Months and
-    hospitalizedIn6Months (see baseF.add_prior_hospitalization_info), un-prefixed, for the side ("from" or
-    "to") stay of each transfer. claimType is that stay's setting: "op" for the from stay of edToInpatient
-    transfers, "ip" otherwise. Not needed before add_comorbidity_info, which adds these too.'''
-    # baseF reads its keys by canonical name, so rename the side's columns and restore them after
-    sideToCanonical = _side_to_canonical(side, claimType, "add_prior_hospitalization_info")
-    transfersDF = _rename_columns(transfersDF, sideToCanonical)
-    transfersDF = baseF.add_prior_hospitalization_info(transfersDF, ipBaseDF, claimType=claimType)
-    transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in sideToCanonical.items()})
-    return transfersDF
+    hospitalizedIn6Months (see baseF.add_prior_hospitalization_info), un-prefixed, for the first inpatient
+    admission of each transfer: the to stay of edToInpatient, the from stay of inpatientToInpatient. Works on one
+    transfer set or their union. Not needed before add_comorbidity_info, which adds these too.'''
+    return _on_first_admission(transfersDF, ["DSYSRTKY", "CLAIMNO", "ffsFirstMonth", "ADMSN_DT_DAY", "ADMSN_DT_MONTH"],
+                               "add_prior_hospitalization_info",
+                               lambda df: baseF.add_prior_hospitalization_info(df, ipBaseDF, claimType="ip"))
 
 def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseDF, lastObservableDay):
     '''For the transfers dataframe, this function adds columns about the number of days the patients stayed home.
@@ -330,18 +335,13 @@ def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseD
     transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
     return transfersDF
 
-def add_comorbidity_info(transfersDF, ipBase, opBase, claimType="ip", method="Glasheen2019", *, side="to"):
+def add_comorbidity_info(transfersDF, ipBase, opBase, *, method="Glasheen2019"):
     '''Adds the prior hospitalization columns, the comorbidity condition flags and comorbidityIndex (see
-    staysF.add_comorbidity_info), un-prefixed, for the side ("from" or "to") stay of each transfer. claimType
-    is that stay's setting: "op" for the from stay of edToInpatient transfers, "ip" otherwise. Run on each
-    transfer set before any union.'''
-    # staysF reads its keys by canonical name, so rename the side's columns and restore them after
-    sideToCanonical = _side_to_canonical(side, claimType, "add_comorbidity_info")
-    transfersDF = _rename_columns(transfersDF, sideToCanonical)
-    transfersDF = staysF.add_comorbidity_info(transfersDF, ipBase, opBase,
-                                              claimType=claimType, method=method)
-    transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in sideToCanonical.items()})
-    return transfersDF
+    staysF.add_comorbidity_info), un-prefixed, for the first inpatient admission of each transfer: the to stay of
+    edToInpatient, the from stay of inpatientToInpatient. Works on one transfer set or their union.'''
+    return _on_first_admission(transfersDF, ["DSYSRTKY", "CLAIMNO", "THRU_DT_DAY", "ffsFirstMonth", "ADMSN_DT_DAY", "ADMSN_DT_MONTH"],
+                               "add_comorbidity_info",
+                               lambda df: staysF.add_comorbidity_info(df, ipBase, opBase, claimType="ip", method=method))
 
 def add_dyad(transfersDF):
     '''Dyad is defined by the two NPI numbers and the year'''

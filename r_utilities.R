@@ -380,7 +380,7 @@ get_data_dictionary <- function() {
     "nodeHhiPrior",    "Prior-year value of nodeHhi",
     "prior (network)", "Prior-year marker used by the network *Prior lags (1-year lag); distinct from the from/to claim 'prior'",
 
-    # ---- patient comorbidity & hospitalization history (transferred beneficiary, at the stay chosen by side: receiving by default) ----
+    # ---- patient comorbidity & hospitalization history (transferred beneficiary, at the episode's first inpatient admission: receiving stay for ED->IP, sending stay for IP->IP) ----
     "hospitalizationsIn12Months","Count of inpatient stays in the 365 days before the anchor date (ip: admission, op: through) (NULL if <12mo FFS or ffsFirstMonth missing)",
     "hospitalizedIn12Months","1 if >=1 inpatient stay in the 12 months before the anchor date (ip: admission, op: through), else 0 (NULL if <12mo FFS or ffsFirstMonth missing)",
     "hospitalizationsIn6Months","Count of inpatient stays in the 182 days before the anchor date (ip: admission, op: through) (NULL if <6mo FFS or ffsFirstMonth missing)",
