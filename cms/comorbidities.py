@@ -280,9 +280,8 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, claimType="ip", method="Gla
     #hospitalizationsIn12Months); needed when two distinct stays share the first two but differ in the third.
     conditions = get_comorbidityIndex(conditions, method=method) #now calculate the comorbidity index
 
-    conditions.persist() #now that I am done, store it in memory
-    conditions.count() #and now actually do it
-
+    #not persisted: staysF.add_comorbidity_info joins it once, and a cache here would never be released;
+    #a caller reusing it persists it itself
     return conditions
 
 def get_comorbidityIndex(conditionsDf, method="Glasheen2019"):
