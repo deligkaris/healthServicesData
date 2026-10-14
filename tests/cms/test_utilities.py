@@ -466,6 +466,28 @@ class TestAddThroughDateInfo:
         assert rows[20180101]["THRU_DT_DAY"] - rows[20171231]["THRU_DT_DAY"] == 1
 
 
+class TestWriteAndReadParquet:
+
+    def test_returns_the_rows_written(self, spark, tmp_path):
+        from utilities import write_and_read_parquet
+        df = spark.createDataFrame([(1, "a"), (2, "b")], ["id", "value"])
+        result = write_and_read_parquet(df, str(tmp_path / "df.parquet"))
+        assert sorted(result.collect()) == sorted(df.collect())
+
+    def test_read_back_has_no_lineage(self, spark, tmp_path):
+        from utilities import write_and_read_parquet
+        df = spark.createDataFrame([(1, "a"), (2, "b")], ["id", "value"]).filter("id > 1")
+        result = write_and_read_parquet(df, str(tmp_path / "df.parquet"))
+        assert "Filter" not in result._jdf.queryExecution().analyzed().toString()
+
+    def test_overwrites_an_existing_path(self, spark, tmp_path):
+        from utilities import write_and_read_parquet
+        path = str(tmp_path / "df.parquet")
+        write_and_read_parquet(spark.createDataFrame([(1,)], ["id"]), path)
+        result = write_and_read_parquet(spark.createDataFrame([(2,)], ["id"]), path)
+        assert [r["id"] for r in result.collect()] == [2]
+
+
 class TestPrepAhaDF:
     # AHA CSVs are read with no inferSchema, so every raw column arrives as a string.
     # prep_ahaDF must cast the numeric ones back; ahaBedsIcu had no cast and leaked out as a

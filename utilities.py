@@ -111,6 +111,13 @@ def add_column_prior(df, column, who, when, gapFill=None):
           .drop("prior")) #scratch column used only to validate the lag is exactly 1 year
     return df
 
+def write_and_read_parquet(df, path):
+    '''Writes df to path as parquet, overwriting it, and returns it read back.'''
+    #instead of persist: the read back has no lineage, so later plans stay small, and nothing is held in
+    #executor memory; localCheckpoint does not cut the lineage reliably (see tests/cms/test_transfers.py)
+    df.write.mode("overwrite").parquet(path)
+    return df.sparkSession.read.parquet(path)
+
 def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     filenames = dict()
