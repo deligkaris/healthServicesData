@@ -488,6 +488,24 @@ class TestWriteAndReadParquet:
         assert [r["id"] for r in result.collect()] == [2]
 
 
+class TestGetLookups:
+
+    def test_keeps_the_beneficiaries_claims_and_the_lookup_columns(self, spark):
+        from cms.utilities import get_lookups, lookupColumns
+        # every base has every lookup column plus one no reader uses; 2 claims of beneficiary 1, 1 of beneficiary 2
+        schema = StructType([StructField(c, IntegerType(), True) for c in ("DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY")] +
+                            [StructField(f"ICD_DGNS_CD{i}", StringType(), True) for i in range(1, 26)] +
+                            [StructField("EXTRA", StringType(), True)])
+        rows = [(b, d, d) + (None,) * 25 + ("x",) for b, d in [(1, 10), (1, 20), (2, 10)]]
+        cmsDFS = {k: spark.createDataFrame(rows, schema=schema) for k in lookupColumns}
+        # a beneficiary listed twice does not duplicate claims
+        lookups = get_lookups(cmsDFS, spark.createDataFrame([(1,), (1,)], "DSYSRTKY int"))
+        assert set(lookups) == set(lookupColumns)
+        for k, df in lookups.items():
+            assert df.columns == lookupColumns[k]
+            assert sorted((r["DSYSRTKY"], r["THRU_DT_DAY"]) for r in df.collect()) == [(1, 10), (1, 20)]
+
+
 class TestPrepAhaDF:
     # AHA CSVs are read with no inferSchema, so every raw column arrives as a string.
     # prep_ahaDF must cast the numeric ones back; ahaBedsIcu had no cast and leaked out as a

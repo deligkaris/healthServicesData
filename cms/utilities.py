@@ -305,7 +305,25 @@ def clean_through_dates(dataframes):
         if (claimPart=="Base"):
             if claimType=="ip":   #for now I am cleaning just the ip claims
                 dataframes[claimTypePart] = baseF.get_clean_through_dates(dataframes[claimTypePart])
-    return dataframes    
+    return dataframes
+
+#the only base columns read by baseF.add_prior_hospitalization_info (ip), comorbiditiesF.get_dayDgnsDF (ip, op)
+#and baseF.add_days_at_home_info (ip, snf, hha, hosp)
+_dgnsColumns = [f"ICD_DGNS_CD{x}" for x in range(1,26)]
+lookupColumns = {"ipBase":   ["DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY"] + _dgnsColumns,
+                 "opBase":   ["DSYSRTKY", "THRU_DT_DAY"] + _dgnsColumns,
+                 "snfBase":  ["DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY"],
+                 "hhaBase":  ["DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY"],
+                 "hospBase": ["DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY"]}
+
+def get_lookups(cmsDFS, beneficiariesDF):
+    '''Returns the base claims of the beneficiaries in beneficiariesDF (DSYSRTKY) with only lookupColumns, keyed like
+    cmsDFS, to pass in place of the full bases to prior hospitalizations, comorbidities and days at home.'''
+    #those readers join the claims on DSYSRTKY, so other beneficiaries' claims change no result, while the lookbacks
+    #run over a small table; no broadcast hint: AQE broadcasts a small id list by itself and a large one would not fit
+    beneficiariesDF = beneficiariesDF.select("DSYSRTKY").distinct()
+    return {k: cmsDFS[k].select(*columns).join(beneficiariesDF, on="DSYSRTKY", how="left_semi")
+            for k, columns in lookupColumns.items()}
 
 def add_through_date_info(df):
     df = (df.withColumn("THRU_DT_DAYOFYEAR",

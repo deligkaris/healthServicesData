@@ -3011,6 +3011,68 @@ class TestAddDaysAtHomeInfoTransfers:
         assert rows[3]["toORGNPINM"] == 9003 and rows[3]["toevt"] == 1
 
 
+class TestTransfersOnLookups:
+    # cms.utilities.get_lookups in place of the full bases changes no result; a reader that starts needing a column
+    # not in lookupColumns fails here
+
+    _BASE_SCHEMA = StructType([StructField(c, IntegerType(), True) for c in ("DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY")] +
+                              [StructField(f"ICD_DGNS_CD{i}", StringType(), True) for i in range(1, 26)] +
+                              [StructField("EXTRA", StringType(), True)])
+
+    def _inputs(self, spark):
+        # one transfer of each type (beneficiaries 1, 2); every beneficiary, 99 (no transfer) included, has an inpatient
+        # CHF claim 100 days before the from discharge, outpatient COPD claims 50 and 40 days before it (an outpatient
+        # code counts on 2 claims), and a SNF/HHA/hospice stay after the to admission; the full bases also carry a
+        # column no reader uses
+        from utilities import icd10Day
+        fromThru = icd10Day + 1000
+        transfers = spark.createDataFrame([_transfer_row(TransferType.inpatientToInpatient, 1, fromThru),
+                                           _transfer_row(TransferType.edToInpatient, 2, fromThru)],
+                                          schema=_FIRST_ADMISSION_SCHEMA)
+        def base(rows):
+            return spark.createDataFrame([(b, adm, thru) + tuple(dgns) + (None,) * (25 - len(dgns)) + ("x",)
+                                          for b, adm, thru, dgns in rows], schema=self._BASE_SCHEMA)
+        beneficiaries = (1, 2, 99)
+        stay = [(b, fromThru + 10, fromThru + 20, []) for b in beneficiaries]
+        cmsDFS = {"ipBase":   base([(b, fromThru - 105, fromThru - 100, ["I500"]) for b in beneficiaries]),
+                  "opBase":   base([(b, None, fromThru - d, ["J449"]) for b in beneficiaries for d in (50, 40)]),
+                  "snfBase":  base(stay), "hhaBase": base(stay), "hospBase": base(stay)}
+        return transfers, cmsDFS
+
+    def _lookups(self, transfers, cmsDFS):
+        from cms.utilities import get_lookups
+        return get_lookups(cmsDFS, transfers.select(F.col("toDSYSRTKY").alias("DSYSRTKY")))
+
+    def _byType(self, df):
+        return {r["transferType"]: r.asDict() for r in df.collect()}
+
+    def test_comorbidities(self, spark):
+        from cms.transfers import add_comorbidity_info
+        transfers, cmsDFS = self._inputs(spark)
+        lookups = self._lookups(transfers, cmsDFS)
+        full = self._byType(add_comorbidity_info(transfers, cmsDFS["ipBase"], cmsDFS["opBase"]))
+        assert self._byType(add_comorbidity_info(transfers, lookups["ipBase"], lookups["opBase"])) == full
+        # the lookbacks found the claims, so the comparison is not between two empty results
+        for r in full.values():
+            assert (r["hospitalizationsIn12Months"], r["congestiveHeartFailure"], r["chronicPulmonary"]) == (1, 1, 1)
+
+    def test_days_at_home(self, spark):
+        from cms.transfers import add_days_at_home_info
+        transfers, cmsDFS = self._inputs(spark)
+        transfers = transfers.withColumns({"toDEATH_DT_DAY": F.lit(None).cast("int"), "toSTUS_CD": F.lit(1),
+                                           "to90DaysAfterAdmissionDateDead": F.lit(0),
+                                           "to365DaysAfterAdmissionDateDead": F.lit(0)})
+        lookups = self._lookups(transfers, cmsDFS)
+        def run(bases):
+            return self._byType(add_days_at_home_info(transfers, bases["snfBase"], bases["hhaBase"], bases["hospBase"],
+                                                      bases["ipBase"], _FULLY_OBSERVED_DAY))
+        full = run(cmsDFS)
+        assert run(lookups) == full
+        # the stays after the admission were counted
+        for r in full.values():
+            assert r["homeDays90"] < 90
+
+
 # ============================================================
 # End-to-end pipeline: raw ipBase + ipRevenue rows through the
 # REAL revenue + get_stays chain into get_transfers.
