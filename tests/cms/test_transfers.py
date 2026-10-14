@@ -3040,11 +3040,16 @@ class TestTransfersOnLookups:
         return transfers, cmsDFS
 
     def _lookups(self, transfers, cmsDFS):
-        from cms.utilities import get_lookups
-        return get_lookups(cmsDFS, transfers.select(F.col("toDSYSRTKY").alias("DSYSRTKY")))
+        from cms.transfers import get_lookups
+        return get_lookups(transfers, cmsDFS)
 
     def _byType(self, df):
         return {r["transferType"]: r.asDict() for r in df.collect()}
+
+    def test_keeps_the_transfer_patients(self, spark):
+        transfers, cmsDFS = self._inputs(spark)
+        for k, df in self._lookups(transfers, cmsDFS).items():
+            assert {r["DSYSRTKY"] for r in df.collect()} == {1, 2}, k
 
     def test_comorbidities(self, spark):
         from cms.transfers import add_comorbidity_info

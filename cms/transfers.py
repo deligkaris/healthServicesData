@@ -3,6 +3,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import cms.base as baseF
 import cms.stays as staysF
+import cms.utilities as cmsUtilitiesF
 import utilities as utilitiesF
 
 class TransferType(IntEnum):
@@ -342,6 +343,12 @@ def add_comorbidity_info(transfersDF, ipBase, opBase, *, method="Glasheen2019"):
     return _on_first_admission(transfersDF, ["DSYSRTKY", "CLAIMNO", "THRU_DT_DAY", "ffsFirstMonth", "ADMSN_DT_DAY", "ADMSN_DT_MONTH"],
                                "add_comorbidity_info",
                                lambda df: staysF.add_comorbidity_info(df, ipBase, opBase, claimType="ip", method=method))
+
+def get_lookups(transfersDF, cmsDFS):
+    '''Returns cmsUtilitiesF.get_lookups for the patients of transfersDF, to pass to add_prior_hospitalization_info,
+    add_comorbidity_info and add_days_at_home_info in place of the full bases.'''
+    #get_transfers joins on fromDSYSRTKY==toDSYSRTKY, so either side identifies the patient
+    return cmsUtilitiesF.get_lookups(cmsDFS, transfersDF.select(F.col("toDSYSRTKY").alias("DSYSRTKY")))
 
 def add_dyad(transfersDF):
     '''Dyad is defined by the two NPI numbers and the year'''
