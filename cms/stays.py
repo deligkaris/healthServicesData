@@ -259,6 +259,16 @@ def get_admittedStays(staysDF, transfersDF):
     staysDF = staysDF.join(transferStays, on=["DSYSRTKY", "ORGNPINM", "ADMSN_DT_DAY"], how="left_anti")
     return staysDF
 
+def get_transferFromDifferentFacilityStays(staysDF):
+    '''Keeps only the stays admitted from a different facility, see baseF.add_transferFromDifferentFacility.'''
+    #the flag is 1 if any claim of the stay has it (propagate_stay_info), constant 1 after the filter
+    return staysDF.filter(F.col("transferFromDifferentFacility")==1).drop("transferFromDifferentFacility")
+
+def get_transferToInStays(staysDF):
+    '''Keeps only the stays discharged to a short term hospital or other inpatient care, see baseF.add_transferToIn.'''
+    #the flag is 1 if any claim of the stay has it (propagate_stay_info), constant 1 after the filter
+    return staysDF.filter(F.col("transferToIn")==1).drop("transferToIn")
+
 def add_onDayOfFirstStay(staysDF):
     '''Finds the first admission date for each beneficiary in the dataframe.'''
     eachDsysrtky = Window.partitionBy("DSYSRTKY")

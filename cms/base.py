@@ -260,6 +260,11 @@ def add_septicShockPoa(baseDF):
                                  .otherwise(F.lit(0)))
     return baseDF
 
+def get_septicShockPoaClaims(baseDF):
+    '''Keeps only the claims with septic shock present on admission, see add_septicShockPoa.'''
+    #the flag is constant 1 after the filter
+    return add_septicShockPoa(baseDF).filter(F.col("septicShockPoa")==1).drop("septicShockPoa")
+
 def add_parkinsonsPrncpalDgns(baseDF):
     baseDF = baseDF.withColumn("parkinsons",
                               F.when((F.regexp_extract( F.trim(F.col("PRNCPAL_DGNS_CD")), r'^G20[\d]*',0) !=''), F.lit(1))
@@ -868,6 +873,16 @@ def add_providerIn50StatesOrDc(baseDF):
     condition = ' (F.col("PRSTATE").cast("int") < 54) & (F.col("PRSTATE").cast("int") != 40) & (F.col("PRSTATE").cast("int") != 48) '
     baseDF = baseDF.withColumn("providerIn50StatesOrDc", F.when( eval(condition), 1).otherwise(0))
     return baseDF
+
+def get_providerIn50StatesOrDcClaims(baseDF):
+    '''Keeps only the claims of providers in the 50 US states or DC, see add_providerIn50StatesOrDc.'''
+    #the flag is constant 1 after the filter
+    return baseDF.filter(F.col("providerIn50StatesOrDc")==1).drop("providerIn50StatesOrDc")
+
+def get_admittedAfterYearClaims(baseDF, year):
+    '''Keeps only the claims admitted after year (ADMSN_DT_YEAR > year); ip, snf, hosp and hha claims, see
+    add_admission_date_info.'''
+    return baseDF.filter(F.col("ADMSN_DT_YEAR")>year)
 
 def add_provider_pos_info(baseDF, posDF):
     #I found that CBSA will duplicate some of my baseDF rows, I did not look into why because I found that posDF can be used as well
