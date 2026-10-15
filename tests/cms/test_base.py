@@ -2353,7 +2353,7 @@ class TestAddHospiceIn12Months:
 
     def _flags(self, spark, hospice_stays, coverage=24, claimType="ip"):
         """One index claim per hospice stay (beneficiary i gets stay i), so each stay is tested alone."""
-        from cms.base import add_hospiceIn12Months
+        from cms.stays import add_hospiceIn12Months
         index_claims = [{"DSYSRTKY": i, "CLAIMNO": 100 + i, "DT": self.ANCHOR,
                          "ffsFirstMonth": _ffs_first_month(self.ANCHOR, coverage)}
                         for i in range(1, len(hospice_stays) + 1)]
@@ -2373,7 +2373,7 @@ class TestAddHospiceIn12Months:
                            ) == [1, 0, 1, 0, 1, 1]
 
     def test_multiple_overlapping_stays_do_not_duplicate_base_rows(self, spark):
-        from cms.base import add_hospiceIn12Months
+        from cms.stays import add_hospiceIn12Months
         index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "DT": self.ANCHOR,
                          "ffsFirstMonth": _ffs_first_month(self.ANCHOR, 24)}]
         stays = [{"DSYSRTKY": 1, "HSPCSTRT": 20210101, "THRU_DT": 20210131},
@@ -2384,7 +2384,7 @@ class TestAddHospiceIn12Months:
         assert len(rows) == 1 and rows[0]["hospiceIn12Months"] == 1
 
     def test_other_beneficiary_hospice_is_not_counted(self, spark):
-        from cms.base import add_hospiceIn12Months
+        from cms.stays import add_hospiceIn12Months
         index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "DT": self.ANCHOR,
                          "ffsFirstMonth": _ffs_first_month(self.ANCHOR, 24)}]
         stays = [{"DSYSRTKY": 2, "HSPCSTRT": 20210101, "THRU_DT": 20210131}]
@@ -2397,7 +2397,7 @@ class TestAddHospiceIn12Months:
         assert self._flags(spark, stay, coverage=12) == [1]
 
     def test_null_ffsFirstMonth_is_null(self, spark):
-        from cms.base import add_hospiceIn12Months
+        from cms.stays import add_hospiceIn12Months
         index_claims = [{"DSYSRTKY": 1, "CLAIMNO": 101, "DT": self.ANCHOR, "ffsFirstMonth": None}]
         stays = [{"DSYSRTKY": 1, "HSPCSTRT": 20210101, "THRU_DT": 20210131}]
         baseDF, hospDF = _setup_hospice_prior_dfs(spark, index_claims, stays)
@@ -2410,7 +2410,7 @@ class TestAddHospiceIn12Months:
                            claimType="op") == [1, 0, 1]
 
     def test_unsupported_claimType_raises(self, spark):
-        from cms.base import add_hospiceIn12Months
+        from cms.stays import add_hospiceIn12Months
         with pytest.raises(ValueError):
             add_hospiceIn12Months(None, None, claimType="snf")
 

@@ -809,6 +809,22 @@ class TestAddTransferType:
         assert v == 1 and type(v) is int
 
 
+class TestGetUnion:
+
+    def test_matches_columns_by_name_and_nulls_missing_ones(self, spark):
+        from cms.transfers import get_union
+        ed = spark.createDataFrame([(1, 10, "a")], "transferType int, fromCLAIMNO int, fromED string")
+        ip = spark.createDataFrame([(20, 2, 5)], "fromCLAIMNO int, transferType int, fromADMSN_DT_DAY int")
+        rows = {r["transferType"]: r.asDict() for r in get_union(ed, ip).collect()}
+        assert rows[1] == {"transferType": 1, "fromCLAIMNO": 10, "fromED": "a", "fromADMSN_DT_DAY": None}
+        assert rows[2] == {"transferType": 2, "fromCLAIMNO": 20, "fromED": None, "fromADMSN_DT_DAY": 5}
+
+    def test_keeps_every_row_of_every_set(self, spark):
+        from cms.transfers import get_union
+        sets = [spark.createDataFrame([(t, c) for c in range(t)], "transferType int, fromCLAIMNO int") for t in (1, 2, 3)]
+        assert get_union(*sets).count() == 6
+
+
 class TestAddTransfernihss:
 
     def test_from_null_falls_back_to_to(self, spark):
@@ -3061,12 +3077,16 @@ class TestTransfersOnLookups:
         for r in full.values():
             assert (r["hospitalizationsIn12Months"], r["congestiveHeartFailure"], r["chronicPulmonary"]) == (1, 1, 1)
 
+    def _with_days_at_home_columns(self, transfers):
+        # the to stay columns add_days_at_home_info reads besides those of _FIRST_ADMISSION_SCHEMA, alive at discharge
+        return transfers.withColumns({"toDEATH_DT_DAY": F.lit(None).cast("int"), "toSTUS_CD": F.lit(1),
+                                      "to90DaysAfterAdmissionDateDead": F.lit(0),
+                                      "to365DaysAfterAdmissionDateDead": F.lit(0)})
+
     def test_days_at_home(self, spark):
         from cms.transfers import add_days_at_home_info
         transfers, cmsDFS = self._inputs(spark)
-        transfers = transfers.withColumns({"toDEATH_DT_DAY": F.lit(None).cast("int"), "toSTUS_CD": F.lit(1),
-                                           "to90DaysAfterAdmissionDateDead": F.lit(0),
-                                           "to365DaysAfterAdmissionDateDead": F.lit(0)})
+        transfers = self._with_days_at_home_columns(transfers)
         lookups = self._lookups(transfers, cmsDFS)
         def run(bases):
             return self._byType(add_days_at_home_info(transfers, bases["snfBase"], bases["hhaBase"], bases["hospBase"],
@@ -3075,6 +3095,21 @@ class TestTransfersOnLookups:
         assert run(lookups) == full
         # the stays after the admission were counted
         for r in full.values():
+            assert r["homeDays90"] < 90
+
+    def test_comorbidity_and_days_at_home_matches_the_two_calls(self, spark):
+        from cms.transfers import add_comorbidity_info, add_days_at_home_info, add_comorbidity_and_days_at_home_info
+        transfers, cmsDFS = self._inputs(spark)
+        transfers = self._with_days_at_home_columns(transfers)
+        lookups = self._lookups(transfers, cmsDFS)
+        both = add_comorbidity_info(transfers, lookups["ipBase"], lookups["opBase"])
+        both = add_days_at_home_info(both, lookups["snfBase"], lookups["hhaBase"], lookups["hospBase"], lookups["ipBase"],
+                                     _FULLY_OBSERVED_DAY)
+        bundle = self._byType(add_comorbidity_and_days_at_home_info(transfers, lookups, _FULLY_OBSERVED_DAY))
+        assert bundle == self._byType(both)
+        # both steps found their claims, so the comparison is not between two empty results
+        for r in bundle.values():
+            assert (r["congestiveHeartFailure"], r["chronicPulmonary"]) == (1, 1)
             assert r["homeDays90"] < 90
 
 

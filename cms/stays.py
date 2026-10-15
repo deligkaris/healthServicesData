@@ -269,6 +269,13 @@ def get_transferToInStays(staysDF):
     #the flag is 1 if any claim of the stay has it (propagate_stay_info), constant 1 after the filter
     return staysDF.filter(F.col("transferToIn")==1).drop("transferToIn")
 
+def get_age65PlusNoEsrdStays(staysDF):
+    '''Keeps only the stays of beneficiaries 65 or older without ESRD (mbsfAge, mbsfAnyEsrd, see baseF.add_mbsf_info).'''
+    #each claim has them for its through year and propagate_stay_info takes their max over the stay's claims: the age
+    #at the end of the stay's last calendar year, ESRD in any of its years; a beneficiary missing from the mbsf has
+    #NULLs and is dropped
+    return staysDF.filter(F.col("mbsfAge") >= 65).filter(F.col("mbsfAnyEsrd") == 0)
+
 def add_onDayOfFirstStay(staysDF):
     '''Finds the first admission date for each beneficiary in the dataframe.'''
     eachDsysrtky = Window.partitionBy("DSYSRTKY")
@@ -731,4 +738,38 @@ def add_comorbidity_info(staysDF, ipBase, opBase, claimType="ip", method="Glashe
     staysDF = staysDF.join(conditions,
                            on=["DSYSRTKY", "THRU_DT_DAY", "hospitalizationsIn12Months"],
                            how="left_outer")
+    return staysDF
+
+def add_hospiceIn12Months(staysDF, hospBaseDF, claimType="ip"):
+    '''Adds hospiceIn12Months: 1 if any hospice stay in hospBaseDF overlaps the 365 days ending on the anchor date
+    of the stay (ip: admission date, op: through date), 0 if none, NULL if the beneficiary has less than
+    12 months of FFS coverage before the anchor date.
+    staysDF needs DSYSRTKY, CLAIMNO, ffsFirstMonth and the anchor's _DAY and _MONTH columns,
+    hospBaseDF needs DSYSRTKY, ADMSN_DT_DAY and THRU_DT_DAY.'''
+    anchorDay, anchorMonth = baseF._anchor_columns(claimType, "add_hospiceIn12Months")
+
+    #hospice ADMSN_DT is HSPCSTRT (see baseF.add_admission_date_info), so a hospice stay is [hospice start, through date]
+    hospBaseDF = hospBaseDF.select(F.col("DSYSRTKY"),
+                                   F.col("ADMSN_DT_DAY").alias("hospStart"),
+                                   F.col("THRU_DT_DAY").alias("hospEnd"))
+
+    #overlap rather than through date alone, so a stay still running on the anchor date counts;
+    #the window [anchor-364, anchor] is 365 days and includes the anchor day itself
+    priorHospice = (hospBaseDF.join(staysDF.select("DSYSRTKY", "CLAIMNO", anchorDay),
+                                    on="DSYSRTKY",
+                                    how="inner")
+                              .filter((F.col("hospStart") <= F.col(anchorDay)) &
+                                      (F.col("hospEnd") >= F.col(anchorDay) - 364))
+                              .select("DSYSRTKY", "CLAIMNO", anchorDay)
+                              .distinct() #one row per stay, so the join back cannot duplicate stays
+                              .withColumn("hospiceIn12Months", F.lit(1)))
+
+    #without 12 months of FFS coverage a missing hospice claim cannot be read as no hospice, so NULL;
+    #a NULL ffsFirstMonth also gives NULL
+    staysDF = (staysDF.join(priorHospice,
+                            on=["DSYSRTKY", "CLAIMNO", anchorDay],
+                            how="left_outer")
+                      .withColumn("hospiceIn12Months",
+                                  F.when(F.col(anchorMonth) - F.col("ffsFirstMonth") >= 12,
+                                         F.coalesce(F.col("hospiceIn12Months"), F.lit(0)))))
     return staysDF

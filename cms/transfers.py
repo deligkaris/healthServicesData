@@ -1,4 +1,5 @@
 from enum import IntEnum
+from functools import reduce
 import pyspark.sql.functions as F
 from pyspark.sql.window import Window
 import cms.base as baseF
@@ -76,6 +77,11 @@ def get_transfers(*, fromStaysDf, toStaysDf, transferType):
     transfersDF = add_firstTransfer(transfersDF)
     transfersDF = add_node_and_dyad_info(transfersDF)
     return transfersDF
+
+def get_union(*transfersDFs):
+    '''Returns the union of transfer sets from get_transfers, each keeping its own node/dyad columns (see get_transfers).'''
+    #the from stays of each set come from different claim types, so the columns differ; a missing one is NULL
+    return reduce(lambda a, b: a.unionByName(b, allowMissingColumns=True), transfersDFs)
 
 def add_transferType(transfersDF, transferType):
     '''Stamps transferType (a TransferType member) as the integer transferType column on every row.
@@ -349,6 +355,16 @@ def get_lookups(transfersDF, cmsDFS):
     add_comorbidity_info and add_days_at_home_info in place of the full bases.'''
     #get_transfers joins on fromDSYSRTKY==toDSYSRTKY, so either side identifies the patient
     return cmsUtilitiesF.get_lookups(cmsDFS, transfersDF.select(F.col("toDSYSRTKY").alias("DSYSRTKY")))
+
+def add_comorbidity_and_days_at_home_info(transfersDF, lookups, lastObservableDay, *, method="Glasheen2019"):
+    '''Adds add_comorbidity_info (on each transfer's first inpatient admission) and add_days_at_home_info (on the
+    to stay) to transfersDF. lookups is get_lookups(transfersDF, cmsDFS), or the full bases keyed like cmsDFS.'''
+    #both read lookups["ipBase"] and add_days_at_home_info counts over the lookups, so materialize them first
+    #(eg utilitiesF.write_and_read_parquet) or each read re-scans the bases
+    transfersDF = add_comorbidity_info(transfersDF, lookups["ipBase"], lookups["opBase"], method=method)
+    transfersDF = add_days_at_home_info(transfersDF, lookups["snfBase"], lookups["hhaBase"], lookups["hospBase"],
+                                        lookups["ipBase"], lastObservableDay)
+    return transfersDF
 
 def add_dyad(transfersDF):
     '''Dyad is defined by the two NPI numbers and the year'''

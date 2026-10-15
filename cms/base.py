@@ -879,10 +879,9 @@ def get_providerIn50StatesOrDcClaims(baseDF):
     #the flag is constant 1 after the filter
     return baseDF.filter(F.col("providerIn50StatesOrDc")==1).drop("providerIn50StatesOrDc")
 
-def get_admittedAfterYearClaims(baseDF, year):
-    '''Keeps only the claims admitted after year (ADMSN_DT_YEAR > year); ip, snf, hosp and hha claims, see
-    add_admission_date_info.'''
-    return baseDF.filter(F.col("ADMSN_DT_YEAR")>year)
+def get_afterYearClaims(baseDF, year, claimType="ip"):
+    '''Keeps only the claims whose anchor date (ip: admission, op: through, see _anchor) falls after year.'''
+    return baseDF.filter(F.col(f"{_anchor(claimType, 'get_afterYearClaims')}_YEAR")>year)
 
 def add_provider_pos_info(baseDF, posDF):
     #I found that CBSA will duplicate some of my baseDF rows, I did not look into why because I found that posDF can be used as well
@@ -1195,8 +1194,8 @@ def add_mbsf_info(baseDF,mbsfDF):
                                  .filter( F.col("RFRNC_YR") == F.col("maxRfrncYr") ) #some dsysrky have more than 1 death dates...
                                  .select( F.col("DSYSRTKY"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") )
                                  .distinct(), #some beneficiaries death dates appear in two mbsf files, for two years...
-                          on="DSYSRTKY",    #this join must be done on dsysrtky only        
-                          how="left_outer")) 
+                          on="DSYSRTKY",    #this join must be done on dsysrtky only
+                          how="left_outer"))
     return baseDF
 
 def add_ssaCounty(baseDF):
@@ -2081,14 +2080,18 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
                                  .when( F.col("homeDaysIndependent365")<=365, 3)))
     return baseDF
 
-def _anchor_columns(claimType, caller):
-    '''Returns the (_DAY, _MONTH) columns a lookback ending on the claim is anchored on: ip claims on the
-    admission date, op claims on the through date.'''
+def _anchor(claimType, caller):
+    '''Returns the date field a claim is anchored on: ip claims on the admission date, op claims on the through date.'''
     #op claims have no admission date, so they anchor on the through date
     anchors = {"ip": "ADMSN_DT", "op": "THRU_DT"}
     if claimType not in anchors:
         raise ValueError(f"{caller}: claimType must be one of {list(anchors)}, got {claimType!r}")
-    return f"{anchors[claimType]}_DAY", f"{anchors[claimType]}_MONTH"
+    return anchors[claimType]
+
+def _anchor_columns(claimType, caller):
+    '''Returns the (_DAY, _MONTH) columns a lookback ending on the claim is anchored on, see _anchor.'''
+    anchor = _anchor(claimType, caller)
+    return f"{anchor}_DAY", f"{anchor}_MONTH"
 
 def add_prior_hospitalization_info(baseDF, ipBaseDF, claimType="ip"):
     '''Calculates the number of inpatient claims in the 12 and 6 months prior to the anchor date of the baseDF
@@ -2131,40 +2134,6 @@ def add_prior_hospitalization_info(baseDF, ipBaseDF, claimType="ip"):
                                                                      F.col("hospitalizationsIn6Months") ))
                     .withColumn("hospitalizedIn12Months", (F.col("hospitalizationsIn12Months")>0).cast('int'))
                     .withColumn("hospitalizedIn6Months", (F.col("hospitalizationsIn6Months")>0).cast('int')))
-    return baseDF
-
-def add_hospiceIn12Months(baseDF, hospBaseDF, claimType="ip"):
-    '''Adds hospiceIn12Months: 1 if any hospice stay in hospBaseDF overlaps the 365 days ending on the anchor date
-    of the baseDF claim (ip: admission date, op: through date), 0 if none, NULL if the beneficiary has less than
-    12 months of FFS coverage before the anchor date.
-    baseDF needs DSYSRTKY, CLAIMNO, ffsFirstMonth and the anchor's _DAY and _MONTH columns,
-    hospBaseDF needs DSYSRTKY, ADMSN_DT_DAY and THRU_DT_DAY.'''
-    anchorDay, anchorMonth = _anchor_columns(claimType, "add_hospiceIn12Months")
-
-    #hospice ADMSN_DT is HSPCSTRT (see add_admission_date_info), so a stay is [hospice start, through date]
-    hospBaseDF = hospBaseDF.select(F.col("DSYSRTKY"),
-                                   F.col("ADMSN_DT_DAY").alias("hospStart"),
-                                   F.col("THRU_DT_DAY").alias("hospEnd"))
-
-    #overlap rather than through date alone, so a stay still running on the anchor date counts;
-    #the window [anchor-364, anchor] is 365 days and includes the anchor day itself
-    priorHospice = (hospBaseDF.join(baseDF.select("DSYSRTKY", "CLAIMNO", anchorDay),
-                                    on="DSYSRTKY",
-                                    how="inner")
-                              .filter((F.col("hospStart") <= F.col(anchorDay)) &
-                                      (F.col("hospEnd") >= F.col(anchorDay) - 364))
-                              .select("DSYSRTKY", "CLAIMNO", anchorDay)
-                              .distinct() #one row per base claim, so the join back cannot duplicate base rows
-                              .withColumn("hospiceIn12Months", F.lit(1)))
-
-    #without 12 months of FFS coverage a missing hospice claim cannot be read as no hospice, so NULL;
-    #a NULL ffsFirstMonth also gives NULL
-    baseDF = (baseDF.join(priorHospice,
-                          on=["DSYSRTKY", "CLAIMNO", anchorDay],
-                          how="left_outer")
-                    .withColumn("hospiceIn12Months",
-                                F.when(F.col(anchorMonth) - F.col("ffsFirstMonth") >= 12,
-                                       F.coalesce(F.col("hospiceIn12Months"), F.lit(0)))))
     return baseDF
 
 def add_adi_info(baseDF, adiDF):
