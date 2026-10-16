@@ -624,18 +624,62 @@ def add_dyad_distance_info(transfersDF, nodesDF, pathToData, maxCalls=None, keyF
     #transfersDF can be get_edgeList or the transfers themselves: only distinct coordinate pairs are routed, so all the
     #transfers along a dyad share one call; the route is directed, from the sending to the receiving hospital, as A->B and
     #B->A can differ (one way streets, ramps)
-    #nodesDF must hold one row per ORGNPINM, as get_nodeListWithAddress does, or the joins would duplicate transfers
-    for side in ["from", "to"]:
-        coordinatesDF = nodesDF.select(F.col("ORGNPINM").alias("nodeORGNPINM"),
-                                       F.col("providerLat").alias(f"{side}providerLat"),
-                                       F.col("providerLng").alias(f"{side}providerLng"))
-        #a join condition rather than on=name, which would move the key to the first column
-        transfersDF = (transfersDF.join(F.broadcast(coordinatesDF), on=F.col(f"{side}ORGNPINM") == F.col("nodeORGNPINM"),
-                                        how="left_outer")
-                                  .drop("nodeORGNPINM"))
+    transfersDF = _add_from_and_to_columns(transfersDF, nodesDF.select("ORGNPINM", "providerLat", "providerLng"), ["ORGNPINM"])
     transfersDF = transfersDF.withColumn("dyadGeodesicDistanceKm",
                                          geocodingF.get_geodesicDistanceKm(F.col("fromproviderLat"), F.col("fromproviderLng"),
                                                                            F.col("toproviderLat"), F.col("toproviderLng")))
     transfersDF = geocodingF.add_driving_info(transfersDF, "fromproviderLat", "fromproviderLng", "toproviderLat",
                                               "toproviderLng", pathToData, "dyad", maxCalls=maxCalls, keyFilename=keyFilename)
     return transfersDF
+
+def _add_from_and_to_columns(transfersDF, providerDF, keys):
+    '''Joins every column of providerDF but its keys (["ORGNPINM"] or ["ORGNPINM", "THRU_DT_YEAR"]) twice, prefixed from
+    and to, onto the sending and the receiving provider of each transfer. Raises ValueError if providerDF lacks a key or
+    transfersDF already has a column it would add.'''
+    #a THRU_DT_YEAR key is matched to the transfer year on both sides, so the receiving provider is described in the
+    #year of the transfer, as in add_providerAnnualStays_info
+    transfersKeys = {"ORGNPINM": "{side}ORGNPINM", "THRU_DT_YEAR": "fromTHRU_DT_YEAR"}
+    missing = [k for k in keys if k not in providerDF.columns]
+    if missing:
+        raise ValueError(f"providerDF has no {', '.join(missing)}")
+    columns = [c for c in providerDF.columns if c not in keys]
+    existing = [side + c for side in ["from", "to"] for c in columns if side + c in transfersDF.columns]
+    if existing:
+        raise ValueError(f"transfersDF already has {', '.join(existing)}")
+    for side in ["from", "to"]:
+        #providerDF must hold one row per key or the join would duplicate transfers; a provider table is small, so it is
+        #broadcast, and a join condition rather than on=names keeps the keys from moving to the first columns
+        sideDF = providerDF.select(*[F.col(k).alias("join" + k) for k in keys], *[F.col(c).alias(side + c) for c in columns])
+        condition = reduce(lambda a, b: a & b, [F.col(transfersKeys[k].format(side=side)) == F.col("join" + k) for k in keys])
+        transfersDF = (transfersDF.join(F.broadcast(sideDF), on=condition, how="left_outer")
+                                  .drop(*["join" + k for k in keys]))
+    return transfersDF
+
+def add_provider_annual_info(transfersDF, providerAnnualInfoDF):
+    '''Adds every column of providerAnnualInfoDF (one row per ORGNPINM and THRU_DT_YEAR, eg the annual volumes and
+    capabilities of the providers from their stays), prefixed from and to, for the sending and the receiving provider in
+    the year of the transfer.'''
+    return _add_from_and_to_columns(transfersDF, providerAnnualInfoDF, ["ORGNPINM", "THRU_DT_YEAR"])
+
+def add_provider_block_group_info(transfersDF, nodesDF):
+    '''Adds fromproviderCensusBlockGroup, fromproviderAdiNatRank, fromproviderAdiNatRankGroup, fromproviderAdiStaRank and
+    the same to columns: the census block group of the sending and the receiving provider and its ADI, from nodesDF
+    (get_nodeListWithAddress, then geocoding.add_geocode_info, geocoding.add_census_geography_info and
+    utilities.add_adi_info, all with prefix "provider").'''
+    columns = ["providerCensusBlockGroup", "providerAdiNatRank", "providerAdiNatRankGroup", "providerAdiStaRank"]
+    return _add_from_and_to_columns(transfersDF, nodesDF.select("ORGNPINM", *columns), ["ORGNPINM"])
+
+def add_dyad_annual_info(transfersDF, dyadAnnualInfoDF, suffix):
+    '''Adds every column of dyadAnnualInfoDF but dyad (one row per dyad, eg the dyad and node columns of another
+    transfer set), with suffix appended to its name. Raises ValueError if transfersDF already has any of them.'''
+    #suffix names the transfer set the info was computed on, eg "AllTransfers" for all IP->IP transfers when transfersDF
+    #is a cohort of them, so the cohort's own dyadTransferVol and the wider dyadTransferVolAllTransfers sit side by side
+    if not suffix:
+        raise ValueError("suffix must name the transfer set dyadAnnualInfoDF was computed on, eg AllTransfers")
+    columns = [c for c in dyadAnnualInfoDF.columns if c != "dyad"]
+    existing = [c + suffix for c in columns if c + suffix in transfersDF.columns]
+    if existing:
+        raise ValueError(f"transfersDF already has {', '.join(existing)}")
+    infoDF = dyadAnnualInfoDF.select(F.col("dyad").alias("joinDyad"), *[F.col(c).alias(c + suffix) for c in columns])
+    #a join condition rather than on="dyad", which would move dyad to the first column
+    return transfersDF.join(infoDF, on=F.col("dyad") == F.col("joinDyad"), how="left_outer").drop("joinDyad")

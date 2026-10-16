@@ -2134,18 +2134,6 @@ def add_prior_hospitalization_info(baseDF, ipBaseDF, claimType="ip"):
                     .withColumn("hospitalizedIn6Months", (F.col("hospitalizationsIn6Months")>0).cast('int')))
     return baseDF
 
-def add_adi_info(baseDF, adiDF):
-    '''baseDF must have the blockGroup column in order to add the ADI info to it
-    blockGroup is not part of the base Medicare claim files.'''
-    baseDF = baseDF.join(adiDF
-                          .select(
-                           F.col("FIPS").alias("blockGroup"), 
-                           F.col("adiNatRank"), F.col("adiNatRankGroup"), #national 
-                           F.col("adiStaRank"), F.col("adiStaRankGroup")), #state
-                                 on=["blockGroup"],
-                                 how="left_outer")
-    return baseDF
-
 def add_majorDiagnosticOrTherapeuticOrProcedures(baseDF, procedureClassesDF, sparkInstance):
     '''Adds a column that is 1 if any of the claim procedure codes represent a major diagnostic or
     therapeutic operating room procedure and 0 otherwise.

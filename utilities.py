@@ -361,15 +361,30 @@ def prep_procedureClassesDF(df):
     return df
 
 def prep_adiDF(adiDF):
+    #the suppression codes (group quarters, low population/housing, questionable data) are NULL and the ranks are
+    #ints: adiNatRank a national percentile 1-100, adiStaRank a state decile 1-10
+    suppressed = ["GQ-PH", "GQ", "PH", "QDI"]
     adiDF = (adiDF
-              .withColumn("adiNatRank", F.when( F.col("ADI_NATRANK").isin("GQ-PH", "GQ", "PH", "QDI"), F.lit(None)).otherwise(F.col("ADI_NATRANK")))
-              .withColumn("adiStaRank", F.when( F.col("ADI_STATERNK").isin("GQ-PH", "GQ", "PH", "QDI"), F.lit(None)).otherwise(F.col("ADI_STATERNK")))
-              #add the categorical variables below because they are useful in analyses sometimes
+              .withColumn("adiNatRank", F.when( F.col("ADI_NATRANK").isin(suppressed), F.lit(None)).otherwise(F.col("ADI_NATRANK")).cast("int"))
+              .withColumn("adiStaRank", F.when( F.col("ADI_STATERNK").isin(suppressed), F.lit(None)).otherwise(F.col("ADI_STATERNK")).cast("int"))
+              #add the categorical variable below because it is useful in analyses sometimes; the state rank gets none,
+              #percentile quartiles do not apply to a decile
               .withColumn("adiNatRankGroup", F.when( F.col("adiNatRank")<=25, 4 ).when( F.col("adiNatRank")<=50, 3 )
-                                              .when( F.col("adiNatRank")<=75, 2 ).when( F.col("adiNatRank")<=100, 1 ))
-              .withColumn("adiStaRankGroup", F.when( F.col("adiStaRank")<=25, 4 ).when( F.col("adiStaRank")<=50, 3 )
-                                              .when( F.col("adiStaRank")<=75, 2 ).when( F.col("adiStaRank")<=100, 1 )))
+                                              .when( F.col("adiNatRank")<=75, 2 ).when( F.col("adiNatRank")<=100, 1 )))
     return adiDF
+
+def add_adi_info(DF, adiDF, blockGroupCol="blockGroup", prefix=None):
+    '''Adds adiNatRank, adiNatRankGroup and adiStaRank (prep_adiDF) of the census block group in blockGroupCol, as
+    {prefix}AdiNatRank, {prefix}AdiNatRankGroup and {prefix}AdiStaRank when a prefix is given.'''
+    def name(c):
+        return c if prefix is None else prefix + c[0].upper() + c[1:]
+    adiColumns = ["adiNatRank", "adiNatRankGroup", "adiStaRank"]
+    #a join condition rather than on=name, which would move the key to the first column; a block group missing from
+    #the ADI file gets NULLs
+    DF = (DF.join(adiDF.select(F.col("FIPS").alias("adiFips"), *[F.col(c).alias(name(c)) for c in adiColumns]),
+                  on=F.col(blockGroupCol) == F.col("adiFips"), how="left_outer")
+            .drop("adiFips"))
+    return DF
 
 def prep_ersRuccDF(ersRuccDF):
     ersRuccDF = (ersRuccDF.withColumn('RUCC_2013', F.col("RUCC_2013").cast('int'))

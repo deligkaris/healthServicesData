@@ -4,6 +4,8 @@
 # Transfer-dyad data dictionary.
 # Convention: from<Name> = sending hospital / origin claim; to<Name> = receiving hospital / destination claim
 # (same beneficiary on both sides). *_DAY / *_MONTH are cumulative counters across study years; *_YEAR is calendar year.
+# <Name><Suffix> (transfers.add_dyad_annual_info) = <Name> computed on another transfer set, eg <Name>AllTransfers on
+# all IP->IP transfers rather than this cohort.
 # Right-censoring: follow-up outcomes (mortality flags, losAt*, homeDays*) are NULL -- not 0 -- when their
 # window extends past the last day of the loaded data (cms.utilities.get_lastObservableDay).
 get_data_dictionary <- function() {
@@ -415,9 +417,10 @@ get_data_dictionary <- function() {
     "aids",            "AIDS (0/1)",
     "comorbidityIndex","Glasheen-2019 weighted comorbidity index (numeric)",
 
-    # ---- Area Deprivation Index (hospital location) ----
-    "ADI_NATRANK",     "Area Deprivation Index national percentile rank (1-100; higher = more deprived)",
-    "ADI_STATERNK",    "Area Deprivation Index state decile rank (1-10; higher = more deprived)",
+    # ---- Area Deprivation Index (hospital location: its census block group, utilities.add_adi_info) ----
+    "providerAdiNatRank","Area Deprivation Index national percentile rank of providerCensusBlockGroup (1-100; higher = more deprived; NA if suppressed: GQ, PH, QDI)",
+    "providerAdiNatRankGroup","providerAdiNatRank group: 4 = 1-25 (least deprived), 3 = 26-50, 2 = 51-75, 1 = 76-100",
+    "providerAdiStaRank","Area Deprivation Index state decile rank of providerCensusBlockGroup (1-10; higher = more deprived; NA if suppressed)",
 
     # ---- transfer-dyad distance / travel (between the dyad's two hospitals) ----
     "dyadGeodesicDistanceKm","Great-circle (straight-line) distance between the dyad's hospitals' geocoded addresses (km)",

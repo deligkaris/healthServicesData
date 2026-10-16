@@ -4750,3 +4750,88 @@ class TestAddDyadDistanceInfo:
         added = [c for c in result.columns if c not in transfersDF.columns]
         assert added == ["fromproviderLat", "fromproviderLng", "toproviderLat", "toproviderLng", "dyadGeodesicDistanceKm",
                          "dyadDrivingDistanceKm", "dyadDrivingTimeMin", "dyadDrivingStatus"]
+
+
+# ============================================================
+# Tests for add_provider_annual_info / add_provider_block_group_info /
+# add_dyad_annual_info -- provider and dyad tables joined back onto
+# the transfers (sepsis-transfers.py section 05).
+# ============================================================
+
+def make_annual_transfers_df(spark):
+    return spark.createDataFrame([("c1", "100", "200", 2020, ["100", "200", "2020"]),
+                                  ("c2", "100", "200", 2021, ["100", "200", "2021"]),
+                                  ("c3", "300", "100", 2020, ["300", "100", "2020"])],
+                                 "fromCLAIMNO string, fromORGNPINM string, toORGNPINM string, fromTHRU_DT_YEAR int, dyad array<string>")
+
+
+class TestAddProviderAnnualInfo:
+
+    def test_both_sides_in_the_transfer_year(self, spark):
+        from cms.transfers import add_provider_annual_info
+        transfersDF = make_annual_transfers_df(spark)
+        # 200 has no 2021 row; 100 is the receiving side of c3
+        infoDF = spark.createDataFrame([("100", 2020, 10, 1), ("100", 2021, 11, 0), ("200", 2020, 20, 1), ("300", 2020, 30, 1)],
+                                       "ORGNPINM string, THRU_DT_YEAR int, providerVol int, providerCap int")
+        result = add_provider_annual_info(transfersDF, infoDF)
+        assert result.columns == transfersDF.columns + ["fromproviderVol", "fromproviderCap", "toproviderVol", "toproviderCap"]
+        rows = {r["fromCLAIMNO"]: r for r in result.collect()}
+        assert len(rows) == 3
+        assert (rows["c1"]["fromproviderVol"], rows["c1"]["toproviderVol"]) == (10, 20)
+        assert (rows["c2"]["fromproviderVol"], rows["c2"]["toproviderVol"]) == (11, None)
+        assert (rows["c3"]["fromproviderVol"], rows["c3"]["toproviderVol"], rows["c3"]["toproviderCap"]) == (30, 10, 1)
+
+    def test_guards(self, spark):
+        from cms.transfers import add_provider_annual_info
+        transfersDF = make_annual_transfers_df(spark)
+        infoDF = spark.createDataFrame([("100", 2020, 10)], "ORGNPINM string, THRU_DT_YEAR int, providerVol int")
+        once = add_provider_annual_info(transfersDF, infoDF)
+        with pytest.raises(ValueError, match="already has fromproviderVol, toproviderVol"):
+            add_provider_annual_info(once, infoDF)
+        with pytest.raises(ValueError, match="no THRU_DT_YEAR"):
+            add_provider_annual_info(transfersDF, infoDF.drop("THRU_DT_YEAR"))
+
+
+class TestAddProviderBlockGroupInfo:
+
+    def test_columns(self, spark):
+        from cms.transfers import add_provider_block_group_info
+        transfersDF = make_annual_transfers_df(spark)
+        nodesDF = spark.createDataFrame(
+            [("100", "ADDR A", 39.9, -83.0, "390490040001", 55, 2, 6), ("200", "ADDR B", 41.5, -81.7, "390351972001", 90, 1, 9),
+             ("300", None, None, None, None, None, None, None)],
+            "ORGNPINM string, providerAddress string, providerLat double, providerLng double, providerCensusBlockGroup string, "
+            "providerAdiNatRank int, providerAdiNatRankGroup int, providerAdiStaRank int")
+        result = add_provider_block_group_info(transfersDF, nodesDF)
+        added = [c for c in result.columns if c not in transfersDF.columns]
+        assert added == ["fromproviderCensusBlockGroup", "fromproviderAdiNatRank", "fromproviderAdiNatRankGroup", "fromproviderAdiStaRank",
+                         "toproviderCensusBlockGroup", "toproviderAdiNatRank", "toproviderAdiNatRankGroup", "toproviderAdiStaRank"]
+        rows = {r["fromCLAIMNO"]: r for r in result.collect()}
+        assert len(rows) == 3
+        assert rows["c1"]["fromproviderCensusBlockGroup"] == "390490040001" and rows["c1"]["toproviderAdiNatRank"] == 90
+        assert rows["c3"]["fromproviderAdiNatRank"] is None and rows["c3"]["toproviderAdiStaRank"] == 6
+
+
+class TestAddDyadAnnualInfo:
+
+    def test_suffix(self, spark):
+        from cms.transfers import add_dyad_annual_info
+        transfersDF = make_annual_transfers_df(spark)
+        infoDF = spark.createDataFrame([(["100", "200", "2020"], 5, 0.5), (["300", "100", "2020"], 7, 0.25)],
+                                       "dyad array<string>, dyadTransferVol int, nodeHhi double")
+        result = add_dyad_annual_info(transfersDF, infoDF, suffix="AllTransfers")
+        assert result.columns == transfersDF.columns + ["dyadTransferVolAllTransfers", "nodeHhiAllTransfers"]
+        rows = {r["fromCLAIMNO"]: r for r in result.collect()}
+        assert len(rows) == 3
+        assert rows["c1"]["dyadTransferVolAllTransfers"] == 5 and rows["c3"]["nodeHhiAllTransfers"] == 0.25
+        assert rows["c2"]["dyadTransferVolAllTransfers"] is None
+
+    def test_guards(self, spark):
+        from cms.transfers import add_dyad_annual_info
+        transfersDF = make_annual_transfers_df(spark)
+        infoDF = spark.createDataFrame([(["100", "200", "2020"], 5)], "dyad array<string>, dyadTransferVol int")
+        once = add_dyad_annual_info(transfersDF, infoDF, suffix="AllTransfers")
+        with pytest.raises(ValueError, match="already has dyadTransferVolAllTransfers"):
+            add_dyad_annual_info(once, infoDF, suffix="AllTransfers")
+        with pytest.raises(ValueError, match="suffix"):
+            add_dyad_annual_info(transfersDF, infoDF, suffix="")

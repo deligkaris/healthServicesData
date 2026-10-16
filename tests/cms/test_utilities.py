@@ -661,3 +661,47 @@ class TestGetHcrisDF:
         self._build(spark, tmp_path, {"131316": (21, 7665)},
                     extraCells={"131316": [("S300001", "02700", "00900", 3.5)]})
         assert self.rows["131316"]["providerHcrisResidentToBedRatio"] is None
+
+
+class TestPrepAdiDF:
+
+    def test_suppression_codes_are_null_and_ranks_ints(self, spark):
+        from utilities import prep_adiDF
+        df = spark.createDataFrame([("010010201001", "20", "3"), ("010010201002", "90", "10"), ("010010202001", "GQ", "GQ"),
+                                    ("010010202002", "PH", "QDI")], "FIPS string, ADI_NATRANK string, ADI_STATERNK string")
+        result = prep_adiDF(df)
+        rows = {r["FIPS"]: r for r in result.collect()}
+        assert rows["010010201001"]["adiNatRank"] == 20 and rows["010010201001"]["adiNatRankGroup"] == 4
+        assert rows["010010201002"]["adiStaRank"] == 10 and rows["010010201002"]["adiNatRankGroup"] == 1
+        assert rows["010010202001"]["adiNatRank"] is None and rows["010010202001"]["adiNatRankGroup"] is None
+        assert rows["010010202002"]["adiStaRank"] is None
+        assert dict(result.dtypes)["adiNatRank"] == "int" and dict(result.dtypes)["adiStaRank"] == "int"
+        assert "adiStaRankGroup" not in result.columns
+
+
+class TestAddAdiInfo:
+
+    def _adi(self, spark):
+        from utilities import prep_adiDF
+        return prep_adiDF(spark.createDataFrame([("390490040001", "55", "6"), ("551410113003", "GQ", "GQ")],
+                                                "FIPS string, ADI_NATRANK string, ADI_STATERNK string"))
+
+    def test_default_block_group_column(self, spark):
+        from utilities import add_adi_info
+        df = spark.createDataFrame([("a", "390490040001")], "id string, blockGroup string")
+        result = add_adi_info(df, self._adi(spark))
+        assert result.columns == ["id", "blockGroup", "adiNatRank", "adiNatRankGroup", "adiStaRank"]
+        row = result.collect()[0]
+        assert row["adiNatRank"] == 55 and row["adiNatRankGroup"] == 2 and row["adiStaRank"] == 6
+
+    def test_column_and_prefix(self, spark):
+        from utilities import add_adi_info
+        df = spark.createDataFrame([("1", "390490040001", "x"), ("2", "551410113003", "y"), ("3", "999999999999", "z"),
+                                    ("4", None, "w")], "ORGNPINM string, providerCensusBlockGroup string, other string")
+        result = add_adi_info(df, self._adi(spark), blockGroupCol="providerCensusBlockGroup", prefix="provider")
+        assert result.columns == ["ORGNPINM", "providerCensusBlockGroup", "other",
+                                  "providerAdiNatRank", "providerAdiNatRankGroup", "providerAdiStaRank"]
+        rows = {r["ORGNPINM"]: r for r in result.collect()}
+        assert len(rows) == 4 and rows["1"]["providerAdiNatRank"] == 55
+        assert rows["2"]["providerAdiNatRank"] is None
+        assert rows["3"]["providerAdiStaRank"] is None and rows["4"]["providerAdiNatRankGroup"] is None
