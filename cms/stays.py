@@ -269,12 +269,11 @@ def get_transferToInStays(staysDF):
     #the flag is 1 if any claim of the stay has it (propagate_stay_info), constant 1 after the filter
     return staysDF.filter(F.col("transferToIn")==1).drop("transferToIn")
 
-def get_age65PlusNoEsrdStays(staysDF):
-    '''Keeps only the stays of beneficiaries 65 or older without ESRD (mbsfAge, mbsfAnyEsrd, see baseF.add_mbsf_info).'''
-    #each claim has them for its through year and propagate_stay_info takes their max over the stay's claims: the age
-    #at the end of the stay's last calendar year, ESRD in any of its years; a beneficiary missing from the mbsf has
-    #NULLs and is dropped
-    return staysDF.filter(F.col("mbsfAge") >= 65).filter(F.col("mbsfAnyEsrd") == 0)
+def get_age65PlusStays(staysDF):
+    '''Keeps only the stays of beneficiaries 65 or older (mbsfAge, see baseF.add_mbsf_info).'''
+    #each claim has it for its through year and propagate_stay_info takes its max over the stay's claims: the age
+    #at the end of the stay's last calendar year; a beneficiary missing from the mbsf has NULL and is dropped
+    return staysDF.filter(F.col("mbsfAge") >= 65)
 
 def add_onDayOfFirstStay(staysDF):
     '''Finds the first admission date for each beneficiary in the dataframe.'''
