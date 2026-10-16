@@ -745,3 +745,244 @@ class TestNameScore:
         for r in rows:
             assert abs(r["s"] - r["expected"]) < 1e-9, (r["a"], r["s"])
         assert [r["t"] for r in rows if r["a"] == "St. Mary Medical Center"][0] == ["mary"]
+
+
+# ============================================================
+# Routes API and Census Geocoder
+# ============================================================
+
+COLUMBUS = (39.9612, -82.9988)
+CLEVELAND = (41.4993, -81.6944)
+ISLAND = (41.6528, -82.8255)
+
+def route_payload(meters=228000, duration="7920s"):
+    return {"routes": [{"distanceMeters": meters, "duration": duration}]}
+
+def census_payload(block="551410113003043"):
+    return {"result": {"geographies": {"Census Blocks": [{"GEOID": block}]}}}
+
+def failing_then(error, payload):
+    # The first call raises error(url), the later ones return payload; calls records what urlopen was given.
+    calls = []
+    def opener(request, timeout=None):
+        calls.append(request)
+        if len(calls) == 1:
+            raise error(getattr(request, "full_url", request))
+        response = mock.MagicMock()
+        response.__enter__.return_value = io.StringIO(json.dumps(payload))
+        return response
+    return opener, calls
+
+def http_error(code, message=b""):
+    from urllib.error import HTTPError
+    return lambda url: HTTPError(url, code, "error", {}, io.BytesIO(message))
+
+
+class TestParseRouteResponse:
+
+    def test_ok(self):
+        record = geocoding.parse_route_response(route_payload())
+        assert record["distanceMeters"] == 228000 and record["durationSeconds"] == 7920 and record["status"] == "OK"
+        assert set(record) == set(geocoding.routeFields)
+
+    def test_no_route(self):
+        record = geocoding.parse_route_response({})
+        assert record["status"] == "ZERO_RESULTS"
+        assert record["distanceMeters"] is None and record["durationSeconds"] is None
+
+    def test_zero_values_left_out_of_json(self):
+        record = geocoding.parse_route_response({"routes": [{}]})
+        assert record["distanceMeters"] == 0 and record["durationSeconds"] == 0 and record["status"] == "OK"
+
+    def test_fractional_duration(self):
+        assert geocoding.parse_route_response(route_payload(duration="12.6s"))["durationSeconds"] == 13
+
+
+class TestRouteDyad:
+
+    def test_request_shape(self, no_sleep):
+        opener = fake_urlopen([route_payload()])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            record = geocoding.route_dyad(*COLUMBUS, *CLEVELAND, "secret-key")
+        request = opener.call_args[0][0]
+        body = json.loads(request.data)
+        assert request.get_method() == "POST" and request.full_url == geocoding.googleRoutesUrl
+        assert body["origin"]["location"]["latLng"] == {"latitude": COLUMBUS[0], "longitude": COLUMBUS[1]}
+        assert body["destination"]["location"]["latLng"] == {"latitude": CLEVELAND[0], "longitude": CLEVELAND[1]}
+        assert body["travelMode"] == "DRIVE" and body["routingPreference"] == "TRAFFIC_UNAWARE"
+        assert request.get_header("X-goog-api-key") == "secret-key"
+        assert request.get_header("X-goog-fieldmask") == geocoding.googleRoutesFieldMask
+        assert "secret-key" not in request.full_url and "secret-key" not in request.data.decode()
+        assert record["status"] == "OK"
+
+    def test_retry_on_429_then_ok(self, no_sleep):
+        opener, calls = failing_then(http_error(429, b"quota"), route_payload())
+        with mock.patch.object(geocoding, "urlopen", opener):
+            record = geocoding.route_dyad(*COLUMBUS, *CLEVELAND, "secret-key")
+        assert len(calls) == 2 and record["status"] == "OK"
+
+    def test_timeout_retried(self, no_sleep):
+        import socket
+        opener, calls = failing_then(lambda url: socket.timeout("timed out"), route_payload())
+        with mock.patch.object(geocoding, "urlopen", opener):
+            record = geocoding.route_dyad(*COLUMBUS, *CLEVELAND, "secret-key")
+        assert len(calls) == 2 and record["status"] == "OK"
+
+    def test_403_raises_without_key(self, no_sleep):
+        opener, calls = failing_then(http_error(403, b"Routes API has not been used in project"), route_payload())
+        with mock.patch.object(geocoding, "urlopen", opener):
+            with pytest.raises(RuntimeError) as e:
+                geocoding.route_dyad(*COLUMBUS, *CLEVELAND, "secret-key")
+        assert len(calls) == 1
+        assert "403" in str(e.value) and "Routes API" in str(e.value) and "secret-key" not in str(e.value)
+
+
+class TestGetRoutes:
+
+    def test_all_cached_makes_no_calls_and_needs_no_key(self, tmp_path):
+        record = geocoding.parse_route_response(route_payload())
+        key = geocoding.get_route_key(*COLUMBUS, *CLEVELAND)
+        geocoding.write_json_cache({key: record}, geocoding.get_routes_cache_filename(str(tmp_path)))
+        opener = fake_urlopen([])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            records = geocoding.get_routes([COLUMBUS + CLEVELAND, COLUMBUS + CLEVELAND], str(tmp_path))
+        assert records == {key: record} and opener.call_count == 0
+
+    def test_miss_called_once_and_cached(self, tmp_path):
+        write_key(tmp_path)
+        opener = fake_urlopen([route_payload()])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            records = geocoding.get_routes([COLUMBUS + CLEVELAND], str(tmp_path))
+            geocoding.get_routes([COLUMBUS + CLEVELAND], str(tmp_path))
+        assert opener.call_count == 1
+        assert records[geocoding.get_route_key(*COLUMBUS, *CLEVELAND)]["distanceMeters"] == 228000
+        cacheText = (tmp_path / "GEOCODING" / "googleRoutesCache.json").read_text()
+        assert "39.961200,-82.998800;41.499300,-81.694400" in json.loads(cacheText)
+        assert "secret-key" not in cacheText
+
+    def test_directed(self, tmp_path):
+        write_key(tmp_path)
+        opener = fake_urlopen([route_payload(), route_payload()])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            records = geocoding.get_routes([COLUMBUS + CLEVELAND, CLEVELAND + COLUMBUS], str(tmp_path))
+        assert opener.call_count == 2 and len(records) == 2
+
+    def test_zero_results_cached(self, tmp_path):
+        write_key(tmp_path)
+        opener = fake_urlopen([{}])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            geocoding.get_routes([COLUMBUS + ISLAND], str(tmp_path))
+            records = geocoding.get_routes([COLUMBUS + ISLAND], str(tmp_path))
+        assert opener.call_count == 1
+        assert records[geocoding.get_route_key(*COLUMBUS, *ISLAND)]["status"] == "ZERO_RESULTS"
+
+    def test_max_calls_guard(self, tmp_path):
+        write_key(tmp_path)
+        opener = fake_urlopen([])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            with pytest.raises(RuntimeError, match="2 keys are not cached, more than maxCalls=1"):
+                geocoding.get_routes([COLUMBUS + CLEVELAND, CLEVELAND + COLUMBUS], str(tmp_path), maxCalls=1)
+        assert opener.call_count == 0
+
+    def test_interrupted_run_keeps_records(self, tmp_path, no_sleep):
+        write_key(tmp_path)
+        calls = []
+        def opener(request, timeout=None):
+            calls.append(request)
+            if len(calls) == 2:
+                raise http_error(403)(request.full_url)
+            response = mock.MagicMock()
+            response.__enter__.return_value = io.StringIO(json.dumps(route_payload()))
+            return response
+        with mock.patch.object(geocoding, "urlopen", opener):
+            with pytest.raises(RuntimeError):
+                geocoding.get_routes([COLUMBUS + CLEVELAND, CLEVELAND + COLUMBUS], str(tmp_path), workers=1)
+        cache = geocoding.read_json_cache(geocoding.get_routes_cache_filename(str(tmp_path)))
+        assert list(cache) == [geocoding.get_route_key(*COLUMBUS, *CLEVELAND)]
+
+
+class TestCensusBlock:
+
+    def test_parse_ok(self):
+        record = geocoding.parse_census_response(census_payload())
+        assert record["block"] == "551410113003043" and record["status"] == "OK"
+        assert set(record) == set(geocoding.censusFields)
+
+    def test_parse_no_block(self):
+        record = geocoding.parse_census_response({"result": {"geographies": {"Census Blocks": []}}})
+        assert record["block"] is None and record["status"] == "ZERO_RESULTS"
+
+    def test_request_shape(self, no_sleep):
+        opener = fake_urlopen([census_payload()])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            record = geocoding.get_census_block(44.3819294, -89.8303017)
+        url = opener.call_args[0][0]
+        assert url.startswith(geocoding.censusGeographiesUrl + "?")
+        assert "x=-89.8303017" in url and "y=44.3819294" in url
+        assert "benchmark=Public_AR_Census2020" in url and "vintage=Census2020_Census2020" in url and "layers=10" in url
+        assert record["block"] == "551410113003043"
+
+    def test_retry_on_500_then_ok(self, no_sleep):
+        opener, calls = failing_then(http_error(500), census_payload())
+        with mock.patch.object(geocoding, "urlopen", opener):
+            record = geocoding.get_census_block(*COLUMBUS)
+        assert len(calls) == 2 and record["status"] == "OK"
+
+    def test_400_raises(self, no_sleep):
+        opener, calls = failing_then(http_error(400), census_payload())
+        with mock.patch.object(geocoding, "urlopen", opener):
+            with pytest.raises(RuntimeError, match="http 400"):
+                geocoding.get_census_block(*COLUMBUS)
+        assert len(calls) == 1
+
+    def test_blocks_cached_and_need_no_key(self, tmp_path):
+        opener = fake_urlopen([census_payload()])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            geocoding.get_census_blocks([COLUMBUS, COLUMBUS], str(tmp_path))
+            records = geocoding.get_census_blocks([COLUMBUS], str(tmp_path))
+        assert opener.call_count == 1
+        assert records == {"39.961200,-82.998800": geocoding.read_json_cache(geocoding.get_census_cache_filename(str(tmp_path)))["39.961200,-82.998800"]}
+
+
+class TestAddDrivingInfo:
+
+    def test_columns_joined_back(self, spark, tmp_path):
+        cache = {geocoding.get_route_key(*COLUMBUS, *CLEVELAND): geocoding.parse_route_response(route_payload()),
+                 geocoding.get_route_key(*COLUMBUS, *ISLAND): geocoding.parse_route_response({})}
+        geocoding.write_json_cache(cache, geocoding.get_routes_cache_filename(str(tmp_path)))
+        df = spark.createDataFrame([("1",) + COLUMBUS + CLEVELAND, ("2",) + COLUMBUS + CLEVELAND,
+                                    ("3",) + COLUMBUS + ISLAND, ("4",) + COLUMBUS + (None, None)],
+                                   "id string, lat1 double, lng1 double, lat2 double, lng2 double")
+        opener = fake_urlopen([])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            result = geocoding.add_driving_info(df, "lat1", "lng1", "lat2", "lng2", str(tmp_path), "dyad", maxCalls=0)
+        rows = {r["id"]: r for r in result.collect()}
+        assert len(rows) == 4 and opener.call_count == 0
+        assert rows["1"]["dyadDrivingDistanceKm"] == 228.0 and rows["1"]["dyadDrivingTimeMin"] == 132.0
+        assert rows["1"]["dyadDrivingStatus"] == "OK" and rows["2"]["dyadDrivingDistanceKm"] == 228.0
+        assert rows["3"]["dyadDrivingStatus"] == "ZERO_RESULTS" and rows["3"]["dyadDrivingDistanceKm"] is None
+        assert rows["4"]["dyadDrivingStatus"] is None and rows["4"]["dyadDrivingTimeMin"] is None
+        added = [c for c in result.columns if c not in df.columns]
+        assert result.columns[:len(df.columns)] == df.columns
+        assert added == ["dyadDrivingDistanceKm", "dyadDrivingTimeMin", "dyadDrivingStatus"]
+        assert dict(result.dtypes)["dyadDrivingDistanceKm"] == "double"
+
+    def test_max_calls_counts_misses(self, spark, tmp_path):
+        df = spark.createDataFrame([COLUMBUS + CLEVELAND], "lat1 double, lng1 double, lat2 double, lng2 double")
+        with pytest.raises(RuntimeError, match="1 keys are not cached, more than maxCalls=0"):
+            geocoding.add_driving_info(df, "lat1", "lng1", "lat2", "lng2", str(tmp_path), "dyad", maxCalls=0)
+
+
+class TestAddCensusGeographyInfo:
+
+    def test_columns_joined_back(self, spark, tmp_path):
+        cache = {geocoding.get_point_key(*COLUMBUS): geocoding.parse_census_response(census_payload("390490040001002")),
+                 geocoding.get_point_key(*ISLAND): geocoding.parse_census_response({})}
+        geocoding.write_json_cache(cache, geocoding.get_census_cache_filename(str(tmp_path)))
+        df = spark.createDataFrame([("1",) + COLUMBUS, ("2",) + ISLAND, ("3", None, None)], "id string, lat double, lng double")
+        result = geocoding.add_census_geography_info(df, "lat", "lng", str(tmp_path), "provider", maxCalls=0)
+        rows = {r["id"]: r for r in result.collect()}
+        assert len(rows) == 3
+        assert rows["1"]["providerCensusBlockGroup"] == "390490040001" and rows["1"]["providerCensusTract"] == "39049004000"
+        assert rows["2"]["providerCensusBlockGroup"] is None and rows["3"]["providerCensusTract"] is None
+        assert [c for c in result.columns if c not in df.columns] == ["providerCensusBlockGroup", "providerCensusTract"]

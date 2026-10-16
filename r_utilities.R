@@ -79,6 +79,14 @@ get_data_dictionary <- function() {
     "providerOtherName","Alternate facility name",
     "providerAddress", "Facility street address",
     "providerZip",     "Facility ZIP",
+    "providerLat",     "Latitude of providerAddress (NPI practice location) from the Google Geocoding API",
+    "providerLng",     "Longitude of providerAddress (NPI practice location) from the Google Geocoding API",
+    "providerGeocodeLocationType","Precision of the geocoded providerAddress point: ROOFTOP, RANGE_INTERPOLATED, GEOMETRIC_CENTER or APPROXIMATE",
+    "providerGeocodeFormattedAddress","Address the Google Geocoding API resolved providerAddress to",
+    "providerGeocodePartialMatch","1 if the API could not match the whole providerAddress and returned a similar one, else 0",
+    "providerGeocodeStatus","Google Geocoding API status for providerAddress: OK or ZERO_RESULTS",
+    "providerCensusBlockGroup","2020 census block group (12-digit GEOID) of providerLat/providerLng from the Census Geocoder; the ADI key",
+    "providerCensusTract","2020 census tract (11-digit GEOID) of providerLat/providerLng from the Census Geocoder",
     "providerHsa",     "Dartmouth Atlas hospital service area number of facility ZIP (2019 crosswalk after 2019)",
     "providerHrr",     "Dartmouth Atlas hospital referral region number of facility ZIP (2019 crosswalk after 2019)",
     "providerHrrCity", "City naming the facility hospital referral region",
@@ -412,8 +420,9 @@ get_data_dictionary <- function() {
     "ADI_STATERNK",    "Area Deprivation Index state decile rank (1-10; higher = more deprived)",
 
     # ---- transfer-dyad distance / travel (between the dyad's two hospitals) ----
-    "dyadGeodesicDistanceKm","Great-circle (straight-line) distance between the dyad's hospitals (km)",
-    "dyadDrivingDistanceKm","Road driving distance between the dyad's hospitals (km)",
-    "dyadDrivingTimeMin","Road driving time between the dyad's hospitals (minutes)"
+    "dyadGeodesicDistanceKm","Great-circle (straight-line) distance between the dyad's hospitals' geocoded addresses (km)",
+    "dyadDrivingDistanceKm","Road driving distance from the sending to the receiving hospital, Google Routes API without traffic (km)",
+    "dyadDrivingTimeMin","Road driving time from the sending to the receiving hospital, Google Routes API without traffic (minutes)",
+    "dyadDrivingStatus","Google Routes API status for the dyad: OK, or ZERO_RESULTS when no road connects them (NA if a hospital was not geocoded)"
   )
 }

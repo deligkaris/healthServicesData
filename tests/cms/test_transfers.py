@@ -4718,3 +4718,37 @@ class TestAddNodeInByTypeInfo:
         df = make_node_in_by_type_df(spark, _admissions(200, 2020, _ED, 1))
         with pytest.raises(ValueError):
             add_node_in_by_type_info(df, transferTypes=transferTypes)
+
+
+# ============================================================
+# Tests for add_dyad_distance_info -- coordinates of the dyad's two
+# hospitals from a geocoded node list, geodesic distance, and driving
+# distance/time from the (here pre-cached) Google Routes API.
+# ============================================================
+
+class TestAddDyadDistanceInfo:
+
+    def test_distances(self, spark, tmp_path):
+        import geocoding
+        from cms.transfers import add_dyad_distance_info
+        columbus, cleveland = (39.9612, -82.9988), (41.4993, -81.6944)
+        cache = {geocoding.get_route_key(*columbus, *cleveland):
+                     geocoding.parse_route_response({"routes": [{"distanceMeters": 228000, "duration": "7920s"}]})}
+        geocoding.write_json_cache(cache, geocoding.get_routes_cache_filename(str(tmp_path)))
+        nodesDF = spark.createDataFrame(
+            [("100", "COLUMBUS ADDRESS") + columbus, ("200", "CLEVELAND ADDRESS") + cleveland, ("300", "NOWHERE", None, None)],
+            "ORGNPINM string, providerAddress string, providerLat double, providerLng double")
+        transfersDF = spark.createDataFrame([("a1", "100", "200", 2020), ("a2", "100", "200", 2021), ("a3", "100", "300", 2020)],
+                                            "fromCLAIMNO string, fromORGNPINM string, toORGNPINM string, fromTHRU_DT_YEAR int")
+        result = add_dyad_distance_info(transfersDF, nodesDF, str(tmp_path), maxCalls=0)
+        rows = {r["fromCLAIMNO"]: r for r in result.collect()}
+        assert len(rows) == 3
+        assert result.columns[:len(transfersDF.columns)] == transfersDF.columns
+        assert abs(rows["a1"]["dyadGeodesicDistanceKm"] - 203) / 203 < 0.01
+        assert rows["a1"]["fromproviderLat"] == columbus[0] and rows["a1"]["toproviderLng"] == cleveland[1]
+        assert rows["a2"]["dyadDrivingDistanceKm"] == 228.0 and rows["a2"]["dyadDrivingTimeMin"] == 132.0
+        assert rows["a2"]["dyadDrivingStatus"] == "OK"
+        assert rows["a3"]["dyadGeodesicDistanceKm"] is None and rows["a3"]["dyadDrivingDistanceKm"] is None
+        added = [c for c in result.columns if c not in transfersDF.columns]
+        assert added == ["fromproviderLat", "fromproviderLng", "toproviderLat", "toproviderLng", "dyadGeodesicDistanceKm",
+                         "dyadDrivingDistanceKm", "dyadDrivingTimeMin", "dyadDrivingStatus"]

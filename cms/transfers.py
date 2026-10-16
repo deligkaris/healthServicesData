@@ -5,6 +5,7 @@ from pyspark.sql.window import Window
 import cms.base as baseF
 import cms.stays as staysF
 import cms.utilities as cmsUtilitiesF
+import geocoding as geocodingF
 import utilities as utilitiesF
 
 class TransferType(IntEnum):
@@ -615,3 +616,26 @@ def get_nodeListWithAddress(transfersDF):
     toNodes = transfersDF.select(F.col("toORGNPINM").alias("ORGNPINM"),
                                  F.col("toproviderAddress").alias("providerAddress"))
     return fromNodes.union(toNodes).distinct()
+
+def add_dyad_distance_info(transfersDF, nodesDF, pathToData, maxCalls=None, keyFilename=None):
+    '''Adds fromproviderLat, fromproviderLng, toproviderLat and toproviderLng from nodesDF (get_nodeListWithAddress then
+    geocoding.add_geocode_info(nodesDF, "providerAddress", pathToData, "provider")), dyadGeodesicDistanceKm, and
+    dyadDrivingDistanceKm, dyadDrivingTimeMin and dyadDrivingStatus from the Google Routes API.'''
+    #transfersDF can be get_edgeList or the transfers themselves: only distinct coordinate pairs are routed, so all the
+    #transfers along a dyad share one call; the route is directed, from the sending to the receiving hospital, as A->B and
+    #B->A can differ (one way streets, ramps)
+    #nodesDF must hold one row per ORGNPINM, as get_nodeListWithAddress does, or the joins would duplicate transfers
+    for side in ["from", "to"]:
+        coordinatesDF = nodesDF.select(F.col("ORGNPINM").alias("nodeORGNPINM"),
+                                       F.col("providerLat").alias(f"{side}providerLat"),
+                                       F.col("providerLng").alias(f"{side}providerLng"))
+        #a join condition rather than on=name, which would move the key to the first column
+        transfersDF = (transfersDF.join(F.broadcast(coordinatesDF), on=F.col(f"{side}ORGNPINM") == F.col("nodeORGNPINM"),
+                                        how="left_outer")
+                                  .drop("nodeORGNPINM"))
+    transfersDF = transfersDF.withColumn("dyadGeodesicDistanceKm",
+                                         geocodingF.get_geodesicDistanceKm(F.col("fromproviderLat"), F.col("fromproviderLng"),
+                                                                           F.col("toproviderLat"), F.col("toproviderLng")))
+    transfersDF = geocodingF.add_driving_info(transfersDF, "fromproviderLat", "fromproviderLng", "toproviderLat",
+                                              "toproviderLng", pathToData, "dyad", maxCalls=maxCalls, keyFilename=keyFilename)
+    return transfersDF
