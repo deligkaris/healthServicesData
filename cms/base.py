@@ -6,7 +6,6 @@ from .revenue import filter_claims, add_ed, add_mri, add_ct, get_revenue_info
 from .claims import get_claims
 from utilities import add_primaryTaxonomy, add_acgmeSitesInZip, add_acgmeProgramsInZip, get_daysInYearsPrior, usRegionFipsCodes, get_monthsInYearsPrior
 import re
-import warnings
 from functools import reduce
 
 #CMS DUA email on my question about LDS claim numbers:
@@ -1931,7 +1930,7 @@ def add_los_at_X_info(baseDF, XDF, lastObservableDay, X="hosp"):
     '''A facility claim whose through date is after the death date is clipped at the death date. A claim admitted
     after the death date is dropped: clipping it alone would leave through < admission, and F.sequence in
     add_losDays would then run backwards from the admission to the death date, counting phantom facility days
-    that push homeDays negative. Both counts are reported in one warning when either is non-zero.'''
+    that push homeDays negative. Both counts are printed on one line when either is non-zero.'''
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90)
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=365)
     #XDF = (XDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) #need only 3 columns from this df
@@ -1958,8 +1957,7 @@ def add_los_at_X_info(baseDF, XDF, lastObservableDay, X="hosp"):
                     .collect()[0])
     clipped, dropped = pastDeath["clipped"] or 0, pastDeath["dropped"] or 0
     if clipped + dropped > 0:
-        warnings.warn(f"add_los_at_X_info(X={X}): {clipped} facility claims clipped at the death date, "
-                      f"{dropped} admitted after the death date dropped")
+        print(f"add_los_at_X_info(X={X}): {clipped} facility claims clipped at death, {dropped} admitted after death dropped")
     XDF = (XDF.filter(F.col("DEATH_DT_DAY").isNull() | (F.col("ADMSN_DT_DAY") <= F.col("DEATH_DT_DAY")))
               .withColumn("THRU_DT_DAY", F.least(F.col("THRU_DT_DAY"), F.col("DEATH_DT_DAY"))))
 
@@ -2047,7 +2045,7 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
     malformed = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF])
                  .filter(~valid).count())
     if malformed > 0:
-        warnings.warn(f"add_days_at_home_info: dropped {malformed} facility claims with through date before admission date")
+        print(f"add_days_at_home_info: {malformed} facility claims with through < admission dropped")
     allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF]).filter(valid)
     baseDF = add_los_at_X_info(baseDF, allDF, lastObservableDay, X="allMinusHha")
     #baseDF = add_los_total_info(baseDF, X="allMinusHha")
