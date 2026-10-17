@@ -198,8 +198,6 @@ def propagate_stay_info(claimsDF, claimType="op", exclude=()):
     columnsToPropagate = get_columns_to_propagate(claimsDF.schema.fields, claimType=claimType, exclude=exclude)
     for col in columnsToPropagate:
         claimsDF = claimsDF.withColumn(col, F.max(F.col(col)).over(eachStay))
-    print("Note: columns aggregated over all claims that comprise a single stay/visit are..."
-          + ",".join(columnsToPropagate) + "...")
     return claimsDF
 
 def get_unique_stays(claimsDF, claimType="op"):
