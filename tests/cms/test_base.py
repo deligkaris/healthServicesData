@@ -2420,51 +2420,84 @@ class TestAddHospiceIn12Months:
 # ============================================================
 
 def _make_clean_dates_df(spark, rows, withAdmission=True):
-    """rows: list of (CLAIMNO, daysDeadAfterThroughDate, daysDeadAfterAdmissionDate) triples.
+    """rows: list of (CLAIMNO, ADMSN_DT_DAY, THRU_DT_DAY, DEATH_DT_DAY).
     When withAdmission is False the admission column is omitted entirely (op claims)."""
-    fields = [StructField("CLAIMNO", IntegerType(), True),
-              StructField("daysDeadAfterThroughDate", IntegerType(), True)]
     if withAdmission:
-        fields.append(StructField("daysDeadAfterAdmissionDate", IntegerType(), True))
-    data = [r if withAdmission else r[:2] for r in rows]
-    return spark.createDataFrame(data, schema=StructType(fields))
+        return spark.createDataFrame(rows, "CLAIMNO int, ADMSN_DT_DAY int, THRU_DT_DAY int, DEATH_DT_DAY int")
+    return spark.createDataFrame([(c, t, d) for c, _, t, d in rows], "CLAIMNO int, THRU_DT_DAY int, DEATH_DT_DAY int")
+
+
+def _clean_claimnos(df):
+    from cms.base import get_clean_through_dates
+    return sorted(r["CLAIMNO"] for r in get_clean_through_dates(df).collect())
 
 
 class TestGetCleanThroughDates:
 
-    def test_keeps_positive_and_null_through_dates(self, spark):
-        from cms.base import get_clean_through_dates
-        df = _make_clean_dates_df(spark, [(1, 5, 7), (2, 0, 0), (3, None, None)])
-        assert {r["CLAIMNO"] for r in get_clean_through_dates(df).collect()} == {1, 2, 3}
+    def test_keeps_through_on_or_before_death_and_no_death(self, spark):
+        df = _make_clean_dates_df(spark, [(1, 100, 105, 110), (2, 100, 105, 105), (3, 100, 105, None)])
+        assert _clean_claimnos(df) == [1, 2, 3]
 
-    def test_drops_negative_through_date(self, spark):
-        from cms.base import get_clean_through_dates
-        df = _make_clean_dates_df(spark, [(1, -1, 3)])
-        assert get_clean_through_dates(df).count() == 0
+    def test_drops_through_after_death(self, spark):
+        df = _make_clean_dates_df(spark, [(1, 100, 106, 105)])
+        assert _clean_claimnos(df) == []
 
-    def test_drops_negative_admission_date_with_valid_through_date(self, spark):
-        # Only reachable when ADMSN_DT_DAY > THRU_DT_DAY, i.e. an inverted-date claim.
-        from cms.base import get_clean_through_dates
-        df = _make_clean_dates_df(spark, [(1, 2, -3)])
-        assert get_clean_through_dates(df).count() == 0
+    def test_drops_admission_after_death(self, spark):
+        df = _make_clean_dates_df(spark, [(1, 110, 115, 105)])
+        assert _clean_claimnos(df) == []
+
+    def test_drops_inverted_dates_with_and_without_death(self, spark):
+        df = _make_clean_dates_df(spark, [(1, 105, 100, 110), (2, 105, 100, None)])
+        assert _clean_claimnos(df) == []
 
     def test_keeps_null_admission_date(self, spark):
-        # No death date, or no admission date, means we cannot judge: keep the claim.
-        from cms.base import get_clean_through_dates
-        df = _make_clean_dates_df(spark, [(1, 4, None)])
-        assert get_clean_through_dates(df).count() == 1
+        # No admission date means we cannot judge the order of admission and through: keep the claim.
+        df = _make_clean_dates_df(spark, [(1, None, 105, 110), (2, None, 105, None)])
+        assert _clean_claimnos(df) == [1, 2]
 
-    def test_no_admission_column_falls_back_to_through_date_only(self, spark):
-        # op claims never get daysDeadAfterAdmissionDate; the filter must not error.
-        from cms.base import get_clean_through_dates
-        df = _make_clean_dates_df(spark, [(1, 5, None), (2, -1, None)], withAdmission=False)
-        result = get_clean_through_dates(df)
-        assert [r["CLAIMNO"] for r in result.collect()] == [1]
+    def test_no_admission_column_checks_through_date_only(self, spark):
+        # op claims have no ADMSN_DT_DAY; the filter must not error.
+        df = _make_clean_dates_df(spark, [(1, None, 105, 110), (2, None, 106, 105)], withAdmission=False)
+        assert _clean_claimnos(df) == [1]
 
-    def test_mixed_rows(self, spark):
+    def test_keeps_columns(self, spark):
         from cms.base import get_clean_through_dates
-        df = _make_clean_dates_df(spark, [(1, 5, 9), (2, -2, 4), (3, 3, -1), (4, None, None), (5, 0, 0)])
-        assert sorted(r["CLAIMNO"] for r in get_clean_through_dates(df).collect()) == [1, 4, 5]
+        df = _make_clean_dates_df(spark, [(1, 100, 105, 110)])
+        assert get_clean_through_dates(df).columns == df.columns
+
+
+# ============================================================
+# add_death_date_info (base claims, joined from mbsf)
+# ============================================================
+
+def _death_mbsf_df(spark, rows):
+    """rows: list of (DSYSRTKY, RFRNC_YR, V_DOD_SW, DEATH_DT_DAY); the other death columns follow DEATH_DT_DAY."""
+    return spark.createDataFrame(
+        [(d, y, v, None if day is None else 2020, day, None if day is None else 20200101 + day)
+         for d, y, v, day in rows],
+        "DSYSRTKY int, RFRNC_YR int, V_DOD_SW string, DEATH_DT_YEAR int, DEATH_DT_DAY int, DEATH_DT long")
+
+
+class TestAddDeathDateInfo:
+
+    def _run(self, spark, mbsf_rows, claims=((1, 11),)):
+        from cms.base import add_death_date_info
+        base = spark.createDataFrame(list(claims), "DSYSRTKY int, CLAIMNO int")
+        return sorted(add_death_date_info(base, _death_mbsf_df(spark, mbsf_rows)).collect(), key=lambda r: r["CLAIMNO"])
+
+    def test_adds_death_columns(self, spark):
+        [row] = self._run(spark, [(1, 2020, "V", 105)])
+        assert (row["DEATH_DT_YEAR"], row["DEATH_DT_DAY"], row["DEATH_DT"]) == (2020, 105, 20200206)
+
+    def test_no_valid_death_is_null(self, spark):
+        rows = self._run(spark, [(1, 2020, None, None)], claims=((1, 11), (2, 22)))
+        assert [r["DEATH_DT_DAY"] for r in rows] == [None, None]
+
+    def test_uses_latest_reference_year_and_adds_no_rows(self, spark):
+        # a death date in several mbsf years: each claim keeps one row, with the latest year's death date
+        rows = self._run(spark, [(1, 2019, "V", 100), (1, 2020, "V", 105), (1, 2021, "V", 105)],
+                         claims=((1, 11), (1, 12)))
+        assert [(r["CLAIMNO"], r["DEATH_DT_DAY"]) for r in rows] == [(11, 105), (12, 105)]
 
 
 # ============================================================

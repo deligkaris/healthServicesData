@@ -251,7 +251,8 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, r
     If the project requires FFS data, then all dataframes must be filtered for FFS.
     data is a dictionary of spark dataframes with supporting information, eg provider of services, NPI, etc
     The ip and op mortality flags are NULL, not 0, for claims whose follow-up window extends past December 31 of
-    yearF, because a death after that day is not in the loaded mbsf files, see base.add_XDaysAfterYDateDead."""
+    yearF, because a death after that day is not in the loaded mbsf files, see base.add_XDaysAfterYDateDead.
+    cleanThroughDates drops the ip, snf, hha and hospice claims dated after death or with through < admission."""
     if ( years_within_code_limits(yearI, yearF)==False ):
         raise ValueError("code was not designed to operate for the years provided")
     elif( years_within_cms_data_limits(yearI, yearF)==False ):
@@ -300,11 +301,14 @@ def filter_FFS(dataframes):
     return dataframes
 
 def clean_through_dates(dataframes):
-    for claimTypePart in list(dataframes.keys()):
-        (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
-        if (claimPart=="Base"):
-            if claimType=="ip":   #for now I am cleaning just the ip claims
-                dataframes[claimTypePart] = baseF.get_clean_through_dates(dataframes[claimTypePart])
+    '''Drops the ip, snf, hha and hospice base claims dated after the beneficiary's death or with through < admission,
+    see baseF.get_clean_through_dates.'''
+    dataframes["ipBase"] = baseF.get_clean_through_dates(dataframes["ipBase"])
+    #the death date is joined only to clean these claims, so their columns stay as they were
+    for claimTypePart in ["snfBase", "hhaBase", "hospBase"]:
+        dataframes[claimTypePart] = (baseF.get_clean_through_dates(
+                                         baseF.add_death_date_info(dataframes[claimTypePart], dataframes["mbsf"]))
+                                     .drop("DEATH_DT_YEAR", "DEATH_DT_DAY", "DEATH_DT"))
     return dataframes
 
 #the only base columns read by baseF.add_prior_hospitalization_info (ip), comorbiditiesF.get_dayDgnsDF (ip, op)

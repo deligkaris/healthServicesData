@@ -705,3 +705,32 @@ class TestAddAdiInfo:
         assert len(rows) == 4 and rows["1"]["providerAdiNatRank"] == 55
         assert rows["2"]["providerAdiNatRank"] is None
         assert rows["3"]["providerAdiStaRank"] is None and rows["4"]["providerAdiNatRankGroup"] is None
+
+
+class TestCleanThroughDates:
+
+    def _dataframes(self, spark):
+        # each facility base: claim 1 clean, claim 2 through after death (day 105), claim 3 through < admission
+        facility = lambda: spark.createDataFrame([(1, 1, 100, 105), (1, 2, 100, 106), (1, 3, 104, 103)],
+                                                 "DSYSRTKY int, CLAIMNO int, ADMSN_DT_DAY int, THRU_DT_DAY int")
+        ip = spark.createDataFrame([(1, 1, 100, 105, 105), (1, 2, 100, 106, 105), (1, 3, 104, 103, 105)],
+                                   "DSYSRTKY int, CLAIMNO int, ADMSN_DT_DAY int, THRU_DT_DAY int, DEATH_DT_DAY int")
+        op = spark.createDataFrame([(1, 1, 106)], "DSYSRTKY int, CLAIMNO int, THRU_DT_DAY int")
+        mbsf = spark.createDataFrame([(1, 2020, "V", 2020, 105, 20200414)],
+                                     "DSYSRTKY int, RFRNC_YR int, V_DOD_SW string, DEATH_DT_YEAR int, "
+                                     "DEATH_DT_DAY int, DEATH_DT long")
+        return {"ipBase": ip, "opBase": op, "snfBase": facility(), "hhaBase": facility(), "hospBase": facility(),
+                "mbsf": mbsf}
+
+    def test_cleans_facility_claims_and_keeps_their_columns(self, spark):
+        from cms.utilities import clean_through_dates
+        dataframes = self._dataframes(spark)
+        columns = {k: df.columns for k, df in dataframes.items()}
+        cleaned = clean_through_dates(dataframes)
+        for k in ("ipBase", "snfBase", "hhaBase", "hospBase"):
+            assert [r["CLAIMNO"] for r in cleaned[k].collect()] == [1], k
+            assert cleaned[k].columns == columns[k], k
+
+    def test_leaves_op_untouched(self, spark):
+        from cms.utilities import clean_through_dates
+        assert clean_through_dates(self._dataframes(spark))["opBase"].count() == 1

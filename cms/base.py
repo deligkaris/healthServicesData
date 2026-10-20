@@ -1168,7 +1168,6 @@ def add_beneficiary_info(baseDF, mbsfDF, data, lastObservableDay, claimType="op"
     return baseDF
 
 def add_mbsf_info(baseDF,mbsfDF):
-    eachDsysrtky = Window.partitionBy(["DSYSRTKY"])
     eachDsysrtkyYear = Window.partitionBy(["DSYSRTKY","RFRNC_YR"]).orderBy("DSYSRTKY")
     #first join will bring in all non-death related information, specific to beneficiary and year
     baseDF = (baseDF.join(mbsfDF.select( F.col("DSYSRTKY"), F.col("RFRNC_YR").alias("THRU_DT_YEAR"), F.col("fipsCounty").alias("mbsfFipsCounty"),
@@ -1186,15 +1185,9 @@ def add_mbsf_info(baseDF,mbsfDF):
                                          #F.col("totalNeuroSurgeons"), F.col("cvDeathsRate"), F.col("preventableCvDeathRate"), F.col("strokeDeathRate"), 
                                          #F.col("medianDistanceUc")
                           on = ["DSYSRTKY", "THRU_DT_YEAR"], #this join must be done on both dsysrtky and year
-                          how = "left_outer")
-                    #second join will bring in all death related information, specific only to beneficiary
-                    .join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
-                                 .withColumn("maxRfrncYr", F.max( F.col("RFRNC_YR") ).over(eachDsysrtky) )
-                                 .filter( F.col("RFRNC_YR") == F.col("maxRfrncYr") ) #some dsysrky have more than 1 death dates...
-                                 .select( F.col("DSYSRTKY"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") )
-                                 .distinct(), #some beneficiaries death dates appear in two mbsf files, for two years...
-                          on="DSYSRTKY",    #this join must be done on dsysrtky only
-                          how="left_outer"))
+                          how = "left_outer"))
+    #second join will bring in all death related information, specific only to beneficiary
+    baseDF = add_death_date_info(baseDF, mbsfDF)
     return baseDF
 
 def add_ssaCounty(baseDF):
@@ -1429,12 +1422,17 @@ def add_transferFromDifferentFacility(baseDF):
     baseDF = baseDF.withColumn( "transferFromDifferentFacility", F.when( F.col("SRC_ADMS")==4, 1 ).otherwise(0))
     return baseDF
 
-#def add_death_date_info(baseDF,mbsfDF): #assumes that add_death_date_info has been run on mbsfDF
-#    baseDF = baseDF.join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
-#                                .select( F.col("DSYSRTKY"),F.col("DEATH_DT_DAYOFYEAR"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") ),
-#                          on="DSYSRTKY",            
-#                          how="left_outer") 
-#    return baseDF
+def add_death_date_info(baseDF, mbsfDF): #assumes that mbsf.add_death_date_info has been run on mbsfDF
+    '''Adds the beneficiary's mbsf death date: DEATH_DT_YEAR, DEATH_DT_DAY and DEATH_DT, NULL without a valid death date.'''
+    eachDsysrtky = Window.partitionBy(["DSYSRTKY"])
+    baseDF = baseDF.join( mbsfDF.filter( F.col("V_DOD_SW")=="V")
+                                .withColumn("maxRfrncYr", F.max( F.col("RFRNC_YR") ).over(eachDsysrtky) )
+                                .filter( F.col("RFRNC_YR") == F.col("maxRfrncYr") ) #some dsysrky have more than 1 death dates...
+                                .select( F.col("DSYSRTKY"),F.col("DEATH_DT_YEAR"),F.col("DEATH_DT_DAY"), F.col("DEATH_DT") )
+                                .distinct(), #some beneficiaries death dates appear in two mbsf files, for two years...
+                          on="DSYSRTKY",    #this join must be done on dsysrtky only
+                          how="left_outer")
+    return baseDF
 
 def add_daysDeadAfterThroughDate(baseDF):
     '''Adds daysDeadAfterThroughDate = DEATH_DT_DAY - THRU_DT_DAY (number of days between
@@ -1927,10 +1925,10 @@ def add_hcris_info(baseDF, hcrisDF): #medicare cost report (HCRIS 2552-10) provi
 #outputs: baseDF with four additional columns, losAtX90, losDaysAtX90, losAtX365, losDaysAtX365
 #note: due to the complex joins etc I prefer to add the four columns at the same time here
 def add_los_at_X_info(baseDF, XDF, lastObservableDay, X="hosp"):
-    '''A facility claim whose through date is after the death date is clipped at the death date. A claim admitted
-    after the death date is dropped: clipping it alone would leave through < admission, and F.sequence in
-    add_losDays would then run backwards from the admission to the death date, counting phantom facility days
-    that push homeDays negative. Both counts are printed on one line when either is non-zero.'''
+    '''Assumes XDF has no claim dated after the death date or with through < admission, see
+    cms.utilities.get_cms_data(cleanThroughDates=True).'''
+    #such a claim would count facility days after death, or make F.sequence in add_losDays run backwards,
+    #counting phantom facility days that push homeDays negative
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=90)
     baseDF = add_XDaysFromYDAY(baseDF, YDAY="ADMSN_DT_DAY", X=365)
     #XDF = (XDF.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY") ) #need only 3 columns from this df
@@ -1942,24 +1940,13 @@ def add_los_at_X_info(baseDF, XDF, lastObservableDay, X="hosp"):
     XDF = (XDF.join(baseDF.select(F.col("DSYSRTKY"), 
                                   F.col("CLAIMNO").alias("baseCLAIMNO"), 
                                   F.col("THRU_DT_DAY").alias("baseTHRU_DT_DAY"),
-                                  F.col("DEATH_DT_DAY"), 
-                                  F.col("90DaysFromADMSN_DT_DAY"), 
+                                  F.col("90DaysFromADMSN_DT_DAY"),
                                   F.col("365DaysFromADMSN_DT_DAY")),
                     on="DSYSRTKY",
                     #on=[ baseDF.DSYSRTKY==XDF.DSYSRTKY,
                     #     XDF.ADMSN_DT_DAY - baseDF.baseTHRU_DT_DAY >= 0 ],
                     how="inner")  #inner join ensures that each X claim is matched will all relevant base claims
               .filter(F.col("ADMSN_DT_DAY") - F.col("baseTHRU_DT_DAY") >= 0))
-    pastDeath = (XDF.filter(F.col("DEATH_DT_DAY") < F.col("THRU_DT_DAY"))
-                    .select("DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY", "DEATH_DT_DAY").distinct()
-                    .agg(F.sum((F.col("ADMSN_DT_DAY") <= F.col("DEATH_DT_DAY")).cast('int')).alias("clipped"),
-                         F.sum((F.col("ADMSN_DT_DAY") > F.col("DEATH_DT_DAY")).cast('int')).alias("dropped"))
-                    .collect()[0])
-    clipped, dropped = pastDeath["clipped"] or 0, pastDeath["dropped"] or 0
-    if clipped + dropped > 0:
-        print(f"add_los_at_X_info(X={X}): {clipped} facility claims clipped at death, {dropped} admitted after death dropped")
-    XDF = (XDF.filter(F.col("DEATH_DT_DAY").isNull() | (F.col("ADMSN_DT_DAY") <= F.col("DEATH_DT_DAY")))
-              .withColumn("THRU_DT_DAY", F.least(F.col("THRU_DT_DAY"), F.col("DEATH_DT_DAY"))))
 
     XDF = add_losDays(XDF) #add a sequence of days that represents length of stay
 
@@ -1986,8 +1973,8 @@ def add_los_at_X_info(baseDF, XDF, lastObservableDay, X="hosp"):
     # facility stay" or "the stay is in a year we did not load", and even a matched, non-null count is then
     # only a lower bound. So fill 0 (or keep the observed count) only for an observed window, else keep NULL.
     # A window is observed if it ends on or before lastObservableDay, or if the patient has a recorded death
-    # within it -- a recorded death is on or before lastObservableDay and the facility stays were already
-    # clipped at the death date above, so no later days can be missing. Mirrors get_homeDays exactly, so the
+    # within it -- a recorded death is on or before lastObservableDay and no facility stay runs past the death
+    # date (cleanThroughDates), so no later days can be missing. Mirrors get_homeDays exactly, so the
     # losAt{X} columns and the homeDays derived from them agree on which rows are censored.
     for horizon in (90, 365):
         windowEnd = F.col(f"{horizon}DaysFromADMSN_DT_DAY")
@@ -2037,16 +2024,12 @@ def get_homeDays(X, losColumn, lastObservableDay):
 
 def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay):
     '''lastObservableDay makes the homeDays columns (and therefore their Group columns) NULL for admissions
-    whose window extends past the end of the loaded data. See get_homeDays.'''
+    whose window extends past the end of the loaded data. See get_homeDays.
+    Assumes the facility claims are cleaned, see add_los_at_X_info.'''
     #here I am using the definition of Fonarow2016, with the difference that I am including hospice
     snfDF, hhaDF, hospDF, ipDF = [df.select(F.col("DSYSRTKY"), F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY"))
                                   for df in (snfDF, hhaDF, hospDF, ipDF)]
-    valid = F.col("THRU_DT_DAY") >= F.col("ADMSN_DT_DAY")
-    malformed = (reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF])
-                 .filter(~valid).count())
-    if malformed > 0:
-        print(f"add_days_at_home_info: {malformed} facility claims with through < admission dropped")
-    allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF]).filter(valid)
+    allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF])
     baseDF = add_los_at_X_info(baseDF, allDF, lastObservableDay, X="allMinusHha")
     #baseDF = add_los_total_info(baseDF, X="allMinusHha")
     baseDF = (baseDF.withColumn("homeDays90", get_homeDays(90, "losAtallMinusHha90", lastObservableDay))
@@ -2061,7 +2044,7 @@ def add_days_at_home_info(baseDF, snfDF, hhaDF, hospDF, ipDF, lastObservableDay)
                                                      .when( F.col("homeDays365")<=365, 3)))
 
     #now include HHA and label these as home living independently rates
-    allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF]).filter(valid)
+    allDF = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=False), [snfDF, hospDF, ipDF, hhaDF])
     baseDF = add_los_at_X_info(baseDF, allDF, lastObservableDay, X="all")
     #baseDF = add_los_total_info(baseDF, X="all")
     baseDF = (baseDF.withColumn("homeDaysIndependent90", get_homeDays(90, "losAtall90", lastObservableDay))
@@ -2202,18 +2185,16 @@ def add_acute_organ_failure_poa_info(baseDF):
     return baseDF
 
 def get_clean_through_dates(baseDF):
-    '''Some claims had a mistake on either the through date, the admission date, or the death date from mbsf,
-       cannot know for sure without additional work, so keep only positive and null daysDeadAfterVisit
-       also cannot use NULL for this because null means no death date available.
-
-       The admission date is checked only when daysDeadAfterAdmissionDate exists (ip claims; add_beneficiary_info
-       adds it for claimType=="ip" only). Note that admission<=through implies
-       daysDeadAfterAdmissionDate>=daysDeadAfterThroughDate, so the admission check only ever removes claims whose
-       admission date is itself after their through date.'''
-    isClean = (F.col("daysDeadAfterThroughDate")>=0) | (F.col("daysDeadAfterThroughDate").isNull())
-    if "daysDeadAfterAdmissionDate" in baseDF.columns:
-        isClean = isClean & ( (F.col("daysDeadAfterAdmissionDate")>=0) | (F.col("daysDeadAfterAdmissionDate").isNull()) )
-    return baseDF.filter( isClean )
+    '''Returns the claims whose through date is on or before the mbsf death date and, when baseDF has ADMSN_DT_DAY,
+    whose admission date is on or before the through date.
+    baseDF needs THRU_DT_DAY and DEATH_DT_DAY (add_beneficiary_info or add_death_date_info).'''
+    #one of the through, admission or mbsf death dates is wrong and we cannot tell which, so the claim is dropped
+    #rather than fixed; admission<=through<=death implies admission<=death, so that needs no check of its own
+    isDirty = F.col("THRU_DT_DAY") > F.col("DEATH_DT_DAY")
+    if "ADMSN_DT_DAY" in baseDF.columns:
+        isDirty = isDirty | (F.col("ADMSN_DT_DAY") > F.col("THRU_DT_DAY"))
+    #a NULL date (no death, an op claim without admission) is no evidence of a mistake, so the claim is kept
+    return baseDF.filter( ~F.coalesce(isDirty, F.lit(False)) )
 
 def add_diedInVisit(baseDF):
     '''Adds a binary column with flag indicating if patient died in this visit.''' 
