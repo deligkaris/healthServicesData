@@ -298,20 +298,25 @@ def add_node_in_by_type_info(transfersDF, *, transferTypes):
 # dgns (they come after it) out of its lookbacks
 _FIRST_ADMISSION_SIDE = {TransferType.edToInpatient: "to", TransferType.inpatientToInpatient: "from"}
 
-def _on_first_admission(transfersDF, columns, caller, add):
+def _per_transfer_type(columnByType):
+    '''Returns a column that is, on each row, the column columnByType ({TransferType: column name}) gives its
+    transferType, NULL for another type.'''
+    (firstType, firstColumn), *rest = columnByType.items()
+    column = F.when(F.col("transferType") == int(firstType), F.col(firstColumn))
+    for transferType, c in rest:
+        column = column.when(F.col("transferType") == int(transferType), F.col(c))
+    return column
+
+def _on_first_admission(transfersDF, columns, caller, add, sources=None):
     '''Returns add(transfersDF) with columns added un-prefixed from each transfer's first inpatient admission
-    (see _FIRST_ADMISSION_SIDE) for add to read, and dropped after.'''
+    (see _FIRST_ADMISSION_SIDE) for add to read, and dropped after. sources ({name: {TransferType: transfersDF
+    column}}) adds more such columns, or replaces some of these.'''
     if "transferType" not in transfersDF.columns:
         raise ValueError(f"{caller}: needs transferType (see add_transferType) to pick each transfer's first admission")
     # picked per row so one call covers the union of both sets; another transfer type gets NULLs, so NULL outputs
-    def firstAdmission(c):
-        (firstType, firstSide), *rest = _FIRST_ADMISSION_SIDE.items()
-        column = F.when(F.col("transferType") == int(firstType), F.col(firstSide + c))
-        for transferType, side in rest:
-            column = column.when(F.col("transferType") == int(transferType), F.col(side + c))
-        return column
-    transfersDF = transfersDF.withColumns({c: firstAdmission(c) for c in columns})
-    return add(transfersDF).drop(*columns)
+    sources = {**{c: {t: side + c for t, side in _FIRST_ADMISSION_SIDE.items()} for c in columns}, **(sources or {})}
+    transfersDF = transfersDF.withColumns({c: _per_transfer_type(columnByType) for c, columnByType in sources.items()})
+    return add(transfersDF).drop(*sources)
 
 def add_prior_hospitalization_info(transfersDF, ipBaseDF):
     '''Adds hospitalizationsIn12Months, hospitalizedIn12Months, hospitalizationsIn6Months and
@@ -343,13 +348,28 @@ def add_days_at_home_info(transfersDF, snfBaseDF, hhaBaseDF, hospBaseDF, ipBaseD
     transfersDF = _rename_columns(transfersDF, {dst: src for src, dst in toToCanonical.items()})
     return transfersDF
 
-def add_comorbidity_info(transfersDF, ipBase, opBase, *, method="Glasheen2019"):
+def add_comorbidity_info(transfersDF, ipBase, opBase, *, method="Glasheen2019", lookbackFromReceiving=False):
     '''Adds the prior hospitalization columns, the comorbidity condition flags and comorbidityIndex (see
     staysF.add_comorbidity_info), un-prefixed, for the first inpatient admission of each transfer: the to stay of
-    edToInpatient, the from stay of inpatientToInpatient. Works on one transfer set or their union.'''
-    return _on_first_admission(transfersDF, ["DSYSRTKY", "CLAIMNO", "THRU_DT_DAY", "ffsFirstMonth", "ADMSN_DT_DAY", "ADMSN_DT_MONTH"],
-                               "add_comorbidity_info",
-                               lambda df: staysF.add_comorbidity_info(df, ipBase, opBase, claimType="ip", method=method))
+    edToInpatient, the from stay of inpatientToInpatient. Works on one transfer set or their union.
+    lookbackFromReceiving=True makes the inpatientToInpatient flags look back from the to stay's through date,
+    as edToInpatient ones do, leaving out the principal dgns of both stays; the prior hospitalization columns
+    stay on the from stay.'''
+    columns = ["DSYSRTKY", "CLAIMNO", "THRU_DT_DAY", "ffsFirstMonth", "ADMSN_DT_DAY", "ADMSN_DT_MONTH"]
+    if not lookbackFromReceiving:
+        return _on_first_admission(transfersDF, columns, "add_comorbidity_info",
+                                   lambda df: staysF.add_comorbidity_info(df, ipBase, opBase, claimType="ip", method=method))
+    ed, ip = TransferType.edToInpatient, TransferType.inpatientToInpatient
+    # an ip->ip episode runs from the from admission to the to discharge: the from admission columns keep the prior
+    # hospitalizations (and so the comorbidities' coverage gate) on the from stay, the to THRU_DT_DAY moves the dgns
+    # lookback, and the principal dgns through from the from discharge on are left out, both stays being for the
+    # episode's reason. On ed->ip rows that range is the to discharge alone, as without the flag
+    sources = {"THRU_DT_DAY": {ed: "toTHRU_DT_DAY", ip: "toTHRU_DT_DAY"},
+               "principalFromDay": {ed: "toTHRU_DT_DAY", ip: "fromTHRU_DT_DAY"}}
+    return _on_first_admission(transfersDF, columns, "add_comorbidity_info",
+                               lambda df: staysF.add_comorbidity_info(df, ipBase, opBase, claimType="ip", method=method,
+                                                                      principalFromDay="principalFromDay"),
+                               sources=sources)
 
 def get_lookups(transfersDF, cmsDFS):
     '''Returns cmsUtilitiesF.get_lookups for the patients of transfersDF, to pass to add_prior_hospitalization_info,
@@ -357,12 +377,15 @@ def get_lookups(transfersDF, cmsDFS):
     #get_transfers joins on fromDSYSRTKY==toDSYSRTKY, so either side identifies the patient
     return cmsUtilitiesF.get_lookups(cmsDFS, transfersDF.select(F.col("toDSYSRTKY").alias("DSYSRTKY")))
 
-def add_comorbidity_and_days_at_home_info(transfersDF, lookups, lastObservableDay, *, method="Glasheen2019"):
-    '''Adds add_comorbidity_info (on each transfer's first inpatient admission) and add_days_at_home_info (on the
-    to stay) to transfersDF. lookups is get_lookups(transfersDF, cmsDFS), or the full bases keyed like cmsDFS.'''
+def add_comorbidity_and_days_at_home_info(transfersDF, lookups, lastObservableDay, *, method="Glasheen2019",
+                                          lookbackFromReceiving=False):
+    '''Adds add_comorbidity_info (on each transfer's first inpatient admission, lookbackFromReceiving passed to it)
+    and add_days_at_home_info (on the to stay) to transfersDF. lookups is get_lookups(transfersDF, cmsDFS), or the
+    full bases keyed like cmsDFS.'''
     #both read lookups["ipBase"] and add_days_at_home_info counts over the lookups, so materialize them first
     #(eg utilitiesF.write_and_read_parquet) or each read re-scans the bases
-    transfersDF = add_comorbidity_info(transfersDF, lookups["ipBase"], lookups["opBase"], method=method)
+    transfersDF = add_comorbidity_info(transfersDF, lookups["ipBase"], lookups["opBase"], method=method,
+                                       lookbackFromReceiving=lookbackFromReceiving)
     transfersDF = add_days_at_home_info(transfersDF, lookups["snfBase"], lookups["hhaBase"], lookups["hospBase"],
                                         lookups["ipBase"], lastObservableDay)
     return transfersDF

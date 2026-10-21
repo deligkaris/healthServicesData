@@ -2673,11 +2673,11 @@ class TestAddComorbidityInfoTransfers:
         from utilities import icd10Day
         return [_transfer_row(t, i + 1, icd10Day + 1000, **overrides) for i, t in enumerate(transferTypes)]
 
-    def _inputs(self, spark, rows):
+    def _inputs(self, spark, rows, extra_ip_rows=()):
         # per beneficiary, all inpatient: CHF 100 days before the from discharge (in every lookback, and a prior
         # hospitalization) and the to stay's claim, stroke principal with an MI secondary; an IP->IP from stay adds
         # its own claim, stroke principal with a chronic pulmonary secondary (the ED visit is outpatient)
-        ip_rows = []
+        ip_rows = list(extra_ip_rows)
         for r in rows:
             b, fromThru = r["fromDSYSRTKY"], r["fromTHRU_DT_DAY"]
             ip_rows += [{"DSYSRTKY": b, "THRU_DT_DAY": fromThru - 100, "ICD_DGNS_CD1": "I500"},
@@ -2688,9 +2688,9 @@ class TestAddComorbidityInfoTransfers:
                 spark.createDataFrame(ip_rows, schema=self._DGNS_SCHEMA),
                 spark.createDataFrame([], schema=self._DGNS_SCHEMA))
 
-    def _run(self, spark, rows):
+    def _run(self, spark, rows, extra_ip_rows=(), **kwargs):
         from cms.transfers import add_comorbidity_info
-        result = add_comorbidity_info(*self._inputs(spark, rows)).collect()
+        result = add_comorbidity_info(*self._inputs(spark, rows, extra_ip_rows), **kwargs).collect()
         assert len(result) == len(rows)
         return {r["transferType"]: r for r in result}
 
@@ -2729,6 +2729,43 @@ class TestAddComorbidityInfoTransfers:
         transfers_df, ip_df, op_df = self._inputs(spark, self._rows(TransferType.edToInpatient))
         with pytest.raises(ValueError, match="transferType"):
             add_comorbidity_info(transfers_df.drop("transferType"), ip_df, op_df)
+        with pytest.raises(ValueError, match="transferType"):
+            add_comorbidity_info(transfers_df.drop("transferType"), ip_df, op_df, lookbackFromReceiving=True)
+
+    def test_ip_to_ip_lookback_from_receiving_reads_both_stays(self, spark):
+        r = self._run(spark, self._rows(TransferType.inpatientToInpatient),
+                      lookbackFromReceiving=True)[TransferType.inpatientToInpatient]
+        # anchored on the from admission: a count from the to admission would add the from stay, discharged the day before
+        assert r["hospitalizationsIn12Months"] == 1
+        assert r["congestiveHeartFailure"] == 1
+        assert r["chronicPulmonary"] == 1  # the from stay's secondary
+        assert r["myocardialInfraction"] == 1  # the to stay's secondary
+        assert r["cerebrovascular"] == 0  # the principals of both stays are the episode's reason
+
+    def test_ip_to_ip_lookback_from_receiving_moves_the_window(self, spark):
+        # dementia 358 days before the from discharge, 364 before the to discharge
+        rows = self._rows(TransferType.inpatientToInpatient)
+        dementia = [{"DSYSRTKY": 1, "THRU_DT_DAY": rows[0]["fromTHRU_DT_DAY"] - 358, "ICD_DGNS_CD1": "F039"}]
+        ip = TransferType.inpatientToInpatient
+        assert self._run(spark, rows, dementia)[ip]["dementia"] == 1
+        assert self._run(spark, rows, dementia, lookbackFromReceiving=True)[ip]["dementia"] == 0
+
+    def test_lookback_from_receiving_leaves_ed_to_ip_unchanged(self, spark):
+        rows = self._rows(TransferType.inpatientToInpatient, TransferType.edToInpatient)
+        union = self._run(spark, rows, lookbackFromReceiving=True)
+        assert union[TransferType.edToInpatient].asDict() == self._run(spark, rows)[TransferType.edToInpatient].asDict()
+        for row in rows:
+            single = self._run(spark, [row], lookbackFromReceiving=True)[row["transferType"]]
+            assert union[row["transferType"]].asDict() == single.asDict()
+        assert not {"DSYSRTKY", "CLAIMNO", "THRU_DT_DAY", "ffsFirstMonth", "principalFromDay"} & set(union[TransferType.edToInpatient].asDict())
+
+    def test_lookback_from_receiving_gates_on_the_from_stay(self, spark):
+        # month 100 - ffsFirstMonth 95 = 5 months of coverage, on the from side only or on the to side only
+        ip = TransferType.inpatientToInpatient
+        r = self._run(spark, self._rows(ip, fromffsFirstMonth=95), lookbackFromReceiving=True)[ip]
+        assert (r["hospitalizationsIn12Months"], r["congestiveHeartFailure"], r["comorbidityIndex"]) == (None, None, None)
+        r = self._run(spark, self._rows(ip, toffsFirstMonth=95), lookbackFromReceiving=True)[ip]
+        assert (r["hospitalizationsIn12Months"], r["congestiveHeartFailure"]) == (1, 1)
 
     def test_after_prior_hospitalization_info_raises(self, spark):
         # add_comorbidity_info adds the prior hospitalization columns itself
@@ -3055,15 +3092,17 @@ class TestTransfersOnLookups:
         for r in full.values():
             assert r["homeDays90"] < 90
 
-    def test_comorbidity_and_days_at_home_matches_the_two_calls(self, spark):
+    @pytest.mark.parametrize("lookbackFromReceiving", [False, True])
+    def test_comorbidity_and_days_at_home_matches_the_two_calls(self, spark, lookbackFromReceiving):
         from cms.transfers import add_comorbidity_info, add_days_at_home_info, add_comorbidity_and_days_at_home_info
         transfers, cmsDFS = self._inputs(spark)
         transfers = self._with_days_at_home_columns(transfers)
         lookups = self._lookups(transfers, cmsDFS)
-        both = add_comorbidity_info(transfers, lookups["ipBase"], lookups["opBase"])
+        both = add_comorbidity_info(transfers, lookups["ipBase"], lookups["opBase"], lookbackFromReceiving=lookbackFromReceiving)
         both = add_days_at_home_info(both, lookups["snfBase"], lookups["hhaBase"], lookups["hospBase"], lookups["ipBase"],
                                      _FULLY_OBSERVED_DAY)
-        bundle = self._byType(add_comorbidity_and_days_at_home_info(transfers, lookups, _FULLY_OBSERVED_DAY))
+        bundle = self._byType(add_comorbidity_and_days_at_home_info(transfers, lookups, _FULLY_OBSERVED_DAY,
+                                                                    lookbackFromReceiving=lookbackFromReceiving))
         assert bundle == self._byType(both)
         # both steps found their claims, so the comparison is not between two empty results
         for r in bundle.values():

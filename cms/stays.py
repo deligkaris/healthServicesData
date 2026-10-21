@@ -707,14 +707,16 @@ def drop_unused_columns(staysDF):
     return staysDF.drop(*dropColumns)
 
 
-def add_comorbidity_info(staysDF, ipBase, opBase, claimType="ip", method="Glasheen2019"):
+def add_comorbidity_info(staysDF, ipBase, opBase, claimType="ip", method="Glasheen2019", principalFromDay=None):
     '''Adds the prior hospitalization columns (hospitalizationsIn12Months, ..., see
     baseF.add_prior_hospitalization_info), the comorbidity condition flags (myocardialInfraction,
     congestiveHeartFailure, ...), aids, and comorbidityIndex to staysDF. claimType ("ip" or "op") is the
     setting of the stays.
 
     Requires staysDF to have DSYSRTKY, CLAIMNO, THRU_DT_DAY, ffsFirstMonth and the claimType's anchor
-    _DAY and _MONTH columns (ip: ADMSN_DT, op: THRU_DT).
+    _DAY and _MONTH columns (ip: ADMSN_DT, op: THRU_DT). principalFromDay (ip only), the name of a staysDF day
+    column, also excludes the IP principal dgns through on [principalFromDay, THRU_DT_DAY], see
+    comorbiditiesF.get_conditions.
 
     The day-level dgns indexes are built inline from ipBase/opBase via comorbiditiesF.get_dayDgnsDF.
     If add_comorbidity_info is called multiple times in the same script, prefer building the
@@ -731,9 +733,10 @@ def add_comorbidity_info(staysDF, ipBase, opBase, claimType="ip", method="Glashe
     # "ip" excludes the IP principal dgns falling on the stay's THRU_DT_DAY (the admission reason isn't a
     # comorbidity of itself); "op" applies none, so an incidental same-day IP discharge counts for the OP visit
     conditions = comorbiditiesF.get_conditions(staysDF, opDayDgnsDF, ipDayDgnsDF,
-                                               claimType=claimType, method=method)
+                                               claimType=claimType, method=method, principalFromDay=principalFromDay)
     staysDF = staysDF.join(conditions,
-                           on=["DSYSRTKY", "THRU_DT_DAY", "hospitalizationsIn12Months"],
+                           on=["DSYSRTKY", "THRU_DT_DAY", "hospitalizationsIn12Months"] +
+                              ([principalFromDay] if principalFromDay else []),
                            how="left_outer")
     return staysDF
 

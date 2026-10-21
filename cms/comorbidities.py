@@ -183,11 +183,11 @@ def get_dayDgnsDF(baseDF):
 
     return baseDF
 
-def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, claimType="ip", method="Glasheen2019"):
+def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, claimType="ip", method="Glasheen2019", principalFromDay=None):
     '''opDayDgnsDF: dataframe created from outpatient base, includes DSYSRTKY and a STRUCT with (thruDay, dgnsCode) from all non null ICD10 codes
        ipDayDgnsDF: similar to above from inpatient base
        baseDF: dataframe with DSYSRTKY and THRU_DT_DAY and hospitalizationsIn12Months, will use this df to built the comorbidities.
-               Only these three columns are read; any other columns are dropped and the result is deduplicated upfront,
+               Only these three columns (and principalFromDay) are read; any other columns are dropped and the result is deduplicated upfront,
                so callers may pass dyad-derived projections (e.g. one row per from-to pair) without bloating the work.
                The hospitalizationsIn12Months variable will be used to determine when, by looking at Null values, when we do not have enough
                information to determine comorbidities (due to enrollment to Medicare too closely to the event date)
@@ -195,6 +195,9 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, claimType="ip", method="Gla
                comorbidities (it is the reason for THIS hospitalization, not a comorbidity of it). When "op" (or any
                non-ip value), no principal exclusion is applied -- an IP discharge happening to share THRU_DT_DAY with
                the index OP visit is a real comorbidity for that visit.
+       principalFromDay: None, or the name of a baseDF day column; when given (claimType "ip" only), the IP principal
+               dgns through on [principalFromDay, THRU_DT_DAY] are excluded instead of only those on THRU_DT_DAY, and the
+               column is read and returned too, for the caller to join on.
        note: method Quan2005 IS NOT fully implemented'''
 
     codesDict = get_codes(method)
@@ -203,11 +206,15 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, claimType="ip", method="Gla
 
     codesRegexp = get_codes_regexp(codesDict)
 
+    if principalFromDay is not None and claimType != "ip":
+        raise ValueError(f"get_conditions: principalFromDay applies to claimType 'ip' only, got {claimType!r}")
+
     #conditions are a pure function of (DSYSRTKY, THRU_DT_DAY, hospitalizationsIn12Months), so collapse baseDF
     #to one row per triple before fanning out against the dgns arrays. This dedups callers that pass dyad-derived
     #projections (e.g. one row per from-to pair) without affecting the result, since two rows with the same triple
-    #would compute identical flags anyway.
-    baseDF = baseDF.select("DSYSRTKY", "THRU_DT_DAY", "hospitalizationsIn12Months").distinct()
+    #would compute identical flags anyway. principalFromDay, when given, changes the flags too, so it joins the key.
+    keys = ["DSYSRTKY", "THRU_DT_DAY", "hospitalizationsIn12Months"] + ([principalFromDay] if principalFromDay else [])
+    baseDF = baseDF.select(*keys).distinct()
 
     ipDgnsDF = (ipDayDgnsDF.join(baseDF, #for inpatient claims
                                  on = ["DSYSRTKY"],
@@ -220,9 +227,12 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, claimType="ip", method="Gla
         #only meaningful when the staysDF is itself IP: the matching IP claim's principal on THRU_DT_DAY is the
         #reason for THIS hospitalization, not a comorbidity. For non-IP stays an incidental same-day IP principal is
         #a real comorbidity for the index event and must NOT be filtered out.
-        ipDgnsDF = ipDgnsDF.withColumn("dayDgnsStruct",
-                                       F.filter( F.col("dayDgnsStruct"),
-                                       lambda x: (F.col("THRU_DT_DAY") != x.getItem("thruDay")) | (x.getItem("principal") != 1)))
+        if principalFromDay is None:
+            notReason = lambda x: (F.col("THRU_DT_DAY") != x.getItem("thruDay")) | (x.getItem("principal") != 1)
+        else:
+            #the window filter above already drops the days after THRU_DT_DAY
+            notReason = lambda x: (x.getItem("thruDay") < F.col(principalFromDay)) | (x.getItem("principal") != 1)
+        ipDgnsDF = ipDgnsDF.withColumn("dayDgnsStruct", F.filter( F.col("dayDgnsStruct"), notReason))
 
     ipDgnsDF = (ipDgnsDF.withColumn("dgnsList", F.col("dayDgnsStruct").getItem("dgnsCode")) #keep the dgns codes only (no through dates)
                         .drop("dayDgnsStruct"))
@@ -245,7 +255,7 @@ def get_conditions(baseDF, opDayDgnsDF, ipDayDgnsDF, claimType="ip", method="Gla
     #hospitalizationsIn12Months is in the grouping key so stays that share (DSYSRTKY, THRU_DT_DAY) but differ in
     #the prior-12-month count stay separate.
     conditions = (conditions
-                  .groupBy("DSYSRTKY", "THRU_DT_DAY", "hospitalizationsIn12Months")
+                  .groupBy(*keys)
                   .agg(*[F.max(c).alias(c) for c in conditionsList]))
 
     # AIDS = HIV + infection, see Glasheen2019, so a beneficiary has AIDS if both

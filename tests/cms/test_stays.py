@@ -3175,3 +3175,34 @@ class TestAddComorbidityInfo:
         stays_df = add_comorbidity_info(stays_df, ip_df, op_df, claimType="op")
         with pytest.raises(ValueError, match="already has"):
             add_comorbidity_info(stays_df, ip_df, op_df, claimType="op")
+
+    _IP_STAYS_SCHEMA = StructType([StructField(c, IntegerType(), True) for c in
+                                   ("DSYSRTKY", "CLAIMNO", "ADMSN_DT_DAY", "ADMSN_DT_MONTH", "THRU_DT_DAY",
+                                    "ffsFirstMonth", "principalFrom")])
+
+    def _ip_inputs(self, spark):
+        # an ip stay admitted 10 days before its through date; inpatient principals of MI 3 days, CHF 2 days and
+        # stroke 0 days before it, principalFrom 2 days before it
+        from utilities import icd10Day
+        thru = icd10Day + 1000
+        ip_df = spark.createDataFrame([{"DSYSRTKY": 1, "THRU_DT_DAY": thru - d, "ICD_DGNS_CD1": code}
+                                       for d, code in [(3, "I210"), (2, "I500"), (0, "I639")]], schema=self._DGNS_SCHEMA)
+        op_df = spark.createDataFrame([], schema=self._DGNS_SCHEMA)
+        stays_df = spark.createDataFrame([(1, 1, thru - 10, 100, thru, 1, thru - 2)], schema=self._IP_STAYS_SCHEMA)
+        return stays_df, ip_df, op_df
+
+    def test_principal_from_day_excludes_the_principals_from_it_on(self, spark):
+        from cms.stays import add_comorbidity_info
+        stays_df, ip_df, op_df = self._ip_inputs(spark)
+        default = add_comorbidity_info(stays_df, ip_df, op_df).first()
+        assert (default["myocardialInfraction"], default["congestiveHeartFailure"], default["cerebrovascular"]) == (1, 1, 0)
+        ranged = add_comorbidity_info(stays_df, ip_df, op_df, principalFromDay="principalFrom").collect()
+        assert len(ranged) == 1
+        assert (ranged[0]["myocardialInfraction"], ranged[0]["congestiveHeartFailure"], ranged[0]["cerebrovascular"]) == (1, 0, 0)
+
+    def test_principal_from_day_on_op_raises(self, spark):
+        from cms.stays import add_comorbidity_info
+        stays_df, ip_df, op_df = self._ip_inputs(spark)
+        stays_df = stays_df.withColumnRenamed("ADMSN_DT_MONTH", "THRU_DT_MONTH")
+        with pytest.raises(ValueError, match="principalFromDay"):
+            add_comorbidity_info(stays_df, ip_df, op_df, claimType="op", principalFromDay="principalFrom")
