@@ -14,5 +14,6 @@ pathToAHAData = '/users/PAS2164/deligkaris/DATA/AHA' #the complete AHA data, see
 
 repo = Path(__file__).resolve().parents[2]
 #options given on the command line come last, so they override the ones set here
-sys.exit(pytest.main([str(repo / "tests" / "data"), "--run-data", "--rootdir", str(repo),
+#--tb=short keeps a failure to a few lines in the log, --durations=20 lists the slowest tests for sizing the job
+sys.exit(pytest.main([str(repo / "tests" / "data"), "--run-data", "--rootdir", str(repo), "--tb=short", "--durations=20",
                       "--years", str(yearInitial), str(yearFinal), "--aha-path", pathToAHAData, *sys.argv[1:]]))
