@@ -69,3 +69,8 @@ Example: `add_death_date_info(mbsfDF)` enriches in-place; `add_death_date_info(b
 
 - Provider-level: `Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])`
 - Claim-level: `Window.partitionBy(["DSYSRTKY","CLAIMNO","THRU_DT"])`
+
+## Tests
+
+- `tests/cms/` -- unit tests on synthetic rows, run locally with `pytest` (Spark 3.5 defaults, see `tests/conftest.py`)
+- `tests/data/` -- checks of the real CMS and external datasets against what the code assumes (unique join keys, columns present every year, key formats, match rates, row counts kept by the joins). Skipped unless `--run-data`; run at OSC from a batch job with `python tests/data/run.py --years YEARI YEARF [pytest options]`. The rates they measure print as a table at the end; their floors and the known exceptions live in `tests/data/thresholds.py`

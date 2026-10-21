@@ -175,7 +175,7 @@ def enforce_schema(df, claimType, claimPart):
     df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])
     return df
 
-def add_preliminary_info(dataframes, data, lastObservableDay, firstObservableDay=None, runTests=False):
+def add_preliminary_info(dataframes, data, lastObservableDay, firstObservableDay=None):
     '''inputs: original CMS dataframes
        outputs: input dataframes with additional columns appended that are needed almost always
        lastObservableDay makes the ip and op mortality flags NULL rather than 0 for claims whose
@@ -189,8 +189,6 @@ def add_preliminary_info(dataframes, data, lastObservableDay, firstObservableDay
        source/destination whose evidence day falls outside them). firstObservableDay=None stamps a
        null column, which disables that censoring.'''
     for claimTypePart in list(dataframes.keys()):
-        if runTests:
-            initialRowCounts = dataframes[claimTypePart].count()
         (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
         if (claimPart=="Base"):
             dataframes[claimTypePart] = add_through_date_info(dataframes[claimTypePart])
@@ -238,21 +236,19 @@ def add_preliminary_info(dataframes, data, lastObservableDay, firstObservableDay
                 dataframes[claimType] = mbsfF.add_beneficiary_info(dataframes[claimType], data)
         else:
             pass
-        if runTests:
-            finalRowCounts = dataframes[claimTypePart].count()
-            assert finalRowCounts == initialRowCounts, f"File {claimTypePart} initially has {initialRowCounts} rows but {finalRowCounts} after adding preliminary info"
     #this needs to be done when all dfs have been processed
     dataframes["mbsf"] = mbsfF.add_probablyDead(dataframes["mbsf"], dataframes["ipBase"], dataframes["opBase"], dataframes["snfBase"],
                                                 dataframes["hospBase"], dataframes["hhaBase"])
     return dataframes
 
-def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, runTests=False, cleanThroughDates=True):
+def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, cleanThroughDates=True):
     """The FFS flag is here to prevent unintended errors.
     If the project requires FFS data, then all dataframes must be filtered for FFS.
     data is a dictionary of spark dataframes with supporting information, eg provider of services, NPI, etc
     The ip and op mortality flags are NULL, not 0, for claims whose follow-up window extends past December 31 of
     yearF, because a death after that day is not in the loaded mbsf files, see base.add_XDaysAfterYDateDead.
-    cleanThroughDates drops the ip, snf, hha and hospice claims dated after death or with through < admission."""
+    cleanThroughDates drops the ip, snf, hha and hospice claims dated after death or with through < admission.
+    The checks of these data against the code are the tests in tests/data, run at OSC with --run-data."""
     if ( years_within_code_limits(yearI, yearF)==False ):
         raise ValueError("code was not designed to operate for the years provided")
     elif( years_within_cms_data_limits(yearI, yearF)==False ):
@@ -269,13 +265,11 @@ def get_cms_data(pathCMS, yearI, yearF, spark, data, FFS=True, cleanMbsf=True, r
         if cleanMbsf: #need to clean mbsf prior to using it to add information to base claims in add_preliminary_info
             dataframes["mbsf"] = mbsfF.prep_mbsf(dataframes["mbsf"])
         dataframes = add_preliminary_info(dataframes, data, get_lastObservableDay(yearF),
-                                          firstObservableDay=get_firstObservableDay(yearI), runTests=runTests)
+                                          firstObservableDay=get_firstObservableDay(yearI))
         if FFS: 
             dataframes = filter_FFS(dataframes)
         dataframes["mbsf"] = mbsfF.drop_unused_columns(dataframes["mbsf"])
         dataframes = repartition_dfs(dataframes)
-        if runTests:
-           run_cms_data_tests(dataframes)
         if cleanThroughDates:
            dataframes = clean_through_dates(dataframes)
     return dataframes
@@ -356,24 +350,3 @@ def repartition_dfs(dataframes):
     for key in dataframes.keys():
         dataframes[key] = dataframes[key].repartition(80,"DSYSRTKY") 
     return dataframes
-
-def run_cms_data_tests(dataframes):
-    '''Some years ago the CMS dataframes had more than one row with the same claim number for the same year or, for the mbsf dataframe,
-    more than one row with the same beneficiary id for the same year
-    This practice was ended some years ago but still, these old dataframes need to be cleaned so this is testing if the dataframes
-    are all ok from this perspective.'''
-    for claimTypePart in list(dataframes.keys()):
-        (claimType, claimPart) = get_claimType_claimPart(claimTypePart)
-        if (claimPart=="Base"):
-            countsPerNoYear = dataframes[claimTypePart].groupBy("CLAIMNO","THRU_DT_YEAR").count().filter(F.col("count")>1).count()
-            assert 0 == countsPerNoYear, f"{claimTypePart} includes more than 1 claims with same CLAIMNO and THRU_DT_YEAR"
-        elif (claimPart is None):
-            if (claimType=="mbsf"):   
-                countsPerIdYear = dataframes[claimTypePart].groupBy("DSYSRTKY","RFRNC_YR").count().filter(F.col("count")>1).count()
-                assert 0 == countsPerIdYear, f"{claimTypePart} includes more than 1 beneficiaries with same DSYSRTKY and RFRNC_YR"
-
-
-
-
-
-

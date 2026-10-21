@@ -1,6 +1,4 @@
 import pyspark.sql.functions as F
-from pyspark.sql import DataFrame
-from pyspark.sql.types import StringType
 from pyspark.sql.window import Window
 from schemas import hcrisRptSchema, hcrisNmrcSchema
 from geocoding import add_address, add_geocode_info, add_place_info, get_geocode_schema, get_geodesicDistanceKm
@@ -348,12 +346,11 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_procedureClassesDF(df)
     return df   
 
-def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkaris/DATA', pathToAHAData='/fs/ess/PAS2164/AHA', runTests=False):
-    '''pathToData: where I keep all non-CMS data, pathToAHAData: where all AHA data are stored'''
+def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkaris/DATA', pathToAHAData='/fs/ess/PAS2164/AHA'):
+    '''pathToData: where I keep all non-CMS data, pathToAHAData: where all AHA data are stored.
+    The checks of these data against the code are the tests in tests/data, run at OSC with --run-data.'''
     filenames = get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal)
     data = read_data(spark, filenames)
-    if runTests:
-        run_data_tests(data)
     return data
 
 def prep_procedureClassesDF(df):
@@ -1263,25 +1260,6 @@ def add_ccn_from_pos(DF,posDF, providerZip="providerZip",providerName="providerN
                        F.min(F.col("levenshteinDistance")).over(eachZip))
     DF = DF.filter(F.col("minLevenshteinDistance")==F.col("levenshteinDistance"))
     return DF
-
-def run_data_tests(data):
-    '''The source files are read as CSV with spark's default quote character (") so any field that uses single quotes
-    as its text qualifier (eg the HCUP procedure codes were read as 'value' rather than value) keeps those quotes as
-    literal characters. When such quotes are not stripped in the corresponding prep_* function they silently break
-    joins and comparisons against the (unquoted) claims data, producing wrong results with no error.
-    This tests that no string column in any of the loaded source dataframes still contains values wrapped in quotes.'''
-    for source in list(data.keys()):
-        df = data[source]
-        if not isinstance(df, DataFrame): #eg geojsonCounty is a dict, not a spark dataframe
-            continue
-        strCols = [field.name for field in df.schema.fields if isinstance(field.dataType, StringType)]
-        if not strCols:
-            continue
-        #a quote-qualified field starts and ends with the same quote character, eg 'value' or "value"
-        wrapped = reduce(lambda x, y: x | y,
-                         [F.col(f"`{c}`").rlike(r"^(['\"]).*\1$") for c in strCols])
-        wrappedCount = df.filter(wrapped).count()
-        assert 0 == wrappedCount, f"{source} includes {wrappedCount} string values wrapped in quote characters"
 
 def print_partition_size_info(df):
     print(df.withColumn("partID", F.spark_partition_id()).groupBy("partID").count().describe("count").show())
