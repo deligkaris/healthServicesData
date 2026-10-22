@@ -2,6 +2,7 @@
 Skipped unless pytest runs with --run-data (see tests/conftest.py); at OSC run them with tests/data/run.py.'''
 import inspect
 import re
+import shutil
 
 import pytest
 import pyspark.sql.functions as F
@@ -59,6 +60,10 @@ def pytest_generate_tests(metafunc):
     if "sourcePath" in metafunc.fixturenames:
         sourcePaths = [(k, path) for k, paths in externalFilenames.items() if k != "geojsonCounty" for path in paths]
         metafunc.parametrize("sourcePath", sourcePaths, ids=[f"{k}-{path.rsplit('/', 1)[-1]}" for k, path in sourcePaths])
+
+def pytest_sessionstart(session):
+    #run.py runs two sessions in one python, which imports this module once, so each would print the other's rates
+    metrics.rows.clear()
 
 def pytest_terminal_summary(terminalreporter):
     if not metrics.rows:
@@ -143,10 +148,24 @@ def cmsData(spark, request, years, externalData):
     return cmsUtilitiesF.get_cms_data(request.config.getoption("--cms-path"), *years, spark, externalData)
 
 @pytest.fixture(scope="session")
-def sampledCmsData(request, cmsData):
-    '''cmsData restricted to the beneficiaries with DSYSRTKY % --beneficiary-sample == 0, for the enrichers that
-    join a beneficiary's claims with each other.'''
+def sampledCmsData(spark, request, years, cmsFilenames, externalData):
+    '''get_cms_data on the beneficiaries with DSYSRTKY % --beneficiary-sample == 0, for the enrichers that join a
+    beneficiary's claims with each other. Their CMS files are written under --tmp-path, removed at the end.'''
     n = request.config.getoption("--beneficiary-sample")
+    (cmsPath, tmpPath) = (request.config.getoption("--cms-path"), request.config.getoption("--tmp-path"))
+    if tmpPath is None:
+        pytest.fail("--tmp-path is needed, a directory every spark node can write")
+    sampledPath = tmpPath + "/sampledCms"
+    #the files are cut, not the get_cms_data dataframes: the optimizer pushes a filter on them down through every
+    #join of get_cms_data, and planning that ran for hours at OSC
+    for path in [path for paths in cmsFilenames.values() for path in paths]:
+        df = spark.read.parquet(path)
+        key = "DESY_SORT_KEY" if "DESY_SORT_KEY" in df.columns else "DSYSRTKY"
+        #cast as the schemas type it, so the sample is the one a filter on the typed DSYSRTKY keeps
+        (df.filter(F.col(key).cast("int") % n == 0)
+           .write.mode("overwrite").parquet(sampledPath + path[len(cmsPath):]))
+    sampled = cmsUtilitiesF.get_cms_data(sampledPath, *years, spark, externalData)
     #computed once and cut from the get_cms_data lineage, which every enricher would otherwise re-plan and rerun
     #several times over (add_days_at_home_info reads ipBase four times)
-    return {k: df.filter(F.col("DSYSRTKY") % n == 0).localCheckpoint() for k, df in cmsData.items()}
+    yield {k: df.localCheckpoint() for k, df in sampled.items()}
+    shutil.rmtree(sampledPath, ignore_errors=True)

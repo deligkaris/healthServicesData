@@ -14,6 +14,8 @@ def pytest_addoption(parser):
     group.addoption("--years", nargs=2, type=int, default=[2018, 2019], metavar=("YEARI", "YEARF"))
     group.addoption("--beneficiary-sample", type=int, default=100,
                     help="the enricher tests keep the beneficiaries with DSYSRTKY %% N == 0")
+    group.addoption("--tmp-path", default=None,
+                    help="where the enricher tests write their sampled CMS files, a directory every spark node can write")
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "data: needs the real CMS and external datasets, run with --run-data")
