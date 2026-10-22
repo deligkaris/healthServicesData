@@ -1,5 +1,6 @@
 import io
 import json
+import threading
 import pytest
 from unittest import mock
 
@@ -30,6 +31,11 @@ def fake_urlopen(payloads):
 @pytest.fixture
 def no_sleep(monkeypatch):
     monkeypatch.setattr(geocoding.time, "sleep", lambda s: None)
+
+@pytest.fixture(autouse=True)
+def no_pause(monkeypatch):
+    # The mocked API answers at once; the 1 s pause before each request would only slow the tests down.
+    monkeypatch.setattr(geocoding, "googleSecondsBetweenRequests", 0)
 
 def write_key(tmp_path, key="secret-key"):
     (tmp_path / "GEOCODING").mkdir(exist_ok=True)
@@ -92,6 +98,36 @@ class TestGeocodeAddress:
             geocoding.geocode_address("123 MAIN ST", "secret-key")
         url = opener.call_args[0][0]
         assert "key=secret-key" in url and "components=country%3AUS" in url
+
+
+class TestPace:
+
+    @pytest.fixture
+    def sleeps(self, monkeypatch):
+        sleeps = []
+        monkeypatch.setattr(geocoding.time, "sleep", sleeps.append)
+        monkeypatch.setattr(geocoding, "googleSecondsBetweenRequests", 0.5)
+        return sleeps
+
+    def test_every_request_and_retry_is_preceded_by_the_pause(self, sleeps):
+        with mock.patch.object(geocoding, "urlopen", fake_urlopen([{"status": "OVER_QUERY_LIMIT"}, ok_payload()])):
+            geocoding.geocode_address("123 MAIN ST", "secret-key")
+        assert sleeps == [0.5, 1, 0.5] #pause, backoff 2**0, pause
+        with mock.patch.object(geocoding, "urlopen", fake_urlopen([place_payload()])):
+            geocoding.find_place("A, NY", "secret-key")
+        with mock.patch.object(geocoding, "urlopen", fake_urlopen([route_payload()])):
+            geocoding.route_dyad(39.96, -82.99, 41.50, -81.69, "secret-key")
+        assert sleeps == [0.5, 1, 0.5, 0.5, 0.5]
+
+    def test_one_thread_by_default(self, sleeps, tmp_path, monkeypatch):
+        write_key(tmp_path)
+        threads = set()
+        def geocode_address(address, apiKey):
+            threads.add(threading.get_ident())
+            return geocoding.parse_geocode_response(ok_payload())
+        monkeypatch.setattr(geocoding, "geocode_address", geocode_address)
+        geocoding.geocode_addresses([f"ADDR {i}" for i in range(8)], str(tmp_path))
+        assert len(threads) == 1
 
 
 class TestGetApiKey:

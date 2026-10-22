@@ -27,7 +27,10 @@ censusGeographiesUrl = "https://geocoding.geo.census.gov/geocoder/geographies/co
 #the 2020 census blocks (layer 10) rather than Current_Current, whose blocks and response keys change over time
 censusGeographiesParams = dict(benchmark="Public_AR_Census2020", vintage="Census2020_Census2020", layers="10", format="json")
 retryStatuses = ["OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT", "UNKNOWN_ERROR"]
-geocodeWorkers = 4
+#one thread, and a pause before every request to a Google API (Geocoding, Places, Routes), retries included, so Google
+#gets at most one request a second
+geocodeWorkers = 1
+googleSecondsBetweenRequests = 1
 geocodeFields = ["lat", "lng", "locationType", "formattedAddress", "partialMatch", "status", "geocodedOn"]
 placeFields = ["lat", "lng", "name", "address", "types", "placeId", "businessStatus", "status", "searchedOn"]
 routeFields = ["distanceMeters", "durationSeconds", "status", "routedOn"]
@@ -111,6 +114,7 @@ def geocode_address(address, apiKey, maxRetries=5):
     #exponential backoff on quota and transient errors; exceptions never carry the url because it contains the key
     url = googleGeocodeUrl + "?" + urlencode(dict(address=address, components="country:US", key=apiKey))
     for attempt in range(maxRetries + 1):
+        time.sleep(googleSecondsBetweenRequests)
         try:
             with urlopen(url, timeout=30) as response:
                 return parse_geocode_response(json.load(response))
@@ -137,7 +141,7 @@ def geocode_addresses(addresses, pathToData, flushEvery=500, maxCalls=None, keyF
         raise RuntimeError(f"{len(misses)} addresses are not cached, more than maxCalls={maxCalls}")
     apiKey = get_api_key(pathToData, keyFilename)
     newRecords = 0
-    #4 threads at ~0.2 s per call is ~20 requests/s, well under the API's 50/s, and ~10 min for 12k addresses instead of ~1 h
+    #at ~1 request/s, 1k addresses take ~20 min
     pool = ThreadPoolExecutor(max_workers=workers if workers is not None else geocodeWorkers)
     futures = {pool.submit(geocode_address, address, apiKey): address for address in misses}
     try:
@@ -251,6 +255,7 @@ def find_place(query, apiKey, biasLat=None, biasLng=None, biasRadiusM=50000, max
     headers = {"Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": googlePlacesFieldMask}
     for attempt in range(maxRetries + 1):
         request = Request(googlePlacesUrl, data=json.dumps(body).encode(), headers=headers, method="POST")
+        time.sleep(googleSecondsBetweenRequests)
         try:
             with urlopen(request, timeout=30) as response:
                 return parse_place_response(json.load(response))
@@ -395,6 +400,7 @@ def route_dyad(fromLat, fromLng, toLat, toLng, apiKey, maxRetries=5):
     headers = {"Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": googleRoutesFieldMask}
     for attempt in range(maxRetries + 1):
         request = Request(googleRoutesUrl, data=json.dumps(body).encode(), headers=headers, method="POST")
+        time.sleep(googleSecondsBetweenRequests)
         try:
             with urlopen(request, timeout=30) as response:
                 return parse_route_response(json.load(response))

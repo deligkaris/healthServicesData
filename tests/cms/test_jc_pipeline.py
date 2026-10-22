@@ -58,6 +58,11 @@ def write_key(tmp_path):
 def no_sleep(monkeypatch):
     monkeypatch.setattr(geocoding.time, "sleep", lambda s: None)
 
+@pytest.fixture(autouse=True)
+def no_pause(monkeypatch):
+    # The mocked API answers at once; the 1 s pause before each request would only slow the tests down.
+    monkeypatch.setattr(geocoding, "googleSecondsBetweenRequests", 0)
+
 
 # ============================================================
 # step 3a: the export prep, column by column (prep_jcAccreditationDF without lookups)
