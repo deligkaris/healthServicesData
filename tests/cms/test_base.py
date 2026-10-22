@@ -2724,6 +2724,32 @@ class TestAddProviderHrrInfo:
 
 
 # ============================================================
+# add_provider_npi_info
+# ============================================================
+
+class TestAddProviderNpiInfo:
+
+    def test_provider_address(self, spark):
+        from cms.base import add_provider_npi_info
+        flags = ["primaryTaxonomy", "gachPrimary", "gachAll", "rachPrimary", "rachAll", "cahPrimary", "cahAll",
+                 "rehabilitationPrimary", "rehabilitationAll", "psychiatricHospital", "pediatricHospital", "ltcHospital",
+                 "Provider Organization Name (Legal Business Name)", "Provider Other Organization Name"]
+        parts = ["Provider First Line Business Practice Location Address",
+                 "Provider Second Line Business Practice Location Address",
+                 "Provider Business Practice Location Address City Name",
+                 "Provider Business Practice Location Address State Name",
+                 "Provider Business Practice Location Address Postal Code"]
+        schema = StructType([StructField(c, StringType()) for c in ["NPI"] + flags + parts])
+        npi = spark.createDataFrame([("1",) + (None,) * len(flags) + ("410 DEWEY ST", None, "WISCONSIN RAPIDS", "WI", "544941234"),
+                                     ("2",) + (None,) * len(flags) + (None,) * len(parts)], schema)
+        base = spark.createDataFrame([("1",), ("2",), ("3",)], "ORGNPINM string")
+        rows = {r["ORGNPINM"]: r for r in add_provider_npi_info(base, npi).collect()}
+        assert rows["1"]["providerAddress"] == "410 DEWEY ST,WISCONSIN RAPIDS,WI,54494"
+        assert rows["2"]["providerAddress"] is None #every part null
+        assert rows["3"]["providerAddress"] is None #not in the NPI file
+
+
+# ============================================================
 # add_provider_stroke_certification_info
 # ============================================================
 

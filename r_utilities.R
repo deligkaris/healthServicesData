@@ -79,7 +79,7 @@ get_data_dictionary <- function() {
     "providerFIPS",    "Provider FIPS county (from POS file)",
     "providerName",    "Facility name",
     "providerOtherName","Alternate facility name",
-    "providerAddress", "Facility street address",
+    "providerAddress", "Facility practice location address from the NPI file (street,city,state,zip5); NULL when the NPI file has none",
     "providerZip",     "Facility ZIP",
     "providerLat",     "Latitude of providerAddress (NPI practice location) from the Google Geocoding API",
     "providerLng",     "Longitude of providerAddress (NPI practice location) from the Google Geocoding API",

@@ -161,6 +161,13 @@ class TestGeocodeAddresses:
         assert set(records) == set(addresses)
         assert set(geocoding.get_geocode_cache(str(tmp_path))) == set(addresses)
 
+    def test_blank_address_is_not_called(self, tmp_path):
+        write_key(tmp_path)
+        opener = fake_urlopen([])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            records = geocoding.geocode_addresses(["", "  ", None], str(tmp_path), maxCalls=0)
+        assert records == {} and opener.call_count == 0
+
     def test_interrupted_run_keeps_records(self, tmp_path, no_sleep):
         write_key(tmp_path)
         opener = fake_urlopen([ok_payload(), {"status": "REQUEST_DENIED"}])
@@ -208,6 +215,17 @@ class TestAddGeocodeInfo:
                          "posGeocodePartialMatch", "posGeocodeStatus"}
         assert all(c[0].islower() for c in added)
         assert dict(result.dtypes)["posLat"] == "double"
+
+    def test_blank_address_gets_null_coordinates(self, spark, tmp_path):
+        geocoding.write_geocode_cache({"A": geocoding.parse_geocode_response(ok_payload())}, str(tmp_path))
+        df = spark.createDataFrame([("1", "A"), ("2", ""), ("3", None)], "id string, addr string")
+        opener = fake_urlopen([])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            rows = {r["id"]: r for r in geocoding.add_geocode_info(df, "addr", str(tmp_path), "pos", maxCalls=0).collect()}
+        assert opener.call_count == 0 and len(rows) == 3
+        assert rows["1"]["posLat"] == 39.96
+        assert rows["2"]["posLat"] is None and rows["2"]["posGeocodeStatus"] is None
+        assert rows["3"]["posLat"] is None
 
 
 class TestPrepPosDF:
@@ -725,6 +743,13 @@ class TestFindPlaces:
             with pytest.raises(RuntimeError, match="maxCalls"):
                 geocoding.find_places({"A, NY": None, "B, NY": None}, str(tmp_path), maxCalls=1)
         assert opener.call_count == 0
+
+    def test_blank_query_is_not_called(self, tmp_path):
+        write_key(tmp_path)
+        opener = fake_urlopen([])
+        with mock.patch.object(geocoding, "urlopen", opener):
+            records = geocoding.find_places({"": None, " ": (40.7, -74.0)}, str(tmp_path), maxCalls=0)
+        assert records == {} and opener.call_count == 0
 
 
 class TestNameScore:

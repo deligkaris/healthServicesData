@@ -36,6 +36,12 @@ censusFields = ["block", "status", "searchedOn"]
 class GeocodeRetryError(Exception):
     '''The API asked us to try again later (quota or a transient server side error).'''
 
+def is_blank(text):
+    '''True for a null or all white space address or query, which is never sent to an API.'''
+    #a blank address still makes a paid call, answered with a made up point or INVALID_REQUEST; concat_ws produces one
+    #when every part of an address is null
+    return text is None or text.strip() == ""
+
 def get_geocode_cache_filename(pathToData):
     return f"{pathToData}/GEOCODING/googleGeocodeCache.json"
 
@@ -73,7 +79,7 @@ def write_geocode_cache(cache, pathToData):
 def get_geocode_cache_misses(addresses, pathToData):
     '''The addresses that are not in the cache, ie the paid calls a geocode_addresses run would make.'''
     cache = get_geocode_cache(pathToData)
-    return sorted(set(a for a in addresses if a is not None and a not in cache))
+    return sorted(set(a for a in addresses if not is_blank(a) and a not in cache))
 
 def parse_geocode_response(payload):
     '''The Geocoding API json as a cache record (geocodeFields).'''
@@ -125,7 +131,7 @@ def geocode_addresses(addresses, pathToData, flushEvery=500, maxCalls=None, keyF
     cache = get_geocode_cache(pathToData)
     misses = get_geocode_cache_misses(addresses, pathToData)
     if len(misses) == 0: #the key file is not even read
-        return {a: cache[a] for a in addresses if a is not None}
+        return {a: cache[a] for a in addresses if not is_blank(a)}
     #cost guard: when more addresses are missing than maxCalls nothing is called and the count is reported instead
     if maxCalls is not None and len(misses) > maxCalls:
         raise RuntimeError(f"{len(misses)} addresses are not cached, more than maxCalls={maxCalls}")
@@ -147,7 +153,7 @@ def geocode_addresses(addresses, pathToData, flushEvery=500, maxCalls=None, keyF
         pool.shutdown(wait=True, cancel_futures=True)
         if newRecords > 0:
             write_geocode_cache(cache, pathToData)
-    return {a: cache[a] for a in addresses if a is not None}
+    return {a: cache[a] for a in addresses if not is_blank(a)}
 
 def add_address(DF, streetCol, cityCol, stateCol, zipCol, addressCol):
     '''addressCol: one line address "STREET, CITY, ST 12345" from the parts, the geocoding cache key.'''
@@ -213,7 +219,7 @@ def write_places_cache(cache, pathToData):
 def get_places_cache_misses(queries, pathToData):
     '''The queries that are not in the places cache, ie the paid calls a find_places run would make.'''
     cache = get_places_cache(pathToData)
-    return sorted(set(q for q in queries if q is not None and q not in cache))
+    return sorted(set(q for q in queries if not is_blank(q) and q not in cache))
 
 def parse_place_response(payload):
     '''The Places API text search json as a cache record (placeFields) holding the first result.'''
@@ -266,7 +272,7 @@ def find_places(queries, pathToData, flushEvery=500, maxCalls=None, keyFilename=
     cache = get_places_cache(pathToData)
     misses = get_places_cache_misses(queries, pathToData)
     if len(misses) == 0:
-        return {q: cache[q] for q in queries if q is not None}
+        return {q: cache[q] for q in queries if not is_blank(q)}
     if maxCalls is not None and len(misses) > maxCalls:
         raise RuntimeError(f"{len(misses)} queries are not cached, more than maxCalls={maxCalls}")
     apiKey = get_api_key(pathToData, keyFilename)
@@ -287,7 +293,7 @@ def find_places(queries, pathToData, flushEvery=500, maxCalls=None, keyFilename=
         pool.shutdown(wait=True, cancel_futures=True)
         if newRecords > 0:
             write_places_cache(cache, pathToData)
-    return {q: cache[q] for q in queries if q is not None}
+    return {q: cache[q] for q in queries if not is_blank(q)}
 
 def get_place_schema(prefix):
     return StructType([StructField("query", StringType()),

@@ -770,6 +770,12 @@ def add_numberOfXOverY(baseDF, X="ORGNPINM", Y=["DSYSRTKY","ADMSN_DT"]):
 def add_provider_npi_info(baseDF, npiProviderDF):
     #gachColName = "gachPrimary" if primary else "gachAll"
     #rehabilitationColName = "rehabilitationPrimary" if primary else "rehabilitationAll"
+    address = F.concat_ws(",",
+                          F.col("Provider First Line Business Practice Location Address"),
+                          F.col("Provider Second Line Business Practice Location Address"),
+                          F.col("Provider Business Practice Location Address City Name"),
+                          F.col("Provider Business Practice Location Address State Name"),
+                          F.col("Provider Business Practice Location Address Postal Code").substr(1,5))
     baseDF = baseDF.join(npiProviderDF.select(
                           F.col("NPI").alias("ORGNPINM"),
                           F.col("primaryTaxonomy").alias("providerPrimaryTaxonomy"),
@@ -783,13 +789,8 @@ def add_provider_npi_info(baseDF, npiProviderDF):
                           F.col("ltcHospital"),
                           F.col("Provider Organization Name (Legal Business Name)").alias("providerName"),
                           F.col("Provider Other Organization Name").alias("providerOtherName"),
-                          F.concat_ws(",",
-                                              F.col("Provider First Line Business Practice Location Address"),
-                                              F.col("Provider Second Line Business Practice Location Address"),
-                                              F.col("Provider Business Practice Location Address City Name"),
-                                              F.col("Provider Business Practice Location Address State Name"),
-                                              F.col("Provider Business Practice Location Address Postal Code").substr(1,5))
-                                              .alias("providerAddress"),
+                          #concat_ws gives "" when all five parts are null, made null so it is not geocoded as an address
+                          F.when(address != "", address).alias("providerAddress"),
                           F.col("Provider Business Practice Location Address Postal Code").substr(1,5).alias("providerZip"),
                           F.col("Provider Business Practice Location Address State Name").alias("providerState")),
                       on = ["ORGNPINM"],
