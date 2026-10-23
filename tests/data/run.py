@@ -1,10 +1,14 @@
 '''Runs the data tests from a batch job, the way an analysis script runs: python tests/data/run.py [pytest options]
 eg python tests/data/run.py -k "not carLine" (see tests/conftest.py for the options). The tests run as two pytest
-sessions, test_pipeline and test_transfers second, each printing its own report.'''
+sessions, test_pipeline and test_transfers second, each printing its own report. When spark makes no progress for
+stallMinutes, stalls.py prints what the driver is doing to stderr.'''
+import os
 import sys
 from pathlib import Path
 
 import pytest
+
+import stalls
 
 ################
 yearInitial = 2018 #set the years to test
@@ -12,6 +16,9 @@ yearFinal = 2019
 ################
 pathToAHAData = '/users/PAS2164/deligkaris/DATA/AHA' #the complete AHA data, see sepsis-transfers.py
 pathTmp = '/users/PAS2164/deligkaris/DATA/TMP/dataTests' #the sampled CMS files of the enricher tests, removed at the end
+stallMinutes = 15 #no spark job or task progress for this long prints the driver's state, see stalls.py
+stallDumps = 3 #the JVM threads are dumped this many times, stallDumpSeconds apart, to tell a stuck thread from a slow one
+stallDumpSeconds = 60
 ################
 
 repo = Path(__file__).resolve().parents[2]
@@ -25,6 +32,9 @@ sessions = [[str(tests), *[f"--ignore={path}" for path in fullPipeline]], fullPi
 #faulthandler_timeout prints the python traceback (to stderr) of a test still running after an hour
 options = ["--run-data", "--rootdir", str(repo), "--tb=short", "--durations=20", "-o", "faulthandler_timeout=3600",
            "--years", str(yearInitial), str(yearFinal), "--aha-path", pathToAHAData, "--tmp-path", pathTmp, *sys.argv[1:]]
+#pytest captures fd 2 during a test and shows it only when the test fails, which a hung test never does, so the
+#report goes to a copy of fd 2 made before pytest starts
+stalls.start(os.fdopen(os.dup(2), "w"), stallMinutes, stallDumps, stallDumpSeconds)
 #both sessions run in this python, the one spark started the driver with, so they share its spark session
 exitCodes = [pytest.main([*paths, *options]) for paths in sessions]
 #a -k that selects the tests of one session only leaves the other with none
