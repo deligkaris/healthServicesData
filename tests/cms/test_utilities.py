@@ -488,6 +488,26 @@ class TestWriteAndReadParquet:
         assert [r["id"] for r in result.collect()] == [2]
 
 
+class TestPrintElapsed:
+
+    def test_prints_step_and_total_minutes_rounded_on_one_line(self, monkeypatch, capsys):
+        import utilities
+        monkeypatch.setattr(utilities.time, "time", lambda: 1000 + 25.4 * 60)
+        utilities.print_elapsed(1000, 1000 + 13.6 * 60)
+        assert capsys.readouterr().out == "done...12 min (25 min total)\n"
+
+    def test_label(self, monkeypatch, capsys):
+        import utilities
+        monkeypatch.setattr(utilities.time, "time", lambda: 120)
+        utilities.print_elapsed(0, 0, label="revenue summary")
+        assert capsys.readouterr().out == "revenue summary...2 min (2 min total)\n"
+
+    def test_returns_now_for_the_next_step(self, monkeypatch, capsys):
+        import utilities
+        monkeypatch.setattr(utilities.time, "time", lambda: 1234.5)
+        assert utilities.print_elapsed(0, 0) == 1234.5
+
+
 class TestGetLookups:
 
     def test_keeps_the_beneficiaries_claims_and_the_lookup_columns(self, spark):

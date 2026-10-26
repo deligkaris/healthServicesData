@@ -5,6 +5,7 @@ from geocoding import add_address, add_geocode_info, add_place_info, get_geocode
 from urllib.request import urlopen
 import json
 import re
+import time
 from itertools import chain
 from functools import reduce
 
@@ -115,6 +116,13 @@ def write_and_read_parquet(df, path):
     #executor memory; localCheckpoint does not cut the lineage reliably (see tests/cms/test_transfers.py)
     df.write.mode("overwrite").parquet(path)
     return df.sparkSession.read.parquet(path)
+
+def print_elapsed(timeInitial, timeStep, label="done"):
+    '''Prints on one line the minutes, rounded, since timeStep and since timeInitial, and returns the time now,
+    the timeStep of the next step.'''
+    now = time.time()
+    print(f"{label}...{(now - timeStep)/60:.0f} min ({(now - timeInitial)/60:.0f} min total)")
+    return now
 
 def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
