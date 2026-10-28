@@ -225,7 +225,7 @@ get_data_dictionary <- function() {
     "ahaNisTeachingHospital","NIS teaching hospital (1 if COTH/ACGME/resident-to-bed>=0.25)",
     "ahaResidentToBedRatio","FTE residents-to-beds ratio",
     "ahaBedsIcu",      "Staffed medical/surgical ICU beds (AHA)",
-    "ahaBedsIcuPrior", "Prior-year ICU bed count (AHA)",
+    "ahaBedsIcuPrior", "ICU beds (AHA) in the survey of the year before the claim's through year (NULL when that year is not loaded or the hospital is not in it)",
     "ahaIcuHos",       "AHA medical/surgical ICU at hospital level (0/1, raw field MSICHOS)",
     "ahaSystemMember", "AHA health-system member (1 if MHSMEMB=1, else 0)",
     "ahaSystemMemberId","AHA system identifier (last 4 digits of SYSID)",

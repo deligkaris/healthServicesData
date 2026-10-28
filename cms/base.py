@@ -1829,10 +1829,15 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                ("ahaNisTeachingHospital","ahaNisTeachingHospital"),
                ("ahaResidentToBedRatio","ahaResidentToBedRatio"),
                ("ahaBedsIcu","ahaBedsIcu"),
+               ("ahaBedsIcuPrior","ahaBedsIcuPrior"),             #ICU beds in the survey of the year before
                ("ahaIcuHos","ahaIcuHos"),
                ("ahaSystemMember","ahaSystemMember"),
                ("SYSID","ahaSystemMemberId")]                     #member health system ID
-    selectCols = [(F.col(src) if src in ahaDF.columns else F.lit(None)).alias(alias) for (src,alias) in ahaCols]
+    #the prior year's ICU beds come from the survey itself, so they do not depend on which claims or years baseDF holds;
+    #ahaDF is unique on (MCRNUM, year), see tests/data/test_external.py
+    ahaDF = ahaDF.join(ahaDF.select("MCRNUM", (F.col("year")+1).alias("year"), F.col("ahaBedsIcu").alias("ahaBedsIcuPrior")),
+                       on=["MCRNUM","year"], how="left_outer")
+    selectCols =[(F.col(src) if src in ahaDF.columns else F.lit(None)).alias(alias) for (src,alias) in ahaCols]
     baseDF = baseDF.join(ahaDF.select(selectCols),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")

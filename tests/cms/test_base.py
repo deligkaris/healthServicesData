@@ -2771,3 +2771,20 @@ class TestAddProviderStrokeCertificationInfo:
         assert rows[("360003", 2019)]["providerStrokeCertification"] is None
         assert "posCcn" not in result.columns
         assert all(c[0].islower() for c in set(result.columns) - set(base.columns))
+
+
+class TestAddAhaInfo:
+
+    def test_ahaBedsIcuPrior_is_the_survey_of_the_year_before(self, spark):
+        from cms.base import add_aha_info
+        base = spark.createDataFrame([("360001", 2016), ("360001", 2017), ("360002", 2017)],
+                                     "PROVIDER string, THRU_DT_YEAR int")
+        aha = spark.createDataFrame([("360001", 2016, 10), ("360001", 2017, 12)],
+                                    "MCRNUM string, year int, ahaBedsIcu int")
+        result = add_aha_info(base, aha)
+        rows = {(r["PROVIDER"], r["THRU_DT_YEAR"]): (r["ahaBedsIcu"], r["ahaBedsIcuPrior"]) for r in result.collect()}
+        assert result.count() == 3
+        assert rows[("360001", 2017)] == (12, 10)
+        # no 2015 survey loaded, so the year before is unobserved
+        assert rows[("360001", 2016)] == (10, None)
+        assert rows[("360002", 2017)] == (None, None)
