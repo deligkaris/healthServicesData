@@ -2060,6 +2060,46 @@ class TestAddDyadInfo:
         assert vol[(200, 2020)] is None and vol[(200, 2022)] == 0
         assert vol[(300, 2020)] is None and vol[(300, 2021)] == 1
 
+    def test_new_pair_prior_is_zero_when_a_provider_was_seen_before(self, spark):
+        # A pair's first year has no row in the year before. When the sending or the
+        # receiving provider has a transfer in an earlier year, that year is in the data,
+        # so the pair's priors are 0, not null; with both providers new they stay null.
+        #   100->200 2020: everyone's first year
+        #   100->300 2021: new pair, sender 100 seen in 2020
+        #   400->200 2021: new pair, receiver 200 seen in 2020
+        #   500->600 2021: new pair, both providers new
+        schema = StructType([
+            StructField("fromORGNPINM", IntegerType(), True),
+            StructField("toORGNPINM", IntegerType(), True),
+            StructField("fromTHRU_DT_YEAR", IntegerType(), True),
+            StructField("toTHRU_DT_YEAR", IntegerType(), True),
+            StructField("fromCLAIMNO", StringType(), True),
+            StructField("toCLAIMNO", StringType(), True),
+            StructField("fromproviderSysId", IntegerType(), True),
+            StructField("toproviderSysId", IntegerType(), True),
+            StructField("fromproviderFIPS", StringType(), True),
+            StructField("toproviderFIPS", StringType(), True),
+            StructField("fromproviderStateFIPS", StringType(), True),
+            StructField("toproviderStateFIPS", StringType(), True),
+        ])
+        spec = [(100, 200, 2020), (100, 300, 2021), (400, 200, 2021), (500, 600, 2021)]
+        rows = []
+        for k, (frm, to, year) in enumerate(spec):
+            rows.append({"fromORGNPINM": frm, "toORGNPINM": to,
+                         "fromTHRU_DT_YEAR": year, "toTHRU_DT_YEAR": year,
+                         "fromCLAIMNO": f"f{k}", "toCLAIMNO": f"t{k}",
+                         "fromproviderSysId": 7, "toproviderSysId": 7,
+                         "fromproviderFIPS": "01001", "toproviderFIPS": "01001",
+                         "fromproviderStateFIPS": "01", "toproviderStateFIPS": "01"})
+        df = _with_dyad_priors(spark.createDataFrame(rows, schema=schema))
+        out = {(r["fromORGNPINM"], r["toORGNPINM"]):
+               (r["dyadProportionTransfersOutPrior"], r["dyadProportionTransfersInPrior"], r["dyadTransferVolPrior"])
+               for r in df.collect()}
+        assert out[(100, 200)] == (None, None, None)
+        assert out[(100, 300)] == (0.0, 0.0, 0)
+        assert out[(400, 200)] == (0.0, 0.0, 0)
+        assert out[(500, 600)] == (None, None, None)
+
 
 class TestAddNodeInfo:
 

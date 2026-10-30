@@ -66,7 +66,7 @@ def get_daysInYearsPrior():
 def get_monthsInYearsPrior():
     return F.create_map([F.lit(x) for x in chain(*monthsInYearsPriorDict.items())])
 
-def add_column_prior(df, column, who, when, gapFill=None):
+def add_column_prior(df, column, who, when, gapFill=None, observed=None):
     '''Adds the column's value from the prior year, keyed by `who` and ordered by `when`.
     Generic across grains: `who` is the partition identity and `when` is the year column.
     `who` may be a single column name (a provider, for the stays grain) or a list of column
@@ -91,19 +91,27 @@ def add_column_prior(df, column, who, when, gapFill=None):
     A null in column+"Prior" means the prior-year value is UNOBSERVED, not zero. Do not
     coalesce it to 0 downstream -- that would fabricate a real prior value where none exists.
     Use gapFill=0 here (at the source) instead of coalescing downstream so first-year nulls
-    are preserved while genuine gap-year zeros are recorded.'''
+    are preserved while genuine gap-year zeros are recorded.
+
+    `observed`, a boolean column constant within each (who, when), marks where when-1 is known
+    to be in the data. When given, a group with no row in when-1 -- after a gap or in its first
+    year -- gets gapFill where observed is true and null where it is not (see
+    cms.transfers.add_dyad_prior_info).'''
     whoCols = who if isinstance(who, list) else [who]
     eachWho = Window.partitionBy(whoCols).orderBy(when)
     eachWhoWhen = Window.partitionBy(whoCols + [when])
+    #no row in when-1: a gap, or, given observed, also the group's first year (prior is null on its first row), which
+    #observed shows is a real gapFill value rather than an unobserved one
+    gap = F.col(when)-F.col("prior")>1
+    noRowYearBefore = gap if observed is None else (gap | F.col("prior").isNull()) & observed
     df = (df
           .withColumn("prior", F.lag(when,1).over(eachWho))
           .withColumn(column+"Prior", F.lag(column,1).over(eachWho))
-          #exactly-1-year-back keeps the lagged value; a >1-year gap (when-prior>1) means the
-          #intervening year(s) had no rows -> gapFill (0 for counts, null for proportions);
-          #everything else -- same-year predecessor (when-prior==0) and the group's first row
-          #(prior is null) -- must stay null so the max() broadcast below ignores it.
+          #exactly-1-year-back keeps the lagged value; no row in when-1 (noRowYearBefore) -> gapFill
+          #(0 for counts, null for proportions); everything else -- same-year predecessor (when-prior==0)
+          #and a first row observed does not vouch for -- must stay null so the max() broadcast below ignores it.
           .withColumn(column+"Prior", F.when( F.col(when)-F.col("prior")==1, F.col(column+"Prior"))
-                                       .when( F.col(when)-F.col("prior")>1, F.lit(gapFill))
+                                       .when( noRowYearBefore, F.lit(gapFill))
                                        .otherwise(F.lit(None)))
           #lag fires only on the row-1 of each (who,when) group; broadcast the prior value to every row in the group
           .withColumn(column+"Prior", F.max(F.col(column+"Prior")).over(eachWhoWhen))

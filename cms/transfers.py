@@ -463,7 +463,7 @@ def add_dyadAcrossStates(transfersDF):
 
 #prior-year values of the node and dyad measures, all through add_column_prior
 
-def add_column_prior(transfersDF, column, who, when, gapFill=None):
+def add_column_prior(transfersDF, column, who, when, gapFill=None, observed=None):
     '''Adds the column's value from the prior year at the transfers grain.
     Thin wrapper over utilitiesF.add_column_prior; the shared logic lives in utilities.py.
     Callers pass who/when explicitly. `who` must match the grain of `column`:
@@ -477,12 +477,14 @@ def add_column_prior(transfersDF, column, who, when, gapFill=None):
     too (see add_node_volume_info); `when` must be the year the column was partitioned by or
     `column` would not be constant within each (who,when) group and the max() broadcast below
     would pick an arbitrary one of several values.
-    A null in the prior column means unobserved (the dyad/node's first observed year), not
+    A null in the prior column means unobserved (the node's first observed year), not
     zero -- do not coalesce it to 0 downstream. Pass gapFill=0 only for columns where a >1-year
     gap records a true 0 (see add_column_prior): nodeOutVol and dyadTransferVol (counts) and
     dyadProportionTransfers* (a 0 numerator over the node's out volume). nodeHhi keeps the default None because a gap year
-    there is an undefined distribution, not a zero.'''
-    return utilitiesF.add_column_prior(transfersDF, column=column, who=who, when=when, gapFill=gapFill)
+    there is an undefined distribution, not a zero. Dyad-level columns pass observed=_fromOrToNodeSeenBefore(), see
+    add_dyad_prior_info.'''
+    return utilitiesF.add_column_prior(transfersDF, column=column, who=who, when=when, gapFill=gapFill,
+                                       observed=observed)
 
 def add_node_prior_info(transfersDF):
     '''Adds nodeOutVolPrior, nodeInVolPrior and nodeHhiPrior, the node columns of the same provider a year earlier.
@@ -496,16 +498,24 @@ def add_node_prior_info(transfersDF):
     transfersDF = add_column_prior(transfersDF, column="nodeHhi", who="fromORGNPINM", when="fromTHRU_DT_YEAR")
     return transfersDF
 
+def _fromOrToNodeSeenBefore():
+    '''True where the sending or the receiving provider has a transfer in an earlier year. Requires add_node_prior_info.'''
+    #nodeOutVolPrior/nodeInVolPrior are null only in the provider's first observed year (0 after a gap)
+    return F.col("nodeOutVolPrior").isNotNull() | F.col("nodeInVolPrior").isNotNull()
+
 def add_dyad_prior_info(transfersDF):
     '''Adds dyadTransferVolPrior, dyadProportionTransfersOutPrior and dyadProportionTransfersInPrior, the dyad columns
-    of the same pair a year earlier. Requires add_dyad_info.'''
-    #gapFill=0: a dyad row exists only when A->B had >=1 transfer that year, so a >1-year gap
-    #means the pair had zero transfers -- dyadTransferVol is a true 0, and so is the proportions'
-    #numerator, i.e. a true 0/nodeOutVol (and add_dyadProportionTransfers* already codes the empty
-    #0/0 case as 0.). The dyad's first observed year still stays null.
-    transfersDF = add_column_prior(transfersDF, column="dyadTransferVol", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR", gapFill=0)
-    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersOut", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR", gapFill=0)
-    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersIn", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR", gapFill=0)
+    of the same pair a year earlier, 0 when the pair had no transfer that year. Requires add_dyad_info and
+    add_node_prior_info.'''
+    #gapFill=0: a dyad row exists only when A->B had >=1 transfer that year, so a year without one, after a gap or before
+    #the pair's first year, means the pair had zero transfers -- dyadTransferVol is a true 0, and so is the proportions'
+    #numerator, i.e. a true 0/nodeOutVol (and add_dyadProportionTransfers* already codes the empty 0/0 case as 0.).
+    #A provider of the dyad seen in an earlier year shows that year is in the data; with neither seen it may be outside
+    #the loaded years, so the prior stays null. Pass the same observed to any other dyad-level prior
+    observed = _fromOrToNodeSeenBefore()
+    transfersDF = add_column_prior(transfersDF, column="dyadTransferVol", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR", gapFill=0, observed=observed)
+    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersOut", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR", gapFill=0, observed=observed)
+    transfersDF = add_column_prior(transfersDF, column="dyadProportionTransfersIn", who=["fromORGNPINM","toORGNPINM"], when="fromTHRU_DT_YEAR", gapFill=0, observed=observed)
     return transfersDF
 
 #assembly: the node and dyad columns get_transfers adds
