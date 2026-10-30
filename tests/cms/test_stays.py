@@ -3145,6 +3145,7 @@ class TestAddComorbidityInfo:
     _DGNS_SCHEMA = StructType([StructField("DSYSRTKY", IntegerType(), True),
                                StructField("THRU_DT_DAY", IntegerType(), True)] +
                               [StructField(f"ICD_DGNS_CD{i}", StringType(), True) for i in range(1, 26)])
+    _IP_SCHEMA = StructType(_DGNS_SCHEMA.fields + [StructField("shortTermInpatientOrganization", IntegerType(), True)])
     _STAYS_SCHEMA = StructType([StructField(c, IntegerType(), True) for c in
                                 ("DSYSRTKY", "CLAIMNO", "THRU_DT_DAY", "THRU_DT_MONTH", "ffsFirstMonth")])
 
@@ -3154,8 +3155,8 @@ class TestAddComorbidityInfo:
         from utilities import icd10Day
         from cms.stays import add_comorbidity_info
         thru = icd10Day + 1000
-        ip_df = spark.createDataFrame([{"DSYSRTKY": b, "THRU_DT_DAY": thru - 100, "ICD_DGNS_CD1": "I500"}
-                                       for b in (1, 2)], schema=self._DGNS_SCHEMA)
+        ip_df = spark.createDataFrame([{"DSYSRTKY": b, "THRU_DT_DAY": thru - 100, "ICD_DGNS_CD1": "I500",
+                                        "shortTermInpatientOrganization": 1} for b in (1, 2)], schema=self._IP_SCHEMA)
         op_df = spark.createDataFrame([], schema=self._DGNS_SCHEMA)
         stays_df = spark.createDataFrame([(1, 1, thru, 100, 1), (2, 2, thru, 100, 95)], schema=self._STAYS_SCHEMA)
         r = {row["DSYSRTKY"]: row for row in add_comorbidity_info(stays_df, ip_df, op_df, claimType="op").collect()}
@@ -3164,12 +3165,27 @@ class TestAddComorbidityInfo:
         assert r[2]["hospitalizationsIn12Months"] is None
         assert r[2]["congestiveHeartFailure"] is None
 
+    def test_reads_only_short_term_acute_ip_claims(self, spark):
+        # a CHF claim at a short term hospital and a COPD claim at a long term care (or rehab, psychiatric,
+        # children's) hospital: only the first is a hospitalization and only its dgns count
+        from utilities import icd10Day
+        from cms.stays import add_comorbidity_info
+        thru = icd10Day + 1000
+        ip_df = spark.createDataFrame([{"DSYSRTKY": 1, "THRU_DT_DAY": thru - 100, "ICD_DGNS_CD1": "I500",
+                                        "shortTermInpatientOrganization": 1},
+                                       {"DSYSRTKY": 1, "THRU_DT_DAY": thru - 50, "ICD_DGNS_CD1": "J449",
+                                        "shortTermInpatientOrganization": 0}], schema=self._IP_SCHEMA)
+        op_df = spark.createDataFrame([], schema=self._DGNS_SCHEMA)
+        stays_df = spark.createDataFrame([(1, 1, thru, 100, 1)], schema=self._STAYS_SCHEMA)
+        r = add_comorbidity_info(stays_df, ip_df, op_df, claimType="op").first()
+        assert (r["hospitalizationsIn12Months"], r["congestiveHeartFailure"], r["chronicPulmonary"]) == (1, 1, 0)
+
     def test_rerun_raises(self, spark):
         from utilities import icd10Day
         from cms.stays import add_comorbidity_info
         thru = icd10Day + 1000
-        ip_df = spark.createDataFrame([{"DSYSRTKY": 1, "THRU_DT_DAY": thru - 100, "ICD_DGNS_CD1": "I500"}],
-                                      schema=self._DGNS_SCHEMA)
+        ip_df = spark.createDataFrame([{"DSYSRTKY": 1, "THRU_DT_DAY": thru - 100, "ICD_DGNS_CD1": "I500",
+                                        "shortTermInpatientOrganization": 1}], schema=self._IP_SCHEMA)
         op_df = spark.createDataFrame([], schema=self._DGNS_SCHEMA)
         stays_df = spark.createDataFrame([(1, 1, thru, 100, 1)], schema=self._STAYS_SCHEMA)
         stays_df = add_comorbidity_info(stays_df, ip_df, op_df, claimType="op")
@@ -3185,8 +3201,9 @@ class TestAddComorbidityInfo:
         # stroke 0 days before it, principalFrom 2 days before it
         from utilities import icd10Day
         thru = icd10Day + 1000
-        ip_df = spark.createDataFrame([{"DSYSRTKY": 1, "THRU_DT_DAY": thru - d, "ICD_DGNS_CD1": code}
-                                       for d, code in [(3, "I210"), (2, "I500"), (0, "I639")]], schema=self._DGNS_SCHEMA)
+        ip_df = spark.createDataFrame([{"DSYSRTKY": 1, "THRU_DT_DAY": thru - d, "ICD_DGNS_CD1": code,
+                                        "shortTermInpatientOrganization": 1}
+                                       for d, code in [(3, "I210"), (2, "I500"), (0, "I639")]], schema=self._IP_SCHEMA)
         op_df = spark.createDataFrame([], schema=self._DGNS_SCHEMA)
         stays_df = spark.createDataFrame([(1, 1, thru - 10, 100, thru, 1, thru - 2)], schema=self._IP_STAYS_SCHEMA)
         return stays_df, ip_df, op_df

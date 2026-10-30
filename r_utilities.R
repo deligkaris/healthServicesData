@@ -392,10 +392,11 @@ get_data_dictionary <- function() {
 
     # ---- patient comorbidity & hospitalization history (transferred beneficiary, at the episode's first inpatient admission: receiving stay for ED->IP, sending stay for IP->IP) ----
     # ---- with transfers add_comorbidity_info(lookbackFromReceiving=True) the IP->IP comorbidity flags look back from the receiving stay's discharge, both stays' principal dgns left out; the hospitalization counts stay on the sending stay ----
-    "hospitalizationsIn12Months","Count of inpatient stays in the 365 days before the anchor date (ip: admission, op: through) (NULL if <12mo FFS or ffsFirstMonth missing)",
-    "hospitalizedIn12Months","1 if >=1 inpatient stay in the 12 months before the anchor date (ip: admission, op: through), else 0 (NULL if <12mo FFS or ffsFirstMonth missing)",
-    "hospitalizationsIn6Months","Count of inpatient stays in the 182 days before the anchor date (ip: admission, op: through) (NULL if <6mo FFS or ffsFirstMonth missing)",
-    "hospitalizedIn6Months","1 if >=1 inpatient stay in the 6 months before the anchor date (ip: admission, op: through), else 0 (NULL if <6mo FFS or ffsFirstMonth missing)",
+    # ---- the hospitalization counts and the inpatient dgns of the comorbidity flags read only claims of short-term acute hospitals (shortTermInpatientOrganization); outpatient dgns come from every claim ----
+    "hospitalizationsIn12Months","Count of short-term acute inpatient claims in the 365 days before the anchor date (ip: admission, op: through) (NULL if <12mo FFS or ffsFirstMonth missing)",
+    "hospitalizedIn12Months","1 if >=1 short-term acute inpatient claim in the 12 months before the anchor date (ip: admission, op: through), else 0 (NULL if <12mo FFS or ffsFirstMonth missing)",
+    "hospitalizationsIn6Months","Count of short-term acute inpatient claims in the 182 days before the anchor date (ip: admission, op: through) (NULL if <6mo FFS or ffsFirstMonth missing)",
+    "hospitalizedIn6Months","1 if >=1 short-term acute inpatient claim in the 6 months before the anchor date (ip: admission, op: through), else 0 (NULL if <6mo FFS or ffsFirstMonth missing)",
     "hospiceIn12Months","1 if any hospice stay overlaps the 365 days ending on the anchor date (ip: admission, op: through), else 0 (NULL if <12mo FFS or ffsFirstMonth missing)",
     "myocardialInfraction","Myocardial infarction (0/1) [sic spelling]",
     "congestiveHeartFailure","Congestive heart failure (0/1)",

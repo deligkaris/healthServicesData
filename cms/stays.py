@@ -718,7 +718,8 @@ def add_comorbidity_info(staysDF, ipBase, opBase, claimType="ip", method="Glashe
     column, also excludes the IP principal dgns through on [principalFromDay, THRU_DT_DAY], see
     comorbiditiesF.get_conditions.
 
-    The day-level dgns indexes are built inline from ipBase/opBase via comorbiditiesF.get_dayDgnsDF.
+    The day-level dgns indexes are built inline from ipBase/opBase via comorbiditiesF.get_dayDgnsDF, from the short
+    term acute claims of ipBase only (baseF.get_shortTermInpatientOrganizationClaims) and all of opBase.
     If add_comorbidity_info is called multiple times in the same script, prefer building the
     indexes once and calling comorbiditiesF.get_conditions directly to avoid duplicated work.'''
     # a rerun would duplicate the flags on the join back
@@ -727,6 +728,9 @@ def add_comorbidity_info(staysDF, ipBase, opBase, claimType="ip", method="Glashe
         raise ValueError(f"add_comorbidity_info: the dataframe already has {', '.join(existing)}, drop them to recompute.")
     # get_conditions NULLs the flags when hospitalizationsIn12Months is NULL (under 12 months of FFS coverage), so
     # computing it here with the same claimType keeps that gate on the same stay and anchor date
+    # the same short term acute ip claims for the hospitalizations and the dgns, as add_prior_hospitalization_info
+    # counts only those
+    ipBase = baseF.get_shortTermInpatientOrganizationClaims(ipBase)
     staysDF = baseF.add_prior_hospitalization_info(staysDF, ipBase, claimType=claimType)
     opDayDgnsDF = comorbiditiesF.get_dayDgnsDF(opBase)
     ipDayDgnsDF = comorbiditiesF.get_dayDgnsDF(ipBase)

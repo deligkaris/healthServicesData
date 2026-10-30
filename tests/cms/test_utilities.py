@@ -515,8 +515,9 @@ class TestGetLookups:
         # every base has every lookup column plus one no reader uses; 2 claims of beneficiary 1, 1 of beneficiary 2
         schema = StructType([StructField(c, IntegerType(), True) for c in ("DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY")] +
                             [StructField(f"ICD_DGNS_CD{i}", StringType(), True) for i in range(1, 26)] +
-                            [StructField("EXTRA", StringType(), True)])
-        rows = [(b, d, d) + (None,) * 25 + ("x",) for b, d in [(1, 10), (1, 20), (2, 10)]]
+                            [StructField("shortTermInpatientOrganization", IntegerType(), True),
+                             StructField("EXTRA", StringType(), True)])
+        rows = [(b, d, d) + (None,) * 25 + (1, "x") for b, d in [(1, 10), (1, 20), (2, 10)]]
         cmsDFS = {k: spark.createDataFrame(rows, schema=schema) for k in lookupColumns}
         # a beneficiary listed twice does not duplicate claims
         lookups = get_lookups(cmsDFS, spark.createDataFrame([(1,), (1,)], "DSYSRTKY int"))

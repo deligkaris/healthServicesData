@@ -306,9 +306,10 @@ def clean_through_dates(dataframes):
     return dataframes
 
 #the only base columns read by baseF.add_prior_hospitalization_info (ip), comorbiditiesF.get_dayDgnsDF (ip, op)
-#and baseF.add_days_at_home_info (ip, snf, hha, hosp)
+#and baseF.add_days_at_home_info (ip, snf, hha, hosp); the first two keep only the shortTermInpatientOrganization ip
+#claims, days at home all of them
 _dgnsColumns = [f"ICD_DGNS_CD{x}" for x in range(1,26)]
-lookupColumns = {"ipBase":   ["DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY"] + _dgnsColumns,
+lookupColumns = {"ipBase":   ["DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY", "shortTermInpatientOrganization"] + _dgnsColumns,
                  "opBase":   ["DSYSRTKY", "THRU_DT_DAY"] + _dgnsColumns,
                  "snfBase":  ["DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY"],
                  "hhaBase":  ["DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY"],

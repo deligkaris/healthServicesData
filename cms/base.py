@@ -2081,10 +2081,12 @@ def _anchor_columns(claimType, caller):
     return f"{anchor}_DAY", f"{anchor}_MONTH"
 
 def add_prior_hospitalization_info(baseDF, ipBaseDF, claimType="ip"):
-    '''Calculates the number of inpatient claims in the 12 and 6 months prior to the anchor date of the baseDF
-    claim (ip: admission date, op: through date), comparing the inpatient claim through date to the anchor date.
+    '''Calculates the number of short term acute inpatient claims (get_shortTermInpatientOrganizationClaims) in the
+    12 and 6 months prior to the anchor date of the baseDF claim (ip: admission date, op: through date), comparing the
+    inpatient claim through date to the anchor date.
     If there is not enough FFS coverage for a beneficiary, or ffsFirstMonth is missing, then the value is Null.
-    baseDF needs DSYSRTKY, CLAIMNO, ffsFirstMonth and the anchor's _DAY and _MONTH columns.
+    baseDF needs DSYSRTKY, CLAIMNO, ffsFirstMonth and the anchor's _DAY and _MONTH columns, ipBaseDF needs
+    DSYSRTKY, THRU_DT_DAY and shortTermInpatientOrganization.
 
     The 6-month lookback window [1,182] is a strict subset of the 12-month window [1,365], so
     both counts are derived from a single ipBaseDF<->baseDF inner join filtered to the widest
@@ -2098,7 +2100,9 @@ def add_prior_hospitalization_info(baseDF, ipBaseDF, claimType="ip"):
     if existing:
         raise ValueError(f"add_prior_hospitalization_info: the dataframe already has {', '.join(existing)}, drop them "
                          "to recompute (add_comorbidity_info adds them too).")
-    ipBaseDF = ipBaseDF.select(F.col("DSYSRTKY"), F.col("THRU_DT_DAY").alias("ipTHRU_DT_DAY"))
+    #a stay at a rehabilitation, psychiatric, long term care or children's hospital is not a hospitalization
+    ipBaseDF = (get_shortTermInpatientOrganizationClaims(ipBaseDF)
+                .select(F.col("DSYSRTKY"), F.col("THRU_DT_DAY").alias("ipTHRU_DT_DAY")))
 
     #one row per claim, so a claim on several baseDF rows (an admission in two transfers) is not counted twice
     priorHospitalizations = (ipBaseDF.join(baseDF.select("DSYSRTKY",anchorDay,"CLAIMNO").distinct(),
@@ -2224,8 +2228,8 @@ def add_shortTermInpatientOrganization(baseDF):
 
 def get_shortTermInpatientOrganizationClaims(baseDF):
     '''Keeps only the claims of short term inpatient care facilities for adults, and drops the facility type
-    columns that identified them (shortTermInpatientOrganization is constant 1 after the filter, and the
-    excluded facility types are constant 0).
+    columns that identified them (the excluded facility types are constant 0 after the filter).
+    shortTermInpatientOrganization stays, constant 1, so this also runs on claims it already filtered.
 
     Requires add_shortTermInpatientOrganization to have been called first, cms.utilities.add_preliminary_info
     does this for ip and op claims (an op claim can also be at a short term inpatient organization, eg an ED
@@ -2236,9 +2240,13 @@ def get_shortTermInpatientOrganizationClaims(baseDF):
     what consumes them, because add_preliminary_info adds that flag to every ip claim: dropping there would take
     rehabilitation and ltcHospital off cmsDFS["ipBase"], and stays.get_otherStays reads both of them from
     it to split ip stays into ipRehab/ipLtc/ipOther. Here the drops are scoped to the filtered dataframe.'''
+    if "shortTermInpatientOrganization" not in baseDF.columns:
+        raise ValueError("get_shortTermInpatientOrganizationClaims: needs shortTermInpatientOrganization, see "
+                         "add_shortTermInpatientOrganization")
+    #the flag is kept so add_prior_hospitalization_info and stays.add_comorbidity_info can run this on their ip claims
+    #whether or not the caller already did
     baseDF = (baseDF.filter(F.col("shortTermInpatientOrganization")==1)
-                    .drop("shortTermInpatientOrganization",
-                          "rehabilitation", "rehabilitationFromTaxonomyAll", "rehabilitationFromTaxonomyPrimary",
+                    .drop("rehabilitation", "rehabilitationFromTaxonomyAll", "rehabilitationFromTaxonomyPrimary",
                           "rehabilitationFromCCN", "pediatricHospital", "psychiatricHospital", "ltcHospital"))
     return baseDF
 

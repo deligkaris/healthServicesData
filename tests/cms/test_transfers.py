@@ -2627,9 +2627,11 @@ class TestAddPriorHospitalizationInfoTransfers:
         '''ip_days: (DSYSRTKY, THRU_DT_DAY) of the inpatient claims. Returns the input and the output rows by transferType.'''
         from cms.transfers import add_prior_hospitalization_info
         transfers_df = spark.createDataFrame(rows, schema=_FIRST_ADMISSION_SCHEMA)
-        ip_df = spark.createDataFrame([{"DSYSRTKY": b, "THRU_DT_DAY": d} for b, d in ip_days],
+        ip_df = spark.createDataFrame([{"DSYSRTKY": b, "THRU_DT_DAY": d, "shortTermInpatientOrganization": 1}
+                                       for b, d in ip_days],
                                       schema=StructType([StructField("DSYSRTKY", IntegerType(), True),
-                                                         StructField("THRU_DT_DAY", IntegerType(), True)]))
+                                                         StructField("THRU_DT_DAY", IntegerType(), True),
+                                                         StructField("shortTermInpatientOrganization", IntegerType(), True)]))
         result = add_prior_hospitalization_info(transfers_df, ip_df).collect()
         assert len(result) == len(rows)
         return transfers_df, {r["transferType"]: r for r in result}
@@ -2680,7 +2682,7 @@ class TestAddPriorHospitalizationInfoTransfers:
 
     def _ed_inputs(self, spark):
         return (spark.createDataFrame([_transfer_row(TransferType.edToInpatient, 1, 999)], schema=_FIRST_ADMISSION_SCHEMA),
-                spark.createDataFrame([(1, 985)], "DSYSRTKY int, THRU_DT_DAY int"))
+                spark.createDataFrame([(1, 985, 1)], "DSYSRTKY int, THRU_DT_DAY int, shortTermInpatientOrganization int"))
 
     def test_missing_transferType_raises(self, spark):
         from cms.transfers import add_prior_hospitalization_info
@@ -2719,7 +2721,7 @@ class TestAddComorbidityInfoTransfers:
             if r["transferType"] == TransferType.inpatientToInpatient:
                 ip_rows.append({"DSYSRTKY": b, "THRU_DT_DAY": fromThru, "ICD_DGNS_CD1": "I639", "ICD_DGNS_CD2": "J449"})
         return (spark.createDataFrame(rows, schema=_FIRST_ADMISSION_SCHEMA),
-                spark.createDataFrame(ip_rows, schema=self._DGNS_SCHEMA),
+                spark.createDataFrame(ip_rows, schema=self._DGNS_SCHEMA).withColumn("shortTermInpatientOrganization", F.lit(1)),
                 spark.createDataFrame([], schema=self._DGNS_SCHEMA))
 
     def _run(self, spark, rows, extra_ip_rows=(), **kwargs):
@@ -3062,7 +3064,7 @@ class TestTransfersOnLookups:
 
     _BASE_SCHEMA = StructType([StructField(c, IntegerType(), True) for c in ("DSYSRTKY", "ADMSN_DT_DAY", "THRU_DT_DAY")] +
                               [StructField(f"ICD_DGNS_CD{i}", StringType(), True) for i in range(1, 26)] +
-                              [StructField("EXTRA", StringType(), True)])
+                              [StructField("EXTRA", StringType(), True), StructField("shortTermInpatientOrganization", IntegerType(), True)])
 
     def _inputs(self, spark):
         # one transfer of each type (beneficiaries 1, 2); every beneficiary, 99 (no transfer) included, has an inpatient
@@ -3075,7 +3077,7 @@ class TestTransfersOnLookups:
                                            _transfer_row(TransferType.edToInpatient, 2, fromThru)],
                                           schema=_FIRST_ADMISSION_SCHEMA)
         def base(rows):
-            return spark.createDataFrame([(b, adm, thru) + tuple(dgns) + (None,) * (25 - len(dgns)) + ("x",)
+            return spark.createDataFrame([(b, adm, thru) + tuple(dgns) + (None,) * (25 - len(dgns)) + ("x", 1)
                                           for b, adm, thru, dgns in rows], schema=self._BASE_SCHEMA)
         beneficiaries = (1, 2, 99)
         stay = [(b, fromThru + 10, fromThru + 20, []) for b in beneficiaries]
@@ -3125,6 +3127,28 @@ class TestTransfersOnLookups:
         # the stays after the admission were counted
         for r in full.values():
             assert r["homeDays90"] < 90
+
+    def test_non_acute_ip_claims_count_only_in_days_at_home(self, spark):
+        # each patient also has 2 claims at a long term care (or rehab, psychiatric, children's) hospital: an MI 50 days
+        # before the from discharge, neither a hospitalization nor a comorbidity, and a stay after the to discharge,
+        # days away from home
+        from utilities import icd10Day
+        from cms.transfers import add_comorbidity_and_days_at_home_info
+        transfers, cmsDFS = self._inputs(spark)
+        transfers = self._with_days_at_home_columns(transfers)
+        fromThru = icd10Day + 1000
+        nonAcute = spark.createDataFrame([(b, adm, thru, dgns) + (None,) * 24 + ("x", 0)
+                                          for b in (1, 2) for adm, thru, dgns in [(fromThru - 55, fromThru - 50, "I210"),
+                                                                                  (fromThru + 30, fromThru + 40, None)]],
+                                         schema=self._BASE_SCHEMA)
+        def run(ipBase):
+            bases = {**cmsDFS, "ipBase": ipBase}
+            return self._byType(add_comorbidity_and_days_at_home_info(transfers, self._lookups(transfers, bases),
+                                                                      _FULLY_OBSERVED_DAY))
+        acute, withNonAcute = run(cmsDFS["ipBase"]), run(cmsDFS["ipBase"].unionByName(nonAcute))
+        for t, r in withNonAcute.items():
+            assert (r["hospitalizationsIn12Months"], r["myocardialInfraction"]) == (1, 0)
+            assert r["homeDays90"] < acute[t]["homeDays90"]
 
     @pytest.mark.parametrize("lookbackFromReceiving", [False, True])
     def test_comorbidity_and_days_at_home_matches_the_two_calls(self, spark, lookbackFromReceiving):

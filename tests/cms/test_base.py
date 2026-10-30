@@ -2026,7 +2026,7 @@ class TestMortalityFlagConsistency:
 #
 # add_prior_hospitalization_info(baseDF, ipBaseDF) consumes derived columns:
 #   baseDF   -> DSYSRTKY, CLAIMNO, ADMSN_DT_DAY, ADMSN_DT_MONTH, ffsFirstMonth
-#   ipBaseDF -> DSYSRTKY, THRU_DT_DAY
+#   ipBaseDF -> DSYSRTKY, THRU_DT_DAY, shortTermInpatientOrganization
 # These tests build both DataFrames from the real cms.schemas ipBase schema and run
 # the actual date-enrichment pipeline that produces those columns
 # (base.add_admission_date_info for the index stays, utilities.add_through_date_info
@@ -2068,7 +2068,7 @@ def _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs):
         DSYSRTKY must agree on it; the simulated frame is deduped to one row per beneficiary.
     prior_throughs: list of dicts {DSYSRTKY, THRU_DT} -- one row per prior inpatient stay.
         Built from the real ipBase schema, run through add_through_date_info (producing
-        THRU_DT_DAY).
+        THRU_DT_DAY), all at short term acute hospitals (shortTermInpatientOrganization=1).
     """
     from cms.base import add_admission_date_info
     from cms.utilities import add_through_date_info
@@ -2091,7 +2091,7 @@ def _setup_prior_hospitalization_dfs(spark, index_claims, prior_throughs):
 
     ip_rows = [{"DSYSRTKY": p["DSYSRTKY"], "THRU_DT": p["THRU_DT"]} for p in prior_throughs]
     ipBaseDF = make_real_claim_df(spark, "ipBase", ip_rows)
-    ipBaseDF = add_through_date_info(ipBaseDF)
+    ipBaseDF = add_through_date_info(ipBaseDF).withColumn("shortTermInpatientOrganization", F.lit(1))
 
     return baseDF, ipBaseDF
 
@@ -2306,13 +2306,34 @@ class TestAddPriorHospitalizationInfoEndToEnd:
             {"DSYSRTKY": 1, "THRU_DT": 20210221},   # 100 days before -> 6mo + 12mo
             {"DSYSRTKY": 1, "THRU_DT": 20201130},   # 183 days before -> 12mo only
             {"DSYSRTKY": 1, "THRU_DT": 20210601},   # same day -> excluded
-            {"DSYSRTKY": 2, "THRU_DT": 20210221}]))
+            {"DSYSRTKY": 2, "THRU_DT": 20210221}])).withColumn("shortTermInpatientOrganization", F.lit(1))
         r = {row["DSYSRTKY"]: row for row in
              add_prior_hospitalization_info(baseDF, ipBaseDF, claimType="op").collect()}
         assert r[1]["hospitalizationsIn12Months"] == 2
         assert r[1]["hospitalizationsIn6Months"] == 1
         assert r[2]["hospitalizationsIn12Months"] is None
         assert r[2]["hospitalizationsIn6Months"] == 1
+
+    def test_counts_only_short_term_acute_claims(self, spark):
+        # 3 prior ip claims, the one 100 days before at a long term care (or rehab, psychiatric, children's) hospital
+        from cms.base import add_prior_hospitalization_info
+        admsn = 20210601
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(
+            spark,
+            [{"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": admsn, "ffsFirstMonth": _ffs_first_month(admsn, 24)}],
+            [{"DSYSRTKY": 1, "THRU_DT": t} for t in (20210502, 20210221, 20201130)])
+        ipBaseDF = ipBaseDF.withColumn("shortTermInpatientOrganization", (F.col("THRU_DT") != 20210221).cast("int"))
+        r = add_prior_hospitalization_info(baseDF, ipBaseDF).collect()[0]
+        assert (r["hospitalizationsIn12Months"], r["hospitalizationsIn6Months"]) == (2, 1)
+
+    def test_without_the_short_term_flag_raises(self, spark):
+        from cms.base import add_prior_hospitalization_info
+        admsn = 20210601
+        baseDF, ipBaseDF = _setup_prior_hospitalization_dfs(
+            spark, [{"DSYSRTKY": 1, "CLAIMNO": 101, "ADMSN_DT": admsn, "ffsFirstMonth": _ffs_first_month(admsn, 24)}],
+            [{"DSYSRTKY": 1, "THRU_DT": 20210502}])
+        with pytest.raises(ValueError, match="shortTermInpatientOrganization"):
+            add_prior_hospitalization_info(baseDF, ipBaseDF.drop("shortTermInpatientOrganization"))
 
     def test_unsupported_claimType_raises(self, spark):
         from cms.base import add_prior_hospitalization_info
@@ -2508,7 +2529,7 @@ _FACILITY_COLUMNS = ["gachAll", "rachAll", "cahAll", "rehabilitation", "rehabili
                      "rehabilitationFromTaxonomyPrimary", "rehabilitationFromCCN", "pediatricHospital",
                      "psychiatricHospital", "ltcHospital"]
 
-_DROPPED_COLUMNS = ["shortTermInpatientOrganization", "rehabilitation", "rehabilitationFromTaxonomyAll",
+_DROPPED_COLUMNS = ["rehabilitation", "rehabilitationFromTaxonomyAll",
                     "rehabilitationFromTaxonomyPrimary", "rehabilitationFromCCN", "pediatricHospital",
                     "psychiatricHospital", "ltcHospital"]
 
@@ -2558,6 +2579,19 @@ class TestGetShortTermInpatientOrganizationClaims:
         result = self._run(spark, [(1, 1, 0, 0, 0, 0, 0, 0)])
         for c in ("CLAIMNO", "gachAll", "rachAll", "cahAll"):
             assert c in result.columns
+
+    def test_keeps_the_flag_so_it_runs_again_on_its_output(self, spark):
+        from cms.base import get_shortTermInpatientOrganizationClaims
+        once = self._run(spark, [(1, 1, 0, 0, 0, 0, 0, 0), (2, 0, 0, 0, 0, 0, 0, 0), (3, 1, 0, 0, 0, 0, 0, 1)])
+        assert [r["shortTermInpatientOrganization"] for r in once.collect()] == [1]
+        twice = get_shortTermInpatientOrganizationClaims(once)
+        assert twice.columns == once.columns
+        assert twice.collect() == once.collect()
+
+    def test_without_the_flag_raises(self, spark):
+        from cms.base import get_shortTermInpatientOrganizationClaims
+        with pytest.raises(ValueError, match="shortTermInpatientOrganization"):
+            get_shortTermInpatientOrganizationClaims(_make_facility_df(spark, [(1, 1, 0, 0, 0, 0, 0, 0)]))
 
     def test_mixed_rows(self, spark):
         rows = [(1, 1, 0, 0, 0, 0, 0, 0),   # gach, keep
