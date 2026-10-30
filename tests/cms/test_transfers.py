@@ -953,6 +953,38 @@ class TestAddFirstTransfer:
         assert out == {"a1": 1, "a2": 1, "a3": 0}
 
 
+def make_first_transfer_year_df(spark, rows):
+    """rows: list of (fromDSYSRTKY, fromTHRU_DT_DAY, fromCLAIMNO, fromTHRU_DT_YEAR) tuples."""
+    schema = StructType(_first_transfer_schema().fields + [StructField("fromTHRU_DT_YEAR", IntegerType(), True)])
+    data = [{"fromDSYSRTKY": d, "fromTHRU_DT_DAY": t, "fromCLAIMNO": c, "fromTHRU_DT_YEAR": y} for d, t, c, y in rows]
+    return spark.createDataFrame(data, schema=schema)
+
+
+class TestAddFirstTransferAfterYear:
+
+    def test_counts_through_after_year(self, spark):
+        # a1 through 2016 is before the events, a2 is the first through 2017
+        from cms.transfers import add_firstTransfer
+        df = make_first_transfer_year_df(spark, [
+            (1, 100, "a1", 2016),
+            (1, 400, "a2", 2017),
+            (1, 500, "a3", 2017),
+        ])
+        out = {r["fromCLAIMNO"]: r["firstTransfer"] for r in add_firstTransfer(df, afterYear=2016).collect()}
+        assert out == {"a1": 0, "a2": 1, "a3": 0}
+
+    def test_no_transfer_after_year_is_0(self, spark):
+        from cms.transfers import add_firstTransfer
+        df = make_first_transfer_year_df(spark, [(1, 100, "a1", 2016)])
+        assert add_firstTransfer(df, afterYear=2016).collect()[0]["firstTransfer"] == 0
+
+    def test_no_after_year_unchanged(self, spark):
+        from cms.transfers import add_firstTransfer
+        df = make_first_transfer_year_df(spark, [(1, 100, "a1", 2016), (1, 500, "a2", 2017)])
+        out = {r["fromCLAIMNO"]: r["firstTransfer"] for r in add_firstTransfer(df).collect()}
+        assert out == {"a1": 1, "a2": 0}
+
+
 # ============================================================
 # Helper for closest-claim / clean-transfers / get_clean_transfers
 # tests. These functions operate on a DF that already has from*
@@ -2454,6 +2486,22 @@ class TestGetTransfersFromSingleProviderStays:
         result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient).collect()
         by_claim = {r["fromCLAIMNO"]: r["firstTransfer"] for r in result}
         assert by_claim == {11: 1, 12: 0}
+
+    def test_first_transfer_after_year_keeps_priors(self, spark):
+        # A 2016 transfer is no one's first transfer but feeds the 2017 dyad prior
+        from cms.transfers import get_transfers
+        from_df = self._from_df(spark, [
+            _stay(1, 11, 20160110, 20160115),
+            _stay(1, 12, 20170210, 20170215),
+        ])
+        to_df = self._to_df(spark, [
+            _stay(1, 21, 20160115, 20160120),
+            _stay(1, 22, 20170215, 20170220),
+        ])
+        result = get_transfers(fromStaysDf=from_df, toStaysDf=to_df, transferType=TransferType.inpatientToInpatient,
+                               firstTransferAfterYear=2016).collect()
+        by_claim = {r["fromCLAIMNO"]: (r["firstTransfer"], r["dyadProportionTransfersOutPrior"]) for r in result}
+        assert by_claim == {11: (0, None), 12: (1, pytest.approx(1.0))}
 
     def test_node_and_dyad_volumes_populated(self, spark):
         # Three patients each transfer once from A to B in 2020 -> nodeOutVol = 3,

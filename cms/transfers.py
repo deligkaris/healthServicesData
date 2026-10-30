@@ -56,12 +56,14 @@ def get_clean_transfers(transfersDF):
     transfersDF = remove_uncertain_transfers(transfersDF)
     return transfersDF
 
-def get_transfers(*, fromStaysDf, toStaysDf, transferType):
+def get_transfers(*, fromStaysDf, toStaysDf, transferType, firstTransferAfterYear=None):
     '''Takes two dataframes, one that represents stays in the from provider and another one that represents stays in the to provider.
     Merges the two dataframes to create transfers from the from provider to the to provider.
     transferType is a TransferType member describing the origin->destination setting of this whole
     dataframe -- it is a property of fromStaysDf (all-OP-ED vs all-IP), known here to the caller, not
     derivable per row -- and is stamped on every transfer (see add_transferType).
+    firstTransferAfterYear is passed to add_firstTransfer as afterYear, so the stays up to it can feed the node/dyad
+    priors without being anyone's first transfer.
     firstTransfer and the node/dyad columns describe this transfer set only; they stay per-set after a
     union of sets, so do not recompute them on the union.
     The node/dyad columns count every transfer in the set, a patient's repeat transfers included, so after a filter
@@ -77,7 +79,7 @@ def get_transfers(*, fromStaysDf, toStaysDf, transferType):
                              how = "inner") #drop any claims that do not match
     transfersDF = get_clean_transfers(transfersDF)
     transfersDF = add_transferType(transfersDF, transferType)
-    transfersDF = add_firstTransfer(transfersDF)
+    transfersDF = add_firstTransfer(transfersDF, afterYear=firstTransferAfterYear)
     transfersDF = add_node_and_dyad_info(transfersDF)
     return transfersDF
 
@@ -93,13 +95,18 @@ def add_transferType(transfersDF, transferType):
     per row.'''
     return transfersDF.withColumn("transferType", F.lit(int(transferType)))
 
-def add_firstTransfer(transfersDF):
+def add_firstTransfer(transfersDF, afterYear=None):
     '''Adds firstTransfer: 1 for the patient's earliest transfer (min fromTHRU_DT_DAY) within this set of
     transfers -- the one get_transfers call / transferType -- not across all transfer types, so after an
     edToInpatient + inpatientToInpatient union a patient can have firstTransfer=1 in each set.
+    With afterYear, only the transfers with fromTHRU_DT_YEAR after afterYear count, the rest are 0.
     Assumes that get_clean_transfers has been run on the transferDF.'''
     eachDsysrtky=Window.partitionBy("fromDSYSRTKY")
-    transfersDF = transfersDF.withColumn("firstTransfer", (F.col("fromTHRU_DT_DAY") == F.min(F.col("fromTHRU_DT_DAY")).over(eachDsysrtky)).cast('int') )
+    #the transfer's year, the one the node/dyad columns use; a stay discharged after afterYear can be admitted in it, so
+    #its lookbacks (see _on_first_admission) can reach afterYear-1, load that year too
+    day = F.col("fromTHRU_DT_DAY") if afterYear is None else F.when(F.col("fromTHRU_DT_YEAR") > afterYear, F.col("fromTHRU_DT_DAY"))
+    #a transfer that does not count has a null day, so a null comparison, 0
+    transfersDF = transfersDF.withColumn("firstTransfer", F.coalesce(day == F.min(day).over(eachDsysrtky), F.lit(False)).cast('int'))
     return transfersDF
 
 #transfer-level stroke flags

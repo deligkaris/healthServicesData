@@ -344,7 +344,7 @@ get_data_dictionary <- function() {
     # transfer set = one get_transfers call (ED->IP or IP->IP); entries are per transfer set unless they say
     # pooled; fromproviderAnnualDischarges/Admissions and toproviderAnnualAdmissions count the hospital's stays, not transfers
     "transferType",    "Transfer set the row belongs to: 1=ED->IP (ED visit to inpatient admission), 2=IP->IP (inpatient to inpatient)",
-    "firstTransfer",   "1 if this is the patient's earliest transfer (min from-through-day) within its transfer set (ED->IP or IP->IP), else 0",
+    "firstTransfer",   "1 if this is the patient's earliest transfer (min from-through-day) within its transfer set (ED->IP or IP->IP), else 0; when built with a year, the earliest of the transfers with a from-through year after it, 0 for the others",
     "nodeOutVol",      "Sending hospital: transfers sent out that year within its transfer set",
     "nodeInVol",       "Receiving hospital: transfers received that year within its transfer set",
     "nodeOutVolPrior", "Prior-year value of nodeOutVol (0 if it sent none that year; NULL in the hospital's first observed year)",
