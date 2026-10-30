@@ -63,7 +63,9 @@ def get_transfers(*, fromStaysDf, toStaysDf, transferType):
     dataframe -- it is a property of fromStaysDf (all-OP-ED vs all-IP), known here to the caller, not
     derivable per row -- and is stamped on every transfer (see add_transferType).
     firstTransfer and the node/dyad columns describe this transfer set only; they stay per-set after a
-    union of sets, so do not recompute them on the union.'''
+    union of sets, so do not recompute them on the union.
+    The node/dyad columns count every transfer in the set, a patient's repeat transfers included, so after a filter
+    on firstTransfer they still count the dropped rows; rerun add_node_and_dyad_info to count only the kept ones.'''
     # rename the dataframe columns because pandas cannot handle two columns with the same name, just in case pd is used in analysis
     toStaysDf = toStaysDf.toDF(*("to"+c for c in toStaysDf.columns))
     fromStaysDf = fromStaysDf.toDF(*("from"+c for c in fromStaysDf.columns))
