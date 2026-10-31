@@ -467,12 +467,12 @@ resolve_dictionary_column <- function(column, entries = get_data_dictionary()$co
 # Receiving when matched without their from/to prefix, led by the suffix when matched as an entry plus a suffix; NA if
 # no entry resolves the column.
 describe_columns <- function(columns, dictionary = get_data_dictionary()) {
-  sides <- c(from = "Sending — ", to = "Receiving — ")
+  sides <- c(from = "Sending \u2014 ", to = "Receiving \u2014 ")
   vapply(columns, function(column) {
     r <- resolve_dictionary_column(column, dictionary$column)
     if (is.na(r[["base"]])) return(NA_character_)
     description <- dictionary$description[match(r[["base"]], dictionary$column)]
-    if (r[["suffix"]] != "") description <- paste0(r[["suffix"]], " — ", description)
+    if (r[["suffix"]] != "") description <- paste0(r[["suffix"]], " \u2014 ", description)
     if (r[["prefix"]] != "") description <- paste0(sides[[r[["prefix"]]]], description)
     description
   }, character(1), USE.NAMES = FALSE)
