@@ -499,3 +499,31 @@ check_data_dictionary <- function(columns, dictionary = get_data_dictionary()) {
     )
   )
 }
+
+# One row per column of df (a data frame): its type (first class), its description (describe_columns) and
+# levels_or_range, the sorted distinct values of a character, factor or logical column (their count when more than
+# maxLevels) or the range of a numeric (to digits significant digits), Date or date-time column; NA when the column has
+# no value or is of another type (eg a list).
+get_column_summary <- function(df, dictionary = get_data_dictionary(), maxLevels = 15, digits = 4) {
+  summarize_values <- function(x) {
+    if (is.factor(x) || is.character(x) || is.logical(x)) {
+      values <- unique(as.character(x[!is.na(x)]))
+      if (length(values) == 0) return(NA_character_)
+      if (length(values) > maxLevels) return(paste0(length(values), " unique values"))
+      return(paste(sort(values), collapse = ", "))
+    }
+    if (!is.numeric(x) && !inherits(x, c("Date", "POSIXt"))) return(NA_character_)
+    x <- x[!is.na(x)]
+    # range() of no values warns and gives [Inf, -Inf], eg a right-censored outcome that is NULL in every row
+    if (length(x) == 0) return(NA_character_)
+    limits <- range(x)
+    if (is.numeric(x)) limits <- signif(limits, digits)
+    sprintf("[%s, %s]", format(limits[1]), format(limits[2]))
+  }
+  tibble::tibble(
+    variable        = names(df),
+    type            = vapply(df, function(x) class(x)[1], character(1), USE.NAMES = FALSE),
+    description     = describe_columns(names(df), dictionary),
+    levels_or_range = vapply(df, summarize_values, character(1), USE.NAMES = FALSE)
+  )
+}
