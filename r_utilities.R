@@ -6,6 +6,7 @@
 # (same beneficiary on both sides). *_DAY / *_MONTH are cumulative counters across study years; *_YEAR is calendar year.
 # <Name><Suffix> (transfers.add_dyad_annual_info) = <Name> computed on another transfer set, eg <Name>AllTransfers on
 # all IP->IP transfers rather than this cohort.
+# <Name>Prior = <Name> in the year before (most via utilities.add_column_prior); each row says when it is 0 or NULL.
 # Right-censoring: follow-up outcomes (mortality flags, losAt*, homeDays*) are NULL -- not 0 -- when their
 # window extends past the last day of the loaded data (cms.utilities.get_lastObservableDay).
 get_data_dictionary <- function() {
@@ -52,6 +53,7 @@ get_data_dictionary <- function() {
     # ---- diagnoses / present-on-admission ----
     "ADMTG_DGNS_CD",   "Admitting diagnosis (ICD-10)",
     "PRNCPAL_DGNS_CD", "Principal diagnosis (ICD-10)",
+    "septicShock",     "Septic shock (ICD-10 R65.21) among the claim's 25 diagnosis codes (0/1)",
     "shockPoa",        "Shock present-on-admission (0/1)",
     "acuteRespiratoryFailurePoa","Acute respiratory failure POA (0/1)",
     "acuteNeurologicalFailurePoa","Acute neurological failure POA (0/1)",
@@ -289,10 +291,10 @@ get_data_dictionary <- function() {
     "mri",             "MRI revenue center present (0/1)",
     "ct",              "CT revenue center present (0/1)",
     "icu",             "ICU revenue center present (0/1)",
-    "prior",           "Prior-year value of the associated claim/revenue flag (lag by provider/year)",
 
     # ---- procedures / outcomes (receiving claim only) ----
     "ecmo",            "ECMO performed (0/1)",
+    "imv",             "Invasive mechanical ventilation performed (ICD-10-PCS 5A1935Z, 5A1945Z or 5A1955Z) (0/1)",
     "rrt",             "RRT performed (0/1)",
     "endoscopy",       "Endoscopy performed (0/1)",
     "majorDiagnosticOrTherapeuticOrProcedures","Any HCUP class 3/4 major OR procedure (0/1)",
@@ -319,18 +321,25 @@ get_data_dictionary <- function() {
 
     # ---- provider capability / volume (sepsis-shock cohort) ----
     # AnnualCapability = performed it at least once that year (each year independent, does not carry forward);
-    # EverCapability = performed it in any year up to and including this one (never resets, no backfill).
+    # EverCapability = performed it in any year up to and including this one (never resets, no backfill);
+    # AnnualVolume = its stays that year with it (each year independent).
     "providerSepticShockAnnualVolume","Hospital septic-shock case volume that year",
     "providerSepticShockAnnualVolumePrior","Hospital prior-year septic-shock volume",
     "providerImvAnnualCapability","Hospital invasive mechanical ventilation capability that year (0/1)",
     "providerImvAnnualCapabilityPrior","Hospital prior-year IMV capability (0/1)",
     "providerImvEverCapability","Hospital IMV capability observed in this or any earlier year (0/1)",
+    "providerImvAnnualVolume","Hospital IMV case volume that year",
+    "providerImvAnnualVolumePrior","Hospital prior-year IMV volume",
     "providerRrtAnnualCapability","Hospital renal replacement therapy capability that year (0/1)",
     "providerRrtAnnualCapabilityPrior","Hospital prior-year RRT capability (0/1)",
     "providerRrtEverCapability","Hospital RRT capability observed in this or any earlier year (0/1)",
+    "providerRrtAnnualVolume","Hospital RRT case volume that year",
+    "providerRrtAnnualVolumePrior","Hospital prior-year RRT volume",
     "providerMajorDiagnosticOrTherapeuticOrProceduresAnnualCapability","Hospital major OR-procedure capability that year (0/1)",
     "providerMajorDiagnosticOrTherapeuticOrProceduresAnnualCapabilityPrior","Hospital prior-year major OR-procedure capability (0/1)",
     "providerMajorDiagnosticOrTherapeuticOrProceduresEverCapability","Hospital major OR-procedure capability observed in this or any earlier year (0/1)",
+    "providerMajorDiagnosticOrTherapeuticOrProceduresAnnualVolume","Hospital major OR-procedure case volume that year",
+    "providerMajorDiagnosticOrTherapeuticOrProceduresAnnualVolumePrior","Hospital prior-year major OR-procedure volume",
 
     # ---- provider volume (stroke cohort) ----
     "providerIshStrokeAnnualVolume","Hospital ischemic-stroke case volume that year",
@@ -388,7 +397,6 @@ get_data_dictionary <- function() {
     "dyadAcrossStates","1 if sending & receiving in different states, 0 same (NULL if missing)",
     "nodeHhi",         "Sending hospital: Herfindahl index of outgoing-transfer concentration within its transfer set (1=all to one dest)",
     "nodeHhiPrior",    "Prior-year value of nodeHhi",
-    "prior (network)", "Prior-year marker used by the network *Prior lags (1-year lag); distinct from the from/to claim 'prior'",
 
     # ---- patient comorbidity & hospitalization history (transferred beneficiary, at the episode's first inpatient admission: receiving stay for ED->IP, sending stay for IP->IP) ----
     # ---- with transfers add_comorbidity_info(lookbackFromReceiving=True) the IP->IP comorbidity flags look back from the receiving stay's discharge, both stays' principal dgns left out; the hospitalization counts stay on the sending stay ----
@@ -429,5 +437,65 @@ get_data_dictionary <- function() {
     "dyadDrivingDistanceKm","Road driving distance from the sending to the receiving hospital, Google Routes API without traffic (km)",
     "dyadDrivingTimeMin","Road driving time from the sending to the receiving hospital, Google Routes API without traffic (minutes)",
     "dyadDrivingStatus","Google Routes API status for the dyad: OK, or ZERO_RESULTS when no road connects them (NA if a hospital was not geocoded)"
+  )
+}
+
+# The dictionary entry a column name resolves to, as c(base, suffix, prefix): the name itself (prefix "") or the name
+# without its from/to prefix (prefix "from" or "to"), with suffix ""; else the longest entry the name starts with followed
+# by a capitalized suffix (eg nodeOutVol and AllTransfers for nodeOutVolAllTransfers); NA for all three if none.
+resolve_dictionary_column <- function(column, entries = get_data_dictionary()$column) {
+  side <- regmatches(column, regexpr("^(from|to)", column))
+  candidates <- c(column, if (length(side) > 0) substring(column, nchar(side) + 1))
+  prefixes <- c("", side)
+  # an exact match on either candidate wins over a suffix match on the other, eg fromproviderAnnualDischarges is an entry
+  for (i in seq_along(candidates)) {
+    if (candidates[i] %in% entries) return(c(base = candidates[i], suffix = "", prefix = prefixes[i]))
+  }
+  for (i in seq_along(candidates)) {
+    candidate <- candidates[i]
+    bases <- entries[startsWith(candidate, entries) & nchar(entries) < nchar(candidate)]
+    if (length(bases) == 0) next
+    bases <- bases[grepl("^[A-Z]", substring(candidate, nchar(bases) + 1))]
+    if (length(bases) == 0) next
+    base <- bases[which.max(nchar(bases))]
+    return(c(base = base, suffix = substring(candidate, nchar(base) + 1), prefix = prefixes[i]))
+  }
+  c(base = NA_character_, suffix = NA_character_, prefix = NA_character_)
+}
+
+# Descriptions of columns (eg names(df)) from their dictionary entries (resolve_dictionary_column): tagged Sending or
+# Receiving when matched without their from/to prefix, led by the suffix when matched as an entry plus a suffix; NA if
+# no entry resolves the column.
+describe_columns <- function(columns, dictionary = get_data_dictionary()) {
+  sides <- c(from = "Sending — ", to = "Receiving — ")
+  vapply(columns, function(column) {
+    r <- resolve_dictionary_column(column, dictionary$column)
+    if (is.na(r[["base"]])) return(NA_character_)
+    description <- dictionary$description[match(r[["base"]], dictionary$column)]
+    if (r[["suffix"]] != "") description <- paste0(r[["suffix"]], " — ", description)
+    if (r[["prefix"]] != "") description <- paste0(sides[[r[["prefix"]]]], description)
+    description
+  }, character(1), USE.NAMES = FALSE)
+}
+
+# Checks columns (eg names(df)) against the dictionary: list(undocumented = the columns no entry resolves,
+# suffixes = one row per suffix with its column count and the entries it follows).
+check_data_dictionary <- function(columns, dictionary = get_data_dictionary()) {
+  # a suffix match is reported rather than counted as documented: a suffix can name another transfer set
+  # (add_dyad_annual_info), but it can also be a new column built on an old name (eg edInClaim) that needs its own entry
+  resolved <- vapply(columns, resolve_dictionary_column, c(base = "", suffix = "", prefix = ""),
+                     entries = dictionary$column, USE.NAMES = FALSE)
+  bases <- resolved["base", ]
+  suffixes <- resolved["suffix", ]
+  matched <- !is.na(suffixes) & suffixes != ""
+  distinct <- unique(suffixes[matched])
+  list(
+    undocumented = tibble::tibble(column = columns[is.na(bases)]),
+    suffixes = tibble::tibble(
+      suffix  = distinct,
+      columns = vapply(distinct, function(s) sum(matched & suffixes == s), integer(1), USE.NAMES = FALSE),
+      bases   = vapply(distinct, function(s) paste(unique(bases[matched & suffixes == s]), collapse = ", "),
+                       character(1), USE.NAMES = FALSE)
+    )
   )
 }
