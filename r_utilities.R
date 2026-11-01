@@ -570,3 +570,46 @@ get_sas_names <- function(columns) {
   if (length(problems) > 0) stop("get_sas_names: ", paste(problems, collapse = "; "), call. = FALSE)
   tibble::tibble(original = columns, sas_name = sasNames)
 }
+
+# Columns a descriptive summary leaves out by default (get_summary_columns), as base names matched with or without a
+# from/to prefix, or as whole names (toTHRU_DT_YEAR): identifiers, dates and day counters, geographic codes and
+# coordinates, names and addresses, diagnosis and DRG codes.
+get_summary_excluded_columns <- function() {
+  # listed even when a character column with many values would be dropped anyway, as the type in the parquet varies
+  # (eg a code read as a number would be summarized as a meaningless mean)
+  c(
+    # identifiers
+    "dyad", "ORGNPINM", "PROVIDER", "CLAIMNO", "DSYSRTKY", "ahaSystemMemberId", "providerSysId",
+    # dates, day and month counters; the receiving years repeat the sending ones
+    "THRU_DT", "THRU_DT_DAY", "THRU_DT_MONTH", "ADMSN_DT", "ADMSN_DT_DAY", "ADMSN_DT_MONTH", "DSCHRGDT", "DSCHRGDT_DAY",
+    "DEATH_DT", "DEATH_DT_DAY", "DEATH_DT_YEAR", "toTHRU_DT_YEAR", "toADMSN_DT_YEAR", "toDSCHRGDT_YEAR",
+    # geography
+    "fipsCounty", "ssaCounty", "fipsState", "CNTY_CD", "STATE_CD", "PRSTATE", "mbsfFipsCounty", "providerFIPS",
+    "providerStateFIPS", "providerState", "providerCountyName", "providerZip", "providerHrrCity",
+    "providerCensusBlockGroup", "providerLat", "providerLng", "ahaProviderLat", "ahaProviderLong",
+    # names and addresses
+    "providerName", "providerOtherName", "providerAddress",
+    # codes
+    "ADMTG_DGNS_CD", "PRNCPAL_DGNS_CD", "DRG_CD",
+    # other
+    "providerNumberOfResidents", "mbsfMeanContinuousFfsAndRfrncYrForCountyYear"
+  )
+}
+
+# The columns of df (a data frame) a descriptive summary (eg gtsummary::tbl_summary) uses, as list(keep = their names,
+# dropped = tibble(column, reason)): reason is "excluded" when the column, or its name without a from/to prefix, is in
+# exclude, "list" for a list column, "levels" for a character or factor column with more than maxLevels values.
+get_summary_columns <- function(df, maxLevels = 60, exclude = get_summary_excluded_columns()) {
+  # 60 keeps a state column (the states, DC and the territories) and drops names, addresses, ZIPs and codes
+  reasons <- vapply(names(df), function(column) {
+    x <- df[[column]]
+    if (column %in% exclude || sub("^(from|to)", "", column) %in% exclude) return("excluded")
+    if (is.list(x)) return("list")
+    if ((is.character(x) || is.factor(x)) && length(unique(x[!is.na(x)])) > maxLevels) return("levels")
+    NA_character_
+  }, character(1), USE.NAMES = FALSE)
+  list(
+    keep    = names(df)[is.na(reasons)],
+    dropped = tibble::tibble(column = names(df)[!is.na(reasons)], reason = reasons[!is.na(reasons)])
+  )
+}
