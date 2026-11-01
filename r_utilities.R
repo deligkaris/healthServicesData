@@ -483,8 +483,9 @@ describe_columns <- function(columns, dictionary = get_data_dictionary()) {
 check_data_dictionary <- function(columns, dictionary = get_data_dictionary()) {
   # a suffix match is reported rather than counted as documented: a suffix can name another transfer set
   # (add_dyad_annual_info), but it can also be a new column built on an old name (eg edInClaim) that needs its own entry
+  # USE.NAMES left TRUE: with FALSE vapply also drops the base/suffix/prefix row names indexed below
   resolved <- vapply(columns, resolve_dictionary_column, c(base = "", suffix = "", prefix = ""),
-                     entries = dictionary$column, USE.NAMES = FALSE)
+                     entries = dictionary$column)
   bases <- resolved["base", ]
   suffixes <- resolved["suffix", ]
   matched <- !is.na(suffixes) & suffixes != ""
