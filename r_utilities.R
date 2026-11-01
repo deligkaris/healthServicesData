@@ -527,3 +527,46 @@ get_column_summary <- function(df, dictionary = get_data_dictionary(), maxLevels
     levels_or_range = vapply(df, summarize_values, character(1), USE.NAMES = FALSE)
   )
 }
+
+# Names SAS accepts for columns (eg names(df)), as tibble(original, sas_name): at most 32 characters, a letter or
+# underscore then letters, digits or underscores, unique ignoring case. Stops naming the columns that break a rule.
+get_sas_names <- function(columns) {
+  # applied in order, so a pattern comes before a shorter one it contains (SepticShockAnnualVolume before AnnualVolume,
+  # fromprovider before ^from); a new long column gets a rule here rather than a truncated name in the export
+  rules <- c(
+    "[Mm]ajorDiagnosticOrTherapeuticOrProcedures"  = "MDTP",
+    "mbsfMeanContinuousFfsAndRfrncYrForCountyYear" = "mbsfMeanCtsFfs",
+    "RuralVersusUrbanIsRural"                      = "IsRural",
+    "365DaysAfterAdmissionDateDead"                = "Dead365d",
+    "transferFromDifferentFacility"                = "XferFromDiffFac",
+    "shortTermInpatientOrganization"               = "ShortTermInptOrg",
+    "SepticShockAnnualVolume"                      = "SepShkAnnVol",
+    "ImvAnnualCapability"                          = "ImvAnnCap",
+    "RrtAnnualCapability"                          = "RrtAnnCap",
+    "EverCapability"                               = "EverCap",
+    "AnnualCapability"                             = "AnnCap",
+    "AnnualVolume"                                 = "AnnVol",
+    "ProportionTransfers"                          = "PropXfers",
+    "ProportionTransferred"                        = "PropXfrd",
+    "AllTransfers"                                 = "AllXfers",
+    "Prior"                                        = "Pr",
+    "fromprovider"                                 = "fp",
+    "toprovider"                                   = "tp",
+    "^from"                                        = "f",
+    "^to"                                          = "t",
+    "^dyad"                                        = "d"
+  )
+  sasNames <- columns
+  for (pattern in names(rules)) sasNames <- gsub(pattern, rules[[pattern]], sasNames)
+  tooLong <- nchar(sasNames) > 32
+  invalid <- !grepl("^[A-Za-z_][A-Za-z0-9_]*$", sasNames)
+  # SAS names ignore case, so ImvX and imvX would be one variable
+  repeated <- duplicated(tolower(sasNames)) | duplicated(tolower(sasNames), fromLast = TRUE)
+  problems <- c(
+    if (any(tooLong)) paste0("over 32 characters: ", paste(columns[tooLong], collapse = ", ")),
+    if (any(invalid)) paste0("not a valid SAS name: ", paste(columns[invalid], collapse = ", ")),
+    if (any(repeated)) paste0("same SAS name as another column: ", paste(columns[repeated], collapse = ", "))
+  )
+  if (length(problems) > 0) stop("get_sas_names: ", paste(problems, collapse = "; "), call. = FALSE)
+  tibble::tibble(original = columns, sas_name = sasNames)
+}
