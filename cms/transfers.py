@@ -131,6 +131,27 @@ def add_transferEvtOrTpa(transfersDF):
     column summed in add_node_stroke_treatment_info) and transfertpa (add_transfertpa). Requires both.'''
     return transfersDF.withColumn("transferEvtOrTpa", F.when( (F.col("toevt")==1) | (F.col("transfertpa")==1), 1).otherwise(0))
 
+def _received(col):
+    # a null is not received, as in add_transferEvtOrTpa, so the four treatment groups below always partition the
+    # transfers and transferNoEvtNorTpa == 1 - transferEvtOrTpa
+    return F.coalesce(F.col(col) == 1, F.lit(False))
+
+def add_transferTpaOnly(transfersDF):
+    '''Adds transferTpaOnly: 1 if the transfer got tPA (transfertpa) and not EVT (toevt), else 0.'''
+    return transfersDF.withColumn("transferTpaOnly", (_received("transfertpa") & ~_received("toevt")).cast('int'))
+
+def add_transferEvtOnly(transfersDF):
+    '''Adds transferEvtOnly: 1 if the transfer got EVT (toevt) and not tPA (transfertpa), else 0.'''
+    return transfersDF.withColumn("transferEvtOnly", (_received("toevt") & ~_received("transfertpa")).cast('int'))
+
+def add_transferEvtAndTpa(transfersDF):
+    '''Adds transferEvtAndTpa: 1 if the transfer got both EVT (toevt) and tPA (transfertpa), else 0.'''
+    return transfersDF.withColumn("transferEvtAndTpa", (_received("toevt") & _received("transfertpa")).cast('int'))
+
+def add_transferNoEvtNorTpa(transfersDF):
+    '''Adds transferNoEvtNorTpa: 1 if the transfer got neither EVT (toevt) nor tPA (transfertpa), else 0.'''
+    return transfersDF.withColumn("transferNoEvtNorTpa", (~_received("toevt") & ~_received("transfertpa")).cast('int'))
+
 def add_stroke_info(transfersDF):
     '''Adds transfer-level stroke flags and their node/dyad aggregates. Run it on each transfer set before
     any union so the aggregates stay per-set, like those get_transfers adds.'''
@@ -138,6 +159,10 @@ def add_stroke_info(transfersDF):
     transfersDF = add_transfermri(transfersDF)
     transfersDF = add_transfertpa(transfersDF)
     transfersDF = add_transferEvtOrTpa(transfersDF)
+    transfersDF = add_transferTpaOnly(transfersDF)
+    transfersDF = add_transferEvtOnly(transfersDF)
+    transfersDF = add_transferEvtAndTpa(transfersDF)
+    transfersDF = add_transferNoEvtNorTpa(transfersDF)
     transfersDF = add_transfernihss(transfersDF)
     transfersDF = add_transfernihssGroup(transfersDF)
     transfersDF = add_node_stroke_treatment_info(transfersDF)
@@ -302,7 +327,9 @@ def add_node_in_by_type_info(transfersDF, *, transferTypes):
 
 def add_node_stroke_treatment_info(transfersDF):
     '''Stroke treatment refers to evt, tpa columns, adds stroke treatment infor volume and mean for both from and to nodes.
-    The to-side window keys on fromTHRU_DT_YEAR for year-basis consistency with the dyad (see add_dyad).'''
+    The to-side window keys on fromTHRU_DT_YEAR for year-basis consistency with the dyad (see add_dyad).
+    Requires toevt, transfertpa, transferEvtOrTpa and the four treatment group flags (add_transferTpaOnly,
+    add_transferEvtOnly, add_transferEvtAndTpa, add_transferNoEvtNorTpa).'''
     eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
     eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
     transfersDF = (transfersDF.withColumn("nodeFromEvtVol", F.sum( F.col("toevt") ).over(eachFromProvider))
@@ -314,6 +341,7 @@ def add_node_stroke_treatment_info(transfersDF):
                               .withColumn("nodeToEvtMean", F.mean( F.col("toevt")).over(eachToProvider))
                               .withColumn("nodeToTpaMean", F.mean( F.col("transfertpa")).over(eachToProvider)))
     transfersDF = add_node_evtOrTpa_info(transfersDF)
+    transfersDF = add_node_treatment_group_info(transfersDF)
     return transfersDF
 
 def add_node_evtOrTpa_info(transfersDF):
@@ -326,6 +354,23 @@ def add_node_evtOrTpa_info(transfersDF):
                               .withColumn("nodeFromEvtOrTpaMean", F.mean( F.col("transferEvtOrTpa") ).over(eachFromProvider))
                               .withColumn("nodeToEvtOrTpaVol", F.sum( F.col("transferEvtOrTpa") ).over(eachToProvider))
                               .withColumn("nodeToEvtOrTpaMean", F.mean( F.col("transferEvtOrTpa") ).over(eachToProvider)))
+    return transfersDF
+
+def add_node_treatment_group_info(transfersDF):
+    '''Adds nodeFrom<Group>Vol/Mean and nodeTo<Group>Vol/Mean for Group in TpaOnly, EvtOnly, EvtAndTpa and NoEvtNorTpa:
+    per provider-year, the number and share of the sending provider's transfers out, and of the receiving provider's
+    transfers in, in each treatment group. Requires the transfer<Group> flags (add_transferTpaOnly, add_transferEvtOnly,
+    add_transferEvtAndTpa, add_transferNoEvtNorTpa).'''
+    #the groups partition the transfers, so each provider's four Means sum to 1; the to-side window keys on
+    #fromTHRU_DT_YEAR, as in add_node_evtOrTpa_info
+    eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
+    for group in ["TpaOnly", "EvtOnly", "EvtAndTpa", "NoEvtNorTpa"]:
+        flag = F.col("transfer" + group)
+        transfersDF = (transfersDF.withColumn(f"nodeFrom{group}Vol", F.sum(flag).over(eachFromProvider))
+                                  .withColumn(f"nodeFrom{group}Mean", F.mean(flag).over(eachFromProvider))
+                                  .withColumn(f"nodeTo{group}Vol", F.sum(flag).over(eachToProvider))
+                                  .withColumn(f"nodeTo{group}Mean", F.mean(flag).over(eachToProvider)))
     return transfersDF
 
 def add_node_revenue_info(transfersDF):

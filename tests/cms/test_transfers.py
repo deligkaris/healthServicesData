@@ -807,6 +807,45 @@ class TestAddTransferEvtOrTpa:
         assert "transferEvtOrTpa" in add_transferEvtOrTpa(df).columns
 
 
+# (toevt, transfertpa) combinations, nulls included; a null counts as not received.
+_TREATMENT_ROWS = [(0, 0), (1, 0), (0, 1), (1, 1), (None, 0), (0, None), (None, None), (1, None), (None, 1)]
+
+
+def _treatment_group_flags(spark, function, column):
+    df = make_two_flag_df(spark, _TREATMENT_ROWS, "toevt", "transfertpa")
+    return [r[column] for r in function(df).collect()]
+
+
+class TestTreatmentGroupFlags:
+
+    def test_tpa_only(self, spark):
+        from cms.transfers import add_transferTpaOnly
+        assert _treatment_group_flags(spark, add_transferTpaOnly, "transferTpaOnly") == [0, 0, 1, 0, 0, 0, 0, 0, 1]
+
+    def test_evt_only(self, spark):
+        from cms.transfers import add_transferEvtOnly
+        assert _treatment_group_flags(spark, add_transferEvtOnly, "transferEvtOnly") == [0, 1, 0, 0, 0, 0, 0, 1, 0]
+
+    def test_evt_and_tpa(self, spark):
+        from cms.transfers import add_transferEvtAndTpa
+        assert _treatment_group_flags(spark, add_transferEvtAndTpa, "transferEvtAndTpa") == [0, 0, 0, 1, 0, 0, 0, 0, 0]
+
+    def test_no_evt_nor_tpa(self, spark):
+        from cms.transfers import add_transferNoEvtNorTpa
+        assert _treatment_group_flags(spark, add_transferNoEvtNorTpa, "transferNoEvtNorTpa") == [1, 0, 0, 0, 1, 1, 1, 0, 0]
+
+    def test_groups_partition_and_complement_evt_or_tpa(self, spark):
+        # exactly one group per row, and neither == 1 - transferEvtOrTpa, nulls included
+        from cms.transfers import (add_transferEvtOrTpa, add_transferTpaOnly, add_transferEvtOnly,
+                                   add_transferEvtAndTpa, add_transferNoEvtNorTpa)
+        df = make_two_flag_df(spark, _TREATMENT_ROWS, "toevt", "transfertpa")
+        for f in (add_transferEvtOrTpa, add_transferTpaOnly, add_transferEvtOnly, add_transferEvtAndTpa, add_transferNoEvtNorTpa):
+            df = f(df)
+        for r in df.collect():
+            assert r["transferTpaOnly"] + r["transferEvtOnly"] + r["transferEvtAndTpa"] + r["transferNoEvtNorTpa"] == 1
+            assert r["transferNoEvtNorTpa"] == 1 - r["transferEvtOrTpa"]
+
+
 class TestAddTransferType:
 
     def test_column_added(self, spark):
@@ -1539,24 +1578,39 @@ def _node_stroke_schema():
         StructField("toevt", IntegerType(), True),
         StructField("transfertpa", IntegerType(), True),
         # add_node_stroke_treatment_info calls add_node_evtOrTpa_info, which reads this flag
-        # (built upstream by add_transferEvtOrTpa: 1 iff toevt==1 or transfertpa==1).
+        # (built upstream by add_transferEvtOrTpa: 1 iff toevt==1 or transfertpa==1), and
+        # add_node_treatment_group_info, which reads the four flags _add_treatment_groups adds.
         StructField("transferEvtOrTpa", IntegerType(), True),
     ])
 
 
+def _add_treatment_groups(df):
+    from cms.transfers import (add_transferTpaOnly, add_transferEvtOnly,
+                               add_transferEvtAndTpa, add_transferNoEvtNorTpa)
+    for f in (add_transferTpaOnly, add_transferEvtOnly, add_transferEvtAndTpa, add_transferNoEvtNorTpa):
+        df = f(df)
+    return df
+
+
+_NODE_TREATMENT_GROUP_COLUMNS = tuple(f"node{side}{group}{stat}"
+                                      for side in ("From", "To")
+                                      for group in ("TpaOnly", "EvtOnly", "EvtAndTpa", "NoEvtNorTpa")
+                                      for stat in ("Vol", "Mean"))
+
+
 class TestAddNodeStrokeTreatmentInfo:
 
-    def test_adds_twelve_columns(self, spark):
+    def test_adds_columns(self, spark):
         from cms.transfers import add_node_stroke_treatment_info
         rows = [{"fromORGNPINM": 100, "toORGNPINM": 200,
                  "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020,
                  "toevt": 1, "transfertpa": 0, "transferEvtOrTpa": 1}]
-        df = spark.createDataFrame(rows, schema=_node_stroke_schema())
+        df = _add_treatment_groups(spark.createDataFrame(rows, schema=_node_stroke_schema()))
         result = add_node_stroke_treatment_info(df)
         for c in ("nodeFromEvtVol", "nodeFromTpaVol", "nodeFromEvtMean", "nodeFromTpaMean",
                   "nodeToEvtVol", "nodeToTpaVol", "nodeToEvtMean", "nodeToTpaMean",
                   "nodeFromEvtOrTpaVol", "nodeFromEvtOrTpaMean",
-                  "nodeToEvtOrTpaVol", "nodeToEvtOrTpaMean"):
+                  "nodeToEvtOrTpaVol", "nodeToEvtOrTpaMean") + _NODE_TREATMENT_GROUP_COLUMNS:
             assert c in result.columns
 
     def test_aggregations_per_provider(self, spark):
@@ -1568,7 +1622,7 @@ class TestAddNodeStrokeTreatmentInfo:
             {"fromORGNPINM": 100, "toORGNPINM": 200, "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020, "toevt": 0, "transfertpa": 1, "transferEvtOrTpa": 1},
             {"fromORGNPINM": 100, "toORGNPINM": 300, "fromTHRU_DT_YEAR": 2020, "toTHRU_DT_YEAR": 2020, "toevt": 1, "transfertpa": 0, "transferEvtOrTpa": 1},
         ]
-        df = spark.createDataFrame(rows, schema=_node_stroke_schema())
+        df = _add_treatment_groups(spark.createDataFrame(rows, schema=_node_stroke_schema()))
         result = add_node_stroke_treatment_info(df).collect()
         for r in result:
             assert r["nodeFromEvtVol"] == 2
@@ -1633,6 +1687,67 @@ class TestAddNodeEvtOrTpaInfo:
               for r in add_node_evtOrTpa_info(df).collect()}
         assert by[200] == (1, pytest.approx(0.5))
         assert by[300] == (1, pytest.approx(1.0))
+
+
+# ============================================================
+# Tests for add_node_treatment_group_info.
+# ============================================================
+
+def make_node_treatment_df(spark, rows):
+    """rows: list of (fromORGNPINM, toORGNPINM, fromTHRU_DT_YEAR, toevt, transfertpa); adds the four group flags."""
+    cols = ["fromORGNPINM", "toORGNPINM", "fromTHRU_DT_YEAR", "toevt", "transfertpa"]
+    schema = StructType([StructField(c, IntegerType(), True) for c in cols])
+    return _add_treatment_groups(spark.createDataFrame([dict(zip(cols, r)) for r in rows], schema=schema))
+
+
+class TestAddNodeTreatmentGroupInfo:
+
+    def test_adds_sixteen_columns(self, spark):
+        from cms.transfers import add_node_treatment_group_info
+        out = add_node_treatment_group_info(make_node_treatment_df(spark, [(100, 200, 2020, 1, 1)]))
+        for c in _NODE_TREATMENT_GROUP_COLUMNS:
+            assert c in out.columns
+
+    def test_from_side_aggregation(self, spark):
+        # Sender 100 in 2020, 5 transfers (toevt, transfertpa): tpa only x1, evt only x1, both x1, neither x2.
+        # Sender 101 is another provider and sender 100 in 2021 another year: neither is counted.
+        from cms.transfers import add_node_treatment_group_info
+        df = make_node_treatment_df(spark, [
+            (100, 200, 2020, 0, 1),
+            (100, 200, 2020, 1, 0),
+            (100, 300, 2020, 1, 1),
+            (100, 300, 2020, 0, 0),
+            (100, 300, 2020, None, 0),
+            (101, 200, 2020, 1, 1),
+            (100, 200, 2021, 1, 1),
+        ])
+        rows = [r for r in add_node_treatment_group_info(df).collect()
+                if r["fromORGNPINM"] == 100 and r["fromTHRU_DT_YEAR"] == 2020]
+        assert len(rows) == 5
+        for r in rows:
+            assert (r["nodeFromTpaOnlyVol"], r["nodeFromEvtOnlyVol"],
+                    r["nodeFromEvtAndTpaVol"], r["nodeFromNoEvtNorTpaVol"]) == (1, 1, 1, 2)
+            assert r["nodeFromTpaOnlyMean"] == pytest.approx(0.2)
+            assert r["nodeFromEvtOnlyMean"] == pytest.approx(0.2)
+            assert r["nodeFromEvtAndTpaMean"] == pytest.approx(0.2)
+            assert r["nodeFromNoEvtNorTpaMean"] == pytest.approx(0.4)
+
+    def test_to_side_aggregation(self, spark):
+        # Receiver 200 in 2020 gets tpa only and both from distinct senders -> 0.5, 0.5;
+        # receiver 300 gets one neither -> 1.0. Each receiver's four Means sum to 1.
+        from cms.transfers import add_node_treatment_group_info
+        df = make_node_treatment_df(spark, [
+            (100, 200, 2020, 0, 1),
+            (101, 200, 2020, 1, 1),
+            (100, 300, 2020, 0, 0),
+        ])
+        by = {r["toORGNPINM"]: r for r in add_node_treatment_group_info(df).collect()}
+        assert by[200]["nodeToTpaOnlyMean"] == pytest.approx(0.5)
+        assert by[200]["nodeToEvtAndTpaMean"] == pytest.approx(0.5)
+        assert by[200]["nodeToEvtAndTpaVol"] == 1
+        assert by[300]["nodeToNoEvtNorTpaMean"] == pytest.approx(1.0)
+        for r in by.values():
+            assert sum(r[f"nodeTo{g}Mean"] for g in ("TpaOnly", "EvtOnly", "EvtAndTpa", "NoEvtNorTpa")) == pytest.approx(1.0)
 
 
 # ============================================================
@@ -2267,9 +2382,12 @@ class TestAddStrokeInfo:
         for c in ("transfertpa", "transferct", "transfermri",
                   "transfernihss", "transfernihssGroup",
                   "nodeFromEvtVol", "nodeFromTpaVol", "nodeToEvtVol", "nodeToTpaVol",
-                  "dyadEvtVol", "dyadTpaVol", "dyadIncludesEvt", "dyadIncludesTpa"):
+                  "dyadEvtVol", "dyadTpaVol", "dyadIncludesEvt", "dyadIncludesTpa",
+                  "transferTpaOnly", "transferEvtOnly", "transferEvtAndTpa", "transferNoEvtNorTpa",
+                  "nodeFromEvtAndTpaMean", "nodeToEvtAndTpaMean"):
             assert c in df.columns
         row = df.collect()[0]
+        assert row["transferEvtAndTpa"] == 1   # transfertpa=1 (fromtpa), toevt=1
         assert row["transfertpa"] == 1   # fromtpa=1
         assert row["transferct"] == 1    # toct=1
         assert row["transfermri"] == 1   # tomri=1
