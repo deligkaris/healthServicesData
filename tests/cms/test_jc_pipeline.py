@@ -127,7 +127,9 @@ class TestPrepZipAndNames:
         ("Legal Entity LLC", None, "Legal Entity LLC"),
         ("Legal Entity LLC", "  Real Name  ", "Real Name"),
         ("Providence Medical Center", "Acute Stroke Ready Hospital", "Providence Medical Center"),
-        ("Montgomery County Memorial Hospital + Clinics", "Advanced Primary Stroke Center", "Montgomery County Memorial Hospital + Clinics")])
+        ("Montgomery County Memorial Hospital + Clinics", "Advanced Primary Stroke Center", "Montgomery County Memorial Hospital + Clinics"),
+        ("ProMedica Flower Hospital", "a division of ProMedica Toledo Hospital", "ProMedica Flower Hospital"),
+        ("Bay Hospital", "A Campus of Coastal Health", "Bay Hospital")])
     def test_search_name_prefers_a_specific_dba(self, spark, site, dba, expected):
         from utilities import prep_jcAccreditationDF
         row = prep_jcAccreditationDF(spark.createDataFrame([jc_row(site=site, siteDba=dba)], JC_SCHEMA)).collect()[0]
@@ -542,8 +544,14 @@ class TestAssignment:
 
     def test_named_pass_respects_reach(self, spark):
         r = self._one(spark, [pos_row("1", "MARIA PARHAM MEDICAL CENTER", lat=40.0 + 2 * KM)],
-                      site_row("1", "S", 40.0, -83.0, search="Maria Parham Health"), relaxedDistanceKm=1.0)
+                      site_row("1", "S", 40.0, -83.0, search="Maria Parham Health"), relaxedDistanceKm=1.0, namedFarDistanceKm=None)
         assert r["posMatchMethod"] == "none"
+
+    @pytest.mark.parametrize("kms, ccn", [([20], "1"), ([40], None), ([10, 20], None), ([3, 20], "1")])
+    def test_named_pass_beyond_reach_takes_only_a_name_no_other_hospital_has(self, spark, kms, ccn):
+        pos = [pos_row(str(i), "MARIA PARHAM MEDICAL CENTER", lat=40.0 + km * KM) for i, km in enumerate(kms, start=1)]
+        r = self._one(spark, pos, site_row("1", "S", 40.0, -83.0, search="Maria Parham Health"))
+        assert r["posCcn"] == ccn and r["posMatchMethod"] == ("nearestNamed" if ccn else "none")
 
     @pytest.mark.parametrize("search, method", [("Maria Parham Health", "nearestNamed"), ("Sanford Medical Center Fargo", "none"),
                                                 ("Hospital", "none"), ("Essentia Health Duluth", "none")])
@@ -582,6 +590,17 @@ class TestAssignment:
         pos = [pos_row("1", "KARMANOS CANCER CENTER", lat=40.0 + 0.02 * KM), pos_row("2", "HARPER UNIVERSITY HOSPITAL", lat=40.0 + 0.08 * KM)]
         r = self._one(spark, pos, site_row("1", "S", 40.0, -83.0, search="Harper University Hospital"))
         assert r["posCcn"] == "2" and r["posMatchMethod"] == "nearestSite" and r["posMatchAmbiguous"] == 1
+
+    @pytest.mark.parametrize("nearest, parent, site, search, ccn", [
+        ("HOAG ORTHOPEDIC INSTITUTE", "KAISER FOUNDATION HOSPITAL ANAHEIM", "S", "Kaiser Foundation Hospital - Irvine", "2"),
+        ("HOSPITAL OF THE FOX CHASE CANCER CENTER", "TEMPLE UNIVERSITY HOSPITAL", "Temple University Hospital - Jeanes Campus", "TUH-Jeanes Campus", "2"),
+        ("KAISER FOUNDATION HOSPITAL IRVINE", "KAISER FOUNDATION HOSPITAL ANAHEIM", "S", "Kaiser Foundation Hospital - Irvine", "1"),
+        ("MERCY HOSPITAL", "MERCY MEDICAL CENTER", "S", "Mercy Medical Center", "1"),
+        ("LAKE HEALTH", "OTHER HOSPITAL", "S", "University Hospitals Tripoint", "1")])
+    def test_a_neighbour_with_an_unrelated_name_gives_way_to_a_parent_named_like_the_site(self, spark, nearest, parent, site, search, ccn):
+        pos = [pos_row("1", nearest, lat=41.0 + 0.3 * KM), pos_row("2", parent, lat=40.0)]
+        r = self._one(spark, pos, site_row("1", site, 40.0, -83.0, siteLat=41.0, search=search))
+        assert r["posCcn"] == ccn and r["posMatchMethod"] == ("nearestParent" if ccn == "2" else "nearestSite") and r["posNearestCcn"] == "1"
 
     def test_hospitals_under_one_site_name_get_their_own_ccns(self, spark):
         from utilities import add_pos_ccn_info
@@ -685,6 +704,16 @@ class TestFormerCcns:
         matched, rows = self._run(spark, [former_pos_row("1", "FAR AWAY", active=1, lat=45.0), former_pos_row("2", "DUKE HEALTH RALEIGH HOSPITAL")],
                                   site_row("1", "S", 40.0, -83.0, search="Duke Raleigh Hospital"))
         assert matched.collect()[0]["posCcn"] is None and set(rows) == {"2"}
+
+    @pytest.mark.parametrize("crossRef, ccn", [("2", "2"), ("9", "1"), (None, "1")])
+    def test_a_former_ccn_cross_referenced_to_the_parent_moves_the_site_there(self, spark, crossRef, ccn):
+        from utilities import add_pos_ccn_info
+        allPos = spark.createDataFrame([former_pos_row("1", "AVALA", active=1, lat=41.0 + 0.3 * KM),
+                                        former_pos_row("2", "EAST JEFFERSON GENERAL HOSPITAL", active=1, lat=40.0),
+                                        former_pos_row("3", "LAKEVIEW REGIONAL MEDICAL CENTER", lat=41.0, crossRef=crossRef)], FORMER_POS_SCHEMA)
+        sites = spark.createDataFrame([site_row("1", "S", 40.0, -83.0, siteLat=41.0, search="Lakeview Hospital")], SITE_SCHEMA)
+        r = add_pos_ccn_info(sites, allPos.filter(F.col("posActive") == 1), formerPosDF=allPos).collect()[0]
+        assert r["posCcn"] == ccn and r["posMatchMethod"] == ("nearestParent" if ccn == "2" else "nearestSite")
 
     def test_former_ccns_fold_into_the_per_ccn_table(self, spark):
         from utilities import add_pos_ccn_info, get_former_ccn_sites, get_ccn_jc_info

@@ -1,14 +1,17 @@
 '''Assigns each joint commission site the CCN of the POS hospital it is (see utilities.add_pos_ccn_info), from the
-geocoded locations: the nearest active acute or critical access hospital within 0.5 km of the site's own point, else
-within 0.5 km of its organization's address (a campus billing under its parent), else, as a last resort, the hospital
-within 5 km whose name contains every distinctive word of the site's name (nearestNamed), else none. Names otherwise only
-tell apart hospitals within --tie-distance-km of the nearest one (one campus, several hospitals geocoded to one point).
+geocoded locations: the nearest active acute or critical access hospital within 0.5 km of the site's own point, unless
+its name is unrelated to the site's and the hospital at the organization's address is named like the site or is where
+CMS cross references a former CCN of the site, else within 0.5 km of its organization's address (a campus billing under
+its parent), else, as a last resort, the hospital within 5 km whose name contains every distinctive word of the site's
+name, or the only such hospital within --named-far-distance-km (nearestNamed), else none. Names otherwise only tell apart
+hospitals within --tie-distance-km of the nearest one (one campus, several hospitals geocoded to one point).
 No hand review; an optional csv of exceptions (jcHcoId, jcSiteName, optional jcSearchName, keepCcn) can override single sites.
 The CCNs a site billed under before its current one (terminated since --former-since, at the site, see
 utilities.get_former_ccn_sites) get the site's certification too, so the claims under the old CCN are covered.
 
 Usage: python scripts/04_match_jc_pos.py [--jc jcAccreditation.parquet] [--pos pos.parquet] [--overrides overrides.csv]
-                                      [--max-distance-km 0.5] [--tie-distance-km 0.1] [--former-since 20160101] [--former-distance-km 0.25]
+                                      [--max-distance-km 0.5] [--tie-distance-km 0.1] [--named-far-distance-km 30]
+                                      [--former-since 20160101] [--former-distance-km 0.25]
                                       [--out jcMatched.parquet] [--ccn-out ccnStrokeCertification.parquet] [--unmatched jcUnmatched.csv]
 
 Writes jcMatched.parquet (one row per site with posCcn, posCcnDistanceKm, posMatchMethod, ...), ccnStrokeCertification.parquet
@@ -34,6 +37,7 @@ parser.add_argument("--max-distance-km", type=float, default=0.5)
 parser.add_argument("--tie-distance-km", type=float, default=0.1)
 parser.add_argument("--relaxed-distance-km", type=float, default=5.0, help="reach of the last resort name checked lookup for sites still unmatched")
 parser.add_argument("--name-score-min", type=float, default=1.0, help="name score the last resort lookup requires (1 = every distinctive word of the shorter name is shared)")
+parser.add_argument("--named-far-distance-km", type=float, default=30.0, help="reach of the last resort lookup when one hospital alone has the name")
 parser.add_argument("--former-since", default="20160101", help="earliest termination date (yyyymmdd) of a former CCN of a site")
 parser.add_argument("--former-distance-km", type=float, default=0.25, help="reach from the site to a former CCN")
 parser.add_argument("--out", default=os.path.join(geocodingDir, "jcMatched.parquet"))
@@ -58,10 +62,17 @@ posDF = allPosDF.filter(F.col("posHospitalType").isin(["acute", "cah"]) & (F.col
 overridesDF = spark.read.csv(args.overrides, header=True) if args.overrides else None
 
 jcDF = utilities.add_pos_ccn_info(jcDF, posDF, maxDistanceKm=args.max_distance_km, tieDistanceKm=args.tie_distance_km,
-                                  relaxedDistanceKm=args.relaxed_distance_km, nameScoreMin=args.name_score_min, overridesDF=overridesDF)
+                                  relaxedDistanceKm=args.relaxed_distance_km, nameScoreMin=args.name_score_min, overridesDF=overridesDF,
+                                  namedFarDistanceKm=args.named_far_distance_km, formerPosDF=allPosDF,
+                                  formerSince=args.former_since, formerDistanceKm=args.former_distance_km)
 jcDF.cache()
 print(f"{jcDF.count()} sites, {posDF.count()} candidate hospitals (acute or cah, active)")
 jcDF.groupBy("posMatchMethod", "jcSiteLocationSource").count().orderBy("posMatchMethod", "jcSiteLocationSource").show()
+print("sites whose nearest hospital has an unrelated name, given the hospital at the organization's address instead:")
+(jcDF.filter((F.col("posMatchMethod") == "nearestParent") & (F.col("jcSiteLocationSource") == "place")
+             & (F.col("posNearestDistanceKm") <= args.max_distance_km) & (F.col("posNearestCcn") != F.col("posCcn")))
+     .select("jcSearchName", "posNearestCcn", "posNearestFacName", "posCcn", "posCcnFacName")
+     .orderBy("jcSearchName").show(100, truncate=35))
 print(f"{jcDF.filter(F.col('posMatchAmbiguous') == 1).count()} assigned sites had another hospital within {args.tie_distance_km} km (tie broken toward the open one)")
 print("sites matched by the last resort name checked lookup (nearestNamed), the only name based assignments:")
 (jcDF.filter(F.col("posMatchMethod") == "nearestNamed")
