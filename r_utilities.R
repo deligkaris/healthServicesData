@@ -397,6 +397,7 @@ get_data_dictionary <- function() {
     "nodeToNoEvtNorTpaVol","Receiving hospital: incoming transfers that got neither tPA nor EVT (transferNoEvtNorTpa) that year within its transfer set",
     "nodeToNoEvtNorTpaMean","Receiving hospital: share of its incoming transfers that got neither tPA nor EVT (transferNoEvtNorTpa) that year within its transfer set (the four nodeTo*Mean sum to 1)",
     "nodeToProportionFromEd","Receiving hospital: ED->IP / (ED->IP + IP->IP) transfers received that year, pooled across both transfer sets (computed on their union; NULL if none)",
+    "nodeFromProportionFromEd","Sending hospital: ED->IP / (ED->IP + IP->IP) transfers sent that year, pooled across both transfer sets (computed on their union; NULL if none); 1 minus it is the share sent after an inpatient admission",
     "nodeInVolFromEd", "Receiving hospital: ED->IP transfers received that year (0 if none; present when ED->IP transfers were included)",
     "nodeInVolFromIp", "Receiving hospital: IP->IP transfers received that year (0 if none; present when IP->IP transfers were included)",
     "nodeInVolFromEdOrIp","Receiving hospital: distinct admissions received that year by ED->IP or IP->IP transfer, pooled across both transfer sets (an admission in both counts once; present only when both were included)",

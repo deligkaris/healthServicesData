@@ -262,6 +262,24 @@ def add_nodeToProportionFromEd(transfersDF):
         F.when(edOrIpVol != 0, edVol / edOrIpVol).otherwise(F.lit(None)))
     return transfersDF
 
+def _nodeOutVolOfTypes(*transferTypes):
+    '''Windowed count of the rows whose transferType is one of transferTypes, per sending provider and
+    transfer year (the from-side node basis, see add_node_volume_info).'''
+    eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
+    return F.sum(F.when(F.col("transferType").isin([int(t) for t in transferTypes]), 1).otherwise(0)).over(eachFromProvider)
+
+def add_nodeFromProportionFromEd(transfersDF):
+    '''Adds nodeFromProportionFromEd: for each sending provider and year, the transfers it sent from its ED
+    (edToInpatient) out of those it sent from either setting (edToInpatient + inpatientToInpatient); 1 minus it
+    is the share sent after an inpatient admission. Requires transferType and the union of the edToInpatient
+    and inpatientToInpatient sets (get_union). Null for a sender-year with neither.'''
+    #the sending-side mirror of add_nodeToProportionFromEd: on one set transferType is constant, so the value would
+    #be 1 or 0; the denominator is counted by transferType, not nodeOutVol, which stays per-set (see get_transfers)
+    edVol = _nodeOutVolOfTypes(TransferType.edToInpatient)
+    edOrIpVol = _nodeOutVolOfTypes(TransferType.edToInpatient, TransferType.inpatientToInpatient)
+    return transfersDF.withColumn("nodeFromProportionFromEd",
+                                  F.when(edOrIpVol != 0, edVol / edOrIpVol).otherwise(F.lit(None)))
+
 def add_nodeInVolFromEd(transfersDF):
     '''Adds nodeInVolFromEd: edToInpatient transfers received by the receiving provider that year.'''
     # within one set get_clean_transfers leaves each to-claim once, so rows are admissions

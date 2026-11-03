@@ -4708,6 +4708,66 @@ class TestAddNodeToProportionFromEd:
 
 
 # ============================================================
+# Tests for add_nodeFromProportionFromEd.
+# ============================================================
+
+def make_node_sent_from_ed_df(spark, rows):
+    """rows: list of (fromORGNPINM, toORGNPINM, fromTHRU_DT_YEAR, transferType)."""
+    cols = ["fromORGNPINM", "toORGNPINM", "fromTHRU_DT_YEAR", "transferType"]
+    schema = StructType([StructField(c, IntegerType(), True) for c in cols])
+    return spark.createDataFrame([dict(zip(cols, r)) for r in rows], schema=schema)
+
+
+class TestAddNodeFromProportionFromEd:
+
+    def _by_sender_year(self, df):
+        from cms.transfers import add_nodeFromProportionFromEd
+        return {(r["fromORGNPINM"], r["fromTHRU_DT_YEAR"]): r["nodeFromProportionFromEd"]
+                for r in add_nodeFromProportionFromEd(df).collect()}
+
+    def test_column_added(self, spark):
+        from cms.transfers import add_nodeFromProportionFromEd, TransferType
+        df = make_node_sent_from_ed_df(spark, [(100, 200, 2020, int(TransferType.edToInpatient))])
+        assert "nodeFromProportionFromEd" in add_nodeFromProportionFromEd(df).columns
+
+    def test_basic_ratio_keys_on_sender(self, spark):
+        # Sender 100 in 2020: 3 ED + 1 inpatient, to different receivers -> 3/4 = 0.75 on every row.
+        from cms.transfers import TransferType
+        ed, ip = int(TransferType.edToInpatient), int(TransferType.inpatientToInpatient)
+        df = make_node_sent_from_ed_df(spark, [(100, 200, 2020, ed), (100, 300, 2020, ed),
+                                               (100, 400, 2020, ed), (100, 200, 2020, ip)])
+        assert self._by_sender_year(df) == {(100, 2020): pytest.approx(0.75)}
+
+    def test_all_ed_is_one_all_inpatient_is_zero(self, spark):
+        from cms.transfers import TransferType
+        ed, ip = int(TransferType.edToInpatient), int(TransferType.inpatientToInpatient)
+        df = make_node_sent_from_ed_df(spark, [(100, 200, 2020, ed), (100, 200, 2020, ed),
+                                               (101, 200, 2020, ip), (101, 200, 2020, ip)])
+        by = self._by_sender_year(df)
+        assert by[(100, 2020)] == pytest.approx(1.0)
+        assert by[(101, 2020)] == pytest.approx(0.0)
+
+    def test_per_sender_year(self, spark):
+        # Each (fromORGNPINM, fromTHRU_DT_YEAR) group computes independently; receiver 200 is shared.
+        from cms.transfers import TransferType
+        ed, ip = int(TransferType.edToInpatient), int(TransferType.inpatientToInpatient)
+        df = make_node_sent_from_ed_df(spark, [
+            (100, 200, 2020, ed), (100, 200, 2020, ip),   # 1/2
+            (100, 200, 2021, ed), (100, 200, 2021, ed),   # 2/2
+            (101, 200, 2020, ip),                          # 0/1
+        ])
+        by = self._by_sender_year(df)
+        assert by[(100, 2020)] == pytest.approx(0.5)
+        assert by[(100, 2021)] == pytest.approx(1.0)
+        assert by[(101, 2020)] == pytest.approx(0.0)
+
+    def test_other_type_only_is_null(self, spark):
+        # a sender-year whose only transfers are a hypothetical third type has denominator 0 -> null
+        df = make_node_sent_from_ed_df(spark, [(100, 200, 2020, 99)])
+        assert self._by_sender_year(df)[(100, 2020)] is None
+
+
+# ============================================================
 # Tests for the per-type receiving volumes and proportions transferred in
 # (add_nodeInVolFrom*, add_nodeProportionTransferredInFrom*) and their wrapper
 # add_node_in_by_type_info. toproviderAnnualAdmissions counts all admissions, so each
