@@ -49,7 +49,7 @@ rawJcDF = spark.read.csv(args.jc, header=True)
 allDF = utilities.prep_jcAccreditationDF(rawJcDF)
 keptDF = utilities.prep_jcAccreditationDF(rawJcDF, excludePrograms=excludePrograms)
 jcDF = utilities.prep_jcAccreditationDF(rawJcDF, topProgramOnly=True, excludePrograms=excludePrograms)
-siteKey = ["jcHcoId", "jcSiteName", "jcAddress"]
+siteKey = utilities.jcSiteKey
 addresses = [row[0] for row in jcDF.select("jcAddress").distinct().collect()]
 queries = [row[0] for row in jcDF.select("jcPlaceQuery").distinct().collect()]
 print(f"{allDF.count()} rows in the export, {allDF.count() - keptDF.count()} rows dropped as {excludePrograms}, "

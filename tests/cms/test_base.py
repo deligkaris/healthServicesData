@@ -2793,15 +2793,16 @@ class TestAddProviderStrokeCertificationInfo:
         from cms.base import add_provider_stroke_certification_info
         base = spark.createDataFrame([("360001", 2019), ("360001", 2020), ("360002", 2019), ("360003", 2019)],
                                      "PROVIDER string, THRU_DT_YEAR int")
-        ccn = spark.createDataFrame([("360001", 2, "Advanced Comprehensive Stroke Center", 3),
-                                     ("360002", 1, "Primary Stroke Center", 4)],
-                                    "posCcn string, jcSites int, jcBestProgram string, jcCertificationConfidence int")
+        ccn = spark.createDataFrame([("360001", 2, "Advanced Comprehensive Stroke Center", 3, "current"),
+                                     ("360002", 1, "Primary Stroke Center", 2, "former")],
+                                    "posCcn string, jcSites int, jcBestProgram string, jcCertificationConfidence int, jcCcnSource string")
         result = add_provider_stroke_certification_info(base, ccn)
         rows = {(r["PROVIDER"], r["THRU_DT_YEAR"]): r for r in result.collect()}
         assert len(rows) == 4
         assert rows[("360001", 2019)]["providerStrokeCertification"] == "Advanced Comprehensive Stroke Center"
         assert rows[("360001", 2020)]["providerStrokeCertificationConfidence"] == 3 and rows[("360001", 2020)]["providerStrokeCertificationSites"] == 2
         assert rows[("360002", 2019)]["providerStrokeCertification"] == "Primary Stroke Center"
+        assert rows[("360002", 2019)]["providerStrokeCertificationCcnSource"] == "former"
         assert rows[("360003", 2019)]["providerStrokeCertification"] is None
         assert "posCcn" not in result.columns
         assert all(c[0].islower() for c in set(result.columns) - set(base.columns))

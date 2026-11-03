@@ -1847,12 +1847,16 @@ def add_provider_stroke_certification_info(baseDF, ccnDF):
     '''Adds the provider's joint commission stroke certification from the per CCN table of utilities.get_ccn_jc_info
     (see scripts/04_match_jc_pos.py): providerStrokeCertification (the best program among the sites assigned to the
     CCN, eg Advanced Comprehensive Stroke Center, null for a provider with none), providerStrokeCertificationConfidence
-    (4 to 1, see jcCertificationConfidence) and providerStrokeCertificationSites (how many sites share the CCN).'''
-    #the certification list is current (2025) with no history, so the same value applies to every claim year
+    (4 to 1, see jcCertificationConfidence), providerStrokeCertificationSites (how many sites share the CCN) and
+    providerStrokeCertificationCcnSource (current, or former for a CCN a certified site billed under before its current
+    one, see utilities.get_former_ccn_sites).'''
+    #the certification list is current (2025) with no history, so the same value applies to every claim year; a former
+    #CCN has claims only up to its termination, so joining on PROVIDER alone gives the old CCN's claims the certification
     baseDF = baseDF.join(ccnDF.select(F.col("posCcn").alias("PROVIDER"),
                                       F.col("jcBestProgram").alias("providerStrokeCertification"),
                                       F.col("jcCertificationConfidence").alias("providerStrokeCertificationConfidence"),
-                                      F.col("jcSites").alias("providerStrokeCertificationSites")),
+                                      F.col("jcSites").alias("providerStrokeCertificationSites"),
+                                      F.col("jcCcnSource").alias("providerStrokeCertificationCcnSource")),
                          on=["PROVIDER"],
                          how="left_outer")
     return baseDF

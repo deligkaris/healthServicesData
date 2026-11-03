@@ -125,7 +125,9 @@ class TestPrepZipAndNames:
         ("Legal Entity LLC", "", "Legal Entity LLC"),
         ("Legal Entity LLC", "   ", "Legal Entity LLC"),
         ("Legal Entity LLC", None, "Legal Entity LLC"),
-        ("Legal Entity LLC", "  Real Name  ", "Real Name")])
+        ("Legal Entity LLC", "  Real Name  ", "Real Name"),
+        ("Providence Medical Center", "Acute Stroke Ready Hospital", "Providence Medical Center"),
+        ("Montgomery County Memorial Hospital + Clinics", "Advanced Primary Stroke Center", "Montgomery County Memorial Hospital + Clinics")])
     def test_search_name_prefers_a_specific_dba(self, spark, site, dba, expected):
         from utilities import prep_jcAccreditationDF
         row = prep_jcAccreditationDF(spark.createDataFrame([jc_row(site=site, siteDba=dba)], JC_SCHEMA)).collect()[0]
@@ -206,6 +208,23 @@ class TestPrepExcludeAndTop:
         rows = {r["jcHcoId"]: r for r in prep_jcAccreditationDF(self._df(spark), topProgramOnly=True,
                                                                 excludePrograms=["stroke rehabilitation"]).collect()}
         assert set(rows) == {"1", "3", "4", "5", "6"} and rows["1"]["jcProgramRank"] == 1
+
+    def test_hospitals_told_apart_by_the_dba_name_stay_separate(self, spark):
+        from utilities import prep_jcAccreditationDF
+        site = "Christiana Care Health Services, Inc."
+        df = spark.createDataFrame([jc_row(site=site, siteDba="ChristianaCare- Christiana Hospital", program="Advanced Comprehensive Stroke Center"),
+                                    jc_row(site=site, siteDba="ChristianaCare- Wilmington Hospital", program="Primary Stroke Center")], JC_SCHEMA)
+        rows = {r["jcSearchName"]: r["jcProgram"] for r in prep_jcAccreditationDF(df, topProgramOnly=True).collect()}
+        assert rows == {"ChristianaCare- Christiana Hospital": "Advanced Comprehensive Stroke Center",
+                        "ChristianaCare- Wilmington Hospital": "Primary Stroke Center"}
+
+    def test_a_dba_name_that_names_nothing_is_the_same_site(self, spark):
+        from utilities import prep_jcAccreditationDF
+        df = spark.createDataFrame([jc_row(site="A", siteDba=dba, program=p) for dba, p in
+                                    [(None, "Primary Stroke Center"), ("N/A", "Advanced Comprehensive Stroke Center"), ("Hospital", "Acute Stroke Ready Hospital")]],
+                                   JC_SCHEMA)
+        rows = prep_jcAccreditationDF(df, topProgramOnly=True).collect()
+        assert len(rows) == 1 and rows[0]["jcProgramRank"] == 1
 
 
 # ============================================================
@@ -309,11 +328,11 @@ class TestPlacesCacheBehaviour:
 
 class TestPrepWithLookups:
 
-    def _run(self, spark, tmp_path, monkeypatch, rows, places):
+    def _run(self, spark, tmp_path, monkeypatch, rows, places, addressType="ROOFTOP"):
         from utilities import prep_jcAccreditationDF
         monkeypatch.setattr(geocoding, "geocode_addresses",
                             lambda addresses, pathToData, maxCalls=None, keyFilename=None:
-                            {a: geocoding.parse_geocode_response(geocode_payload(lat=40.0, lng=-83.0)) for a in addresses})
+                            {a: geocoding.parse_geocode_response(geocode_payload(lat=40.0, lng=-83.0, locationType=addressType)) for a in addresses})
         seen = {}
         def fake_find_places(queries, pathToData, maxCalls=None, keyFilename=None):
             seen.update(queries)
@@ -337,6 +356,12 @@ class TestPrepWithLookups:
         r = rows["1"]
         assert r["jcPlaceStatus"] == "ZERO_RESULTS" and r["jcPlaceIsHospital"] is None and r["jcPlaceDistanceKm"] is None
         assert r["jcSiteLocationSource"] == "address" and r["jcSiteLat"] == 40.0 and r["jcSiteLng"] == -83.0
+
+    @pytest.mark.parametrize("km, addressType, source", [(150, "ROOFTOP", "place"), (300, "ROOFTOP", "address"),
+                                                         (300, "GEOMETRIC_CENTER", "address"), (300, "APPROXIMATE", "place")])
+    def test_a_far_place_is_a_namesake_unless_the_address_point_is_approximate(self, spark, tmp_path, monkeypatch, km, addressType, source):
+        rows, _ = self._run(spark, tmp_path, monkeypatch, [jc_row(site="A")], {"A": place_payload(lat=40.0 + km * KM, lng=-83.0)}, addressType)
+        assert rows["1"]["jcSiteLocationSource"] == source
 
     def test_place_distance_from_the_organization(self, spark, tmp_path, monkeypatch):
         rows, _ = self._run(spark, tmp_path, monkeypatch, [jc_row(site="A")], {"A": place_payload(lat=40.0 + 2 * KM, lng=-83.0)})
@@ -399,6 +424,30 @@ class TestNearest:
         pos = self._pos(spark, [pos_row("9", "CLOSED", active=0), pos_row("5", "ACTIVE B"), pos_row("3", "ACTIVE A")])
         r = add_pos_nearest_info(self._sites(spark, [site_row("1", "S", 40.0, -83.0)]), pos).collect()[0]
         assert r["posNearestCcn"] == "3" and r["posNearestSecondCcn"] == "5"
+
+    def _campus(self, spark, harperKm, tieDistanceKm):
+        from utilities import add_pos_nearest_info
+        pos = self._pos(spark, [pos_row("1", "KARMANOS CANCER CENTER", lat=40.0 + 0.02 * KM),
+                                pos_row("2", "HARPER UNIVERSITY HOSPITAL", lat=40.0 + harperKm * KM)])
+        sites = self._sites(spark, [site_row("1", "S", 40.0, -83.0, search="Harper University Hospital")])
+        return add_pos_nearest_info(sites, pos, tieDistanceKm=tieDistanceKm).collect()[0]
+
+    def test_name_breaks_a_tie_within_the_tie_distance(self, spark):
+        r = self._campus(spark, harperKm=0.08, tieDistanceKm=0.1)
+        assert r["posNearestCcn"] == "2" and abs(r["posNearestDistanceKm"] - 0.08) < 0.005
+        assert r["posNearestSecondCcn"] == "1"
+
+    def test_without_tie_distance_the_nearest_wins(self, spark):
+        assert self._campus(spark, harperKm=0.08, tieDistanceKm=None)["posNearestCcn"] == "1"
+
+    def test_a_name_beyond_the_tie_distance_does_not_win(self, spark):
+        assert self._campus(spark, harperKm=0.3, tieDistanceKm=0.1)["posNearestCcn"] == "1"
+
+    def test_names_that_decide_nothing_keep_the_distance_order(self, spark):
+        from utilities import add_pos_nearest_info
+        pos = self._pos(spark, [pos_row("1", "EAST", lat=40.0 + 0.05 * KM), pos_row("2", "WEST", lat=40.0 + 0.02 * KM)])
+        sites = self._sites(spark, [site_row("1", "S", 40.0, -83.0, search="Saint Hospital")])
+        assert add_pos_nearest_info(sites, pos, tieDistanceKm=0.1).collect()[0]["posNearestCcn"] == "2"
 
     def test_only_hospitals_with_coordinates_compete(self, spark):
         from utilities import add_pos_nearest_info
@@ -529,6 +578,20 @@ class TestAssignment:
         r = add_pos_ccn_info(sites, self._pos(spark, [pos_row("1", "H")])).collect()[0]
         assert r["posMatchMethod"] == "nearestParent" and r["jcSiteLocationSource"] == "address"
 
+    def test_a_hospital_on_the_same_campus_is_chosen_by_name(self, spark):
+        pos = [pos_row("1", "KARMANOS CANCER CENTER", lat=40.0 + 0.02 * KM), pos_row("2", "HARPER UNIVERSITY HOSPITAL", lat=40.0 + 0.08 * KM)]
+        r = self._one(spark, pos, site_row("1", "S", 40.0, -83.0, search="Harper University Hospital"))
+        assert r["posCcn"] == "2" and r["posMatchMethod"] == "nearestSite" and r["posMatchAmbiguous"] == 1
+
+    def test_hospitals_under_one_site_name_get_their_own_ccns(self, spark):
+        from utilities import add_pos_ccn_info
+        sites = self._sites(spark, [site_row("1", "SYSTEM", 40.0, -83.0, search="East Hospital"),
+                                    site_row("1", "SYSTEM", 40.0, -83.0, siteLat=41.0, search="West Hospital", program="Advanced Comprehensive Stroke Center", rank=1)])
+        pos = self._pos(spark, [pos_row("1", "EAST HOSPITAL"), pos_row("2", "WEST HOSPITAL", lat=41.0)])
+        rows = {r["jcSearchName"]: r for r in add_pos_ccn_info(sites, pos).collect()}
+        assert len(rows) == 2 and rows["East Hospital"]["posCcn"] == "1" and rows["West Hospital"]["posCcn"] == "2"
+        assert rows["West Hospital"]["posMatchMethod"] == "nearestSite" and rows["West Hospital"]["posNearestSecondCcn"] == "1"
+
     def test_several_sites_share_a_ccn_and_rows_are_kept(self, spark):
         from utilities import add_pos_ccn_info
         sites = self._sites(spark, [site_row("1", "MAIN", 40.0, -83.0), site_row("1", "CAMPUS", 40.0, -83.0, siteLat=41.0, search="Zzz"),
@@ -566,10 +629,73 @@ class TestOverrides:
         rows = self._run(spark, [("1", "A", "7"), ("1", "A", "7")])
         assert len(rows) == 2
 
+    def test_override_with_a_search_name_replaces_only_that_site(self, spark):
+        from utilities import add_pos_ccn_info
+        sites = spark.createDataFrame([site_row("1", "A", 40.0, -83.0, search="East"), site_row("1", "A", 40.0, -83.0, search="West")], SITE_SCHEMA)
+        pos = spark.createDataFrame([pos_row("1", "H"), pos_row("7", "OTHER", lat=45.0)], POS_SCHEMA)
+        ov = spark.createDataFrame([("1", "A", "West", "7")], "jcHcoId string, jcSiteName string, jcSearchName string, keepCcn string")
+        rows = {r["jcSearchName"]: r["posCcn"] for r in add_pos_ccn_info(sites, pos, overridesDF=ov).collect()}
+        assert rows == {"East": "1", "West": "7"}
+
 
 # ============================================================
 # step 4c: the per CCN table and the claims join
 # ============================================================
+
+FORMER_POS_SCHEMA = POS_SCHEMA + ", posHospitalType string, TRMNTN_EXPRTN_DT string, CRTFD_BED_CNT string, CROSS_REF_PROVIDER_NUMBER string"
+
+def former_pos_row(ccn, name, active=0, lat=40.0, end="20190301", beds="100", crossRef=None, geocodeType="ROOFTOP"):
+    return pos_row(ccn, name, active=active, lat=lat, geocodeType=geocodeType) + ("acute", None if active else end, beds, crossRef)
+
+
+class TestFormerCcns:
+
+    def _run(self, spark, posRows, site=None):
+        from utilities import add_pos_ccn_info, get_former_ccn_sites
+        allPos = spark.createDataFrame(posRows, FORMER_POS_SCHEMA)
+        sites = spark.createDataFrame([site or site_row("1", "S", 40.0, -83.0, search="Harper University Hospital")], SITE_SCHEMA)
+        matched = add_pos_ccn_info(sites, allPos.filter(F.col("posActive") == 1))
+        return matched, {r["posCcn"]: r for r in get_former_ccn_sites(matched, allPos).collect()}
+
+    def _campus(self, spark, *former):
+        return self._run(spark, [former_pos_row("1", "HARPER UNIVERSITY HOSPITAL", active=1)] + list(former))[1]
+
+    def test_a_former_ccn_on_the_campus_gets_the_site(self, spark):
+        rows = self._campus(spark, former_pos_row("2", "HARPER HOSPITAL", lat=40.0 + 0.05 * KM))
+        assert set(rows) == {"2"} and rows["2"]["posMatchMethod"] == "former" and rows["2"]["posCcnActive"] == 0
+        assert rows["2"]["jcProgram"] == "Primary Stroke Center" and abs(rows["2"]["posCcnDistanceKm"] - 0.05) < 0.005
+
+    def test_terminated_before_the_since_date_is_not_a_former_ccn(self, spark):
+        assert self._campus(spark, former_pos_row("2", "HARPER HOSPITAL", end="20151231")) == {}
+
+    def test_a_one_bed_temporary_hospital_is_not_a_former_ccn(self, spark):
+        assert self._campus(spark, former_pos_row("2", "HARPER SURGERY CENTER", beds="1")) == {}
+
+    def test_an_approximate_geocode_is_not_a_former_ccn(self, spark):
+        assert self._campus(spark, former_pos_row("2", "HARPER HOSPITAL", geocodeType="APPROXIMATE")) == {}
+
+    def test_beyond_the_reach_is_not_a_former_ccn(self, spark):
+        assert self._campus(spark, former_pos_row("2", "HARPER HOSPITAL", lat=40.0 + 0.4 * KM)) == {}
+
+    def test_an_unrelated_name_needs_the_cms_cross_reference(self, spark):
+        assert self._campus(spark, former_pos_row("2", "KARMANOS CANCER CENTER")) == {}
+        assert set(self._campus(spark, former_pos_row("2", "KARMANOS CANCER CENTER", crossRef="1"))) == {"2"}
+
+    def test_an_unmatched_site_keeps_its_former_ccn(self, spark):
+        matched, rows = self._run(spark, [former_pos_row("1", "FAR AWAY", active=1, lat=45.0), former_pos_row("2", "DUKE HEALTH RALEIGH HOSPITAL")],
+                                  site_row("1", "S", 40.0, -83.0, search="Duke Raleigh Hospital"))
+        assert matched.collect()[0]["posCcn"] is None and set(rows) == {"2"}
+
+    def test_former_ccns_fold_into_the_per_ccn_table(self, spark):
+        from utilities import add_pos_ccn_info, get_former_ccn_sites, get_ccn_jc_info
+        allPos = spark.createDataFrame([former_pos_row("1", "HARPER UNIVERSITY HOSPITAL", active=1), former_pos_row("2", "HARPER HOSPITAL")], FORMER_POS_SCHEMA)
+        matched = add_pos_ccn_info(spark.createDataFrame([site_row("1", "S", 40.0, -83.0, search="Harper University Hospital")], SITE_SCHEMA),
+                                   allPos.filter(F.col("posActive") == 1))
+        rows = {r["posCcn"]: r for r in get_ccn_jc_info(matched.unionByName(get_former_ccn_sites(matched, allPos))).collect()}
+        assert rows["1"]["jcCcnSource"] == "current" and rows["1"]["jcCertificationConfidence"] == 4
+        assert rows["2"]["jcCcnSource"] == "former" and rows["2"]["jcCertificationConfidence"] == 2
+        assert rows["2"]["jcBestProgram"] == rows["1"]["jcBestProgram"]
+
 
 class TestPerCcnTable:
 
@@ -597,7 +723,8 @@ class TestPerCcnTable:
         assert get_ccn_jc_info(df).collect()[0]["jcBestProgramSite"] == "Alpha"
 
     @pytest.mark.parametrize("method, sites, confidence", [("nearestSite", 1, 4), ("nearestSite", 3, 3), ("nearestParent", 1, 2),
-                                                           ("nearestParent", 2, 2), ("override", 1, 2), ("nearestNamed", 1, 1)])
+                                                           ("nearestParent", 2, 2), ("override", 1, 2), ("nearestNamed", 1, 1),
+                                                           ("former", 1, 2)])
     def test_confidence_scale(self, spark, method, sites, confidence):
         from utilities import get_ccn_jc_info
         rows = [(str(i), f"S{i}", "Primary Stroke Center", 3, "X", "nearestSite" if i > 0 else method, 0.0) for i in range(sites)]
@@ -617,7 +744,7 @@ class TestClaimsJoin:
     def test_every_claim_year_gets_the_same_certification(self, spark):
         from cms.base import add_provider_stroke_certification_info
         base = spark.createDataFrame([("X", y) for y in (2015, 2018, 2022)] + [("Z", 2019)], "PROVIDER string, THRU_DT_YEAR int")
-        ccn = spark.createDataFrame([("X", 1, "Primary Stroke Center", 4)], "posCcn string, jcSites int, jcBestProgram string, jcCertificationConfidence int")
+        ccn = spark.createDataFrame([("X", 1, "Primary Stroke Center", 4, "current")], "posCcn string, jcSites int, jcBestProgram string, jcCertificationConfidence int, jcCcnSource string")
         rows = add_provider_stroke_certification_info(base, ccn).collect()
         assert len(rows) == 4
         assert all(r["providerStrokeCertification"] == "Primary Stroke Center" for r in rows if r["PROVIDER"] == "X")
@@ -626,10 +753,11 @@ class TestClaimsJoin:
     def test_no_row_multiplication_and_only_lowercase_additions(self, spark):
         from cms.base import add_provider_stroke_certification_info
         base = spark.createDataFrame([("X", 2019), ("X", 2019)], "PROVIDER string, THRU_DT_YEAR int")
-        ccn = spark.createDataFrame([("X", 2, "Primary Stroke Center", 3)], "posCcn string, jcSites int, jcBestProgram string, jcCertificationConfidence int")
+        ccn = spark.createDataFrame([("X", 2, "Primary Stroke Center", 3, "current")], "posCcn string, jcSites int, jcBestProgram string, jcCertificationConfidence int, jcCcnSource string")
         result = add_provider_stroke_certification_info(base, ccn)
         assert result.count() == 2
-        assert set(result.columns) - {"PROVIDER", "THRU_DT_YEAR"} == {"providerStrokeCertification", "providerStrokeCertificationConfidence", "providerStrokeCertificationSites"}
+        assert set(result.columns) - {"PROVIDER", "THRU_DT_YEAR"} == {"providerStrokeCertification", "providerStrokeCertificationConfidence",
+                                                                      "providerStrokeCertificationSites", "providerStrokeCertificationCcnSource"}
 
 
 # ============================================================

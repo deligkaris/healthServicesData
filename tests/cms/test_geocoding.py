@@ -483,7 +483,7 @@ class TestAddPosNearestInfo:
              ("2", "B", "ADDR B", "OH", 40.0090, -83.0000),
              ("3", "C", "ADDR C", "OH", None, None),
              ("4", "D", "ADDR D", "WV", 40.0000, -83.0000)],
-            self.JC_SCHEMA)
+            self.JC_SCHEMA).withColumn("jcSearchName", F.col("jcSiteName"))
 
     def test_nearest(self, spark):
         from utilities import add_pos_nearest_info

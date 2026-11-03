@@ -33,7 +33,7 @@ expectedColumns = {
     "hcris": ["PRVDR_NUM", "hcrisYear", "providerHcrisBedsIcu", "providerHcrisBedsCriticalCare", "providerHcrisBedsTotal",
               "providerHcrisBedDaysIcu", "providerHcrisBedDaysCriticalCare", "providerHcrisBedDaysTotal",
               "providerHcrisResidents", "providerHcrisResidentToBedRatio", "providerHcrisIsRural"],
-    "ccnStrokeCertification": ["posCcn", "jcBestProgram", "jcCertificationConfidence", "jcSites"],
+    "ccnStrokeCertification": ["posCcn", "jcBestProgram", "jcCertificationConfidence", "jcSites", "jcCcnSource"],
     "procedureClasses": ["ICD-10-PCS-CODE", "PROCEDURE-CLASS"],
     "adi": ["FIPS", "adiNatRank", "adiStaRank", "adiNatRankGroup"],
     "zipToCounty": ["zip", "county", "countyForZip"]}

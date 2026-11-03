@@ -29,8 +29,8 @@ Examples:
 ## Linking Joint Commission stroke centers to CMS hospitals (scripts/)
 
 The Joint Commission export of stroke-certified sites carries no CCN, so a site is matched to the CMS Provider of
-Services (POS) hospital whose geocoded point is nearest the site's; names are not compared between the two sources
-except as a last resort. `scripts/01_geocode_pos.py` geocodes the POS hospital addresses with the Google Geocoding API
+Services (POS) hospital whose geocoded point is nearest the site's; names are only compared to tell apart hospitals
+within 0.1 km of each other and as a last resort. `scripts/01_geocode_pos.py` geocodes the POS hospital addresses with the Google Geocoding API
 and builds `pos.parquet`; `scripts/02_lookup_jc.py` geocodes the export's addresses and, because those are the accredited
 organization's rather than the site's, locates each site by searching its public name with the Google Places API,
 filling two caches under `DATA/GEOCODING` so every paid lookup happens once;
@@ -38,11 +38,13 @@ filling two caches under `DATA/GEOCODING` so every paid lookup happens once;
 certification); `scripts/04_match_jc_pos.py` assigns each site the nearest active acute or critical access hospital
 within 0.5 km of the point found for its name (`nearestSite`), else within 0.5 km of the organization's address, which
 is where CMS lists a campus that bills under its parent (`nearestParent`), else, as a last resort, a hospital within
-5 km whose name contains every distinctive word of the site's (`nearestNamed`), and writes `jcMatched.parquet` (one row
+5 km whose name contains every distinctive word of the site's (`nearestNamed`); the CCNs a site billed under before
+its current one since 2016 (terminated, at the site, name or CMS cross reference agreeing) get the site's certification
+too (`former`), so the claims under the old CCN are covered. It writes `jcMatched.parquet` (one row
 per site, `posMatchMethod` records how it was assigned) and `ccnStrokeCertification.parquet`, the per-CCN table that
 joins the claims on `PROVIDER`: `jcBestProgram` is the highest certification among the sites assigned to the CCN,
 `jcSites` how many sites that was, and `jcCertificationConfidence` folds the two into one scale (4: the certified site is
 the CCN's only site and a hospital sits where Google puts its name; 3: same but other sites share the CCN; 2: the site
-was placed at its organization's address, a campus credited to the parent; 1: name based). The rule is deterministic
+was placed at its organization's address, a campus credited to the parent, or a former CCN of the site; 1: name based). The rule is deterministic
 and reproducible from the two source files, the key and the caches.
 
