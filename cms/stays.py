@@ -129,6 +129,23 @@ def add_provider_revenue_info(staysDF):
                       .withColumn("providerMriVol", F.sum( F.col("mri") ).over(eachProvider)))
     return staysDF
 
+def add_provider_thruDestination_info(staysDF):
+    '''Adds providerThruDestination<Value>Vol and providerThruDestination<Value>Mean for each value of thruDestination
+    (_THRU_DESTINATIONS; <Value> with its first letter capitalised, eg IpRehab): the number and the share of the
+    hospital's discharges that year (THRU_DT_YEAR) that went there. Requires thruDestination
+    (add_source_and_destination_info) on stays at stay granularity.'''
+    #the share is over the discharges with a known destination, deaths and ipOther included, so the Means sum to 1; a
+    #censored (null) discharge stays null in every flag and is in neither numerator nor denominator, and a hospital-year
+    #with only censored discharges is null. Another base (eg live discharges) can be recomputed from the Vols
+    eachProvider = Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"])
+    destination = F.col("thruDestination")
+    for value in _THRU_DESTINATIONS:
+        flag = F.when(destination == value, 1).when(destination.isNotNull(), 0)
+        name = "providerThruDestination" + value[0].upper() + value[1:]
+        staysDF = (staysDF.withColumn(name + "Vol", F.sum(flag).over(eachProvider))
+                          .withColumn(name + "Mean", F.mean(flag).over(eachProvider)))
+    return staysDF
+
 # Date components added by add_admission_date_info / add_through_date_info /
 # add_discharge_date_info / add_death_date_info. They are enricher-added
 # numerics that would otherwise satisfy schema-diff, but they MUST NOT be
@@ -360,6 +377,10 @@ def _per_stay_index(baseDF, claimType, label):
 
 
 _SOURCE_DEST_PRIORITY = ("hosp", "ipRehab", "snf", "ipLtc", "ipOther")
+
+#every non-null value of thruDestination: the settings above, then the home and died fallbacks of
+#add_source_and_destination_info, so a setting added above also gets its add_provider_thruDestination_info columns
+_THRU_DESTINATIONS = _SOURCE_DEST_PRIORITY + ("home", "died")
 
 
 def _has_setting(otherCol):

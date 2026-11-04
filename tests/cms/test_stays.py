@@ -718,6 +718,68 @@ class TestAddProviderAnnualAdmissions:
 
 
 # ============================================================
+# Tests for add_provider_thruDestination_info
+# ============================================================
+
+def _thru_destination_df(spark, rows):
+    """rows: list of (CLAIMNO, ORGNPINM, THRU_DT_YEAR, thruDestination). CLAIMNO is only a row id."""
+    schema = StructType([
+        StructField("CLAIMNO", IntegerType()),
+        StructField("ORGNPINM", IntegerType()),
+        StructField("THRU_DT_YEAR", IntegerType()),
+        StructField("thruDestination", StringType()),
+    ])
+    return spark.createDataFrame(rows, schema=schema)
+
+
+_THRU_DESTINATION_NAMES = ("Hosp", "IpRehab", "Snf", "IpLtc", "IpOther", "Home", "Died")
+
+
+class TestAddProviderThruDestinationInfo:
+
+    def test_adds_a_vol_and_a_mean_per_destination(self, spark):
+        from cms.stays import add_provider_thruDestination_info
+        df = _thru_destination_df(spark, [(1, 100, 2020, "home")])
+        added = set(add_provider_thruDestination_info(df).columns) - set(df.columns)
+        assert added == {f"providerThruDestination{n}{s}" for n in _THRU_DESTINATION_NAMES for s in ("Vol", "Mean")}
+
+    def test_shares_over_known_destinations(self, spark):
+        # hospital 100 in 2020: home x2, snf, ipRehab, died and one censored (null) -> 5 known discharges
+        from cms.stays import add_provider_thruDestination_info
+        df = _thru_destination_df(spark, [(1, 100, 2020, "home"), (2, 100, 2020, "home"), (3, 100, 2020, "snf"),
+                                          (4, 100, 2020, "ipRehab"), (5, 100, 2020, "died"), (6, 100, 2020, None)])
+        for r in add_provider_thruDestination_info(df).collect():
+            assert r["providerThruDestinationHomeVol"] == 2
+            assert r["providerThruDestinationHomeMean"] == pytest.approx(0.4)
+            for n in ("Snf", "IpRehab", "Died"):
+                assert r[f"providerThruDestination{n}Vol"] == 1
+                assert r[f"providerThruDestination{n}Mean"] == pytest.approx(0.2)
+            for n in ("Hosp", "IpLtc", "IpOther"):
+                assert r[f"providerThruDestination{n}Vol"] == 0
+                assert r[f"providerThruDestination{n}Mean"] == pytest.approx(0.0)
+            assert sum(r[f"providerThruDestination{n}Mean"] for n in _THRU_DESTINATION_NAMES) == pytest.approx(1.0)
+
+    def test_per_hospital_and_discharge_year(self, spark):
+        # 100/2020: hosp, home -> 0.5 hospice; 100/2021: ipLtc -> 1.0 ltc; 200/2020: ipOther -> 1.0 other inpatient
+        from cms.stays import add_provider_thruDestination_info
+        df = _thru_destination_df(spark, [(1, 100, 2020, "hosp"), (2, 100, 2020, "home"),
+                                          (3, 100, 2021, "ipLtc"), (4, 200, 2020, "ipOther")])
+        rows = {r["CLAIMNO"]: r for r in add_provider_thruDestination_info(df).collect()}
+        assert rows[1]["providerThruDestinationHospMean"] == pytest.approx(0.5)
+        assert rows[2]["providerThruDestinationHospMean"] == pytest.approx(0.5)
+        assert rows[3]["providerThruDestinationIpLtcMean"] == pytest.approx(1.0)
+        assert rows[3]["providerThruDestinationHospMean"] == pytest.approx(0.0)
+        assert rows[4]["providerThruDestinationIpOtherMean"] == pytest.approx(1.0)
+
+    def test_only_censored_discharges_are_null(self, spark):
+        from cms.stays import add_provider_thruDestination_info
+        df = _thru_destination_df(spark, [(1, 100, 2020, None), (2, 100, 2020, None)])
+        for r in add_provider_thruDestination_info(df).collect():
+            for n in _THRU_DESTINATION_NAMES:
+                assert r[f"providerThruDestination{n}Mean"] is None
+
+
+# ============================================================
 # End-to-end tests for add_provider_stroke_treatment_info
 # ============================================================
 

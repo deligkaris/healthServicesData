@@ -321,6 +321,24 @@ get_data_dictionary <- function() {
     "providerAnnualDischarges","Hospital stays discharged that year (THRU_DT_YEAR)",
     "providerAnnualAdmissions","Hospital stays admitted that year (ADMSN_DT_YEAR)",
 
+    # ---- provider discharge mix (thruDestination of the hospital's stays; Mean = share of its discharges that year
+    # (THRU_DT_YEAR) with a known thruDestination, deaths and ipOther included, so the seven Means sum to 1; censored
+    # discharges (NULL thruDestination) left out; NULL when none is known) ----
+    "providerThruDestinationHospVol","Hospital's discharges that year whose thruDestination is hosp (hospice)",
+    "providerThruDestinationHospMean","Share of the hospital's discharges that year that went to hospice (thruDestination hosp)",
+    "providerThruDestinationIpRehabVol","Hospital's discharges that year whose thruDestination is ipRehab (inpatient rehabilitation facility)",
+    "providerThruDestinationIpRehabMean","Share of the hospital's discharges that year that went to an inpatient rehabilitation facility (thruDestination ipRehab)",
+    "providerThruDestinationSnfVol","Hospital's discharges that year whose thruDestination is snf",
+    "providerThruDestinationSnfMean","Share of the hospital's discharges that year that went to a SNF (thruDestination snf)",
+    "providerThruDestinationIpLtcVol","Hospital's discharges that year whose thruDestination is ipLtc (long-term care hospital)",
+    "providerThruDestinationIpLtcMean","Share of the hospital's discharges that year that went to a long-term care hospital (thruDestination ipLtc)",
+    "providerThruDestinationIpOtherVol","Hospital's discharges that year whose thruDestination is ipOther (other inpatient stay, incl. at the same hospital)",
+    "providerThruDestinationIpOtherMean","Share of the hospital's discharges that year that went to another inpatient stay (thruDestination ipOther)",
+    "providerThruDestinationHomeVol","Hospital's discharges that year whose thruDestination is home (no qualifying stay; includes home health)",
+    "providerThruDestinationHomeMean","Share of the hospital's discharges that year that went home (thruDestination home)",
+    "providerThruDestinationDiedVol","Hospital's discharges that year whose thruDestination is died",
+    "providerThruDestinationDiedMean","Share of the hospital's discharges that year that died (thruDestination died)",
+
     # ---- provider capability / volume (sepsis-shock cohort) ----
     # AnnualCapability = performed it at least once that year (each year independent, does not carry forward);
     # EverCapability = performed it in any year up to and including this one (never resets, no backfill);
