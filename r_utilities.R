@@ -423,6 +423,7 @@ get_data_dictionary <- function() {
     "fromproviderAnnualAdmissions","Sending hospital: its inpatient stays admitted in the transfer year (0 if none)",
     "toproviderAnnualAdmissions","Receiving hospital: its inpatient stays admitted in the transfer year, transferred-in included (0 if none)",
     "nodeProportionTransferredOut","Sending hospital: share of its patients that year it transferred out within the row's transfer set; IP->IP: nodeOutVol / fromproviderAnnualDischarges (NULL if 0), ED->IP: nodeOutVol / (fromproviderAnnualAdmissions + nodeOutVol)",
+    "nodeFromLosMean", "Sending hospital: mean los of its IP->IP transfers out that year, the days at the sending hospital before the transfer (NA on ED->IP rows: outpatient claims have no admission date, so an ED visit has no los)",
     "nodeProportionTransferredInFromEd","nodeInVolFromEd / toproviderAnnualAdmissions, the receiving hospital's admissions that year incl. transferred-in (NULL if toproviderAnnualAdmissions is 0)",
     "nodeProportionTransferredInFromIp","nodeInVolFromIp / toproviderAnnualAdmissions (NULL if toproviderAnnualAdmissions is 0)",
     "nodeProportionTransferredInFromEdOrIp","nodeInVolFromEdOrIp / toproviderAnnualAdmissions, pooled across both transfer sets (NULL if toproviderAnnualAdmissions is 0; present only when both were included)",

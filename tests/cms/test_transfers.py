@@ -4639,6 +4639,58 @@ class TestAddNodeProportionTransferredOut:
 
 
 # ============================================================
+# Tests for add_nodeFromLosMean.
+# ============================================================
+
+def make_node_los_df(spark, rows):
+    """rows: list of (fromCLAIMNO, fromORGNPINM, toORGNPINM, fromTHRU_DT_YEAR, transferType, fromlos)."""
+    return spark.createDataFrame(rows, "fromCLAIMNO string, fromORGNPINM int, toORGNPINM int, fromTHRU_DT_YEAR int, "
+                                       "transferType int, fromlos int")
+
+
+def _los_mean(spark, rows):
+    from cms.transfers import add_nodeFromLosMean
+    return {r["fromCLAIMNO"]: r["nodeFromLosMean"] for r in add_nodeFromLosMean(make_node_los_df(spark, rows)).collect()}
+
+
+_IP_TYPE = int(TransferType.inpatientToInpatient)
+_ED_TYPE = int(TransferType.edToInpatient)
+
+
+class TestAddNodeFromLosMean:
+
+    def test_mean_per_sender_year(self, spark):
+        # sender 100 in 2020: los 2, 4, 9 to different receivers -> 5; its 2021 transfer and sender 101 are other groups
+        out = _los_mean(spark, [("a", 100, 200, 2020, _IP_TYPE, 2), ("b", 100, 300, 2020, _IP_TYPE, 4),
+                                ("c", 100, 400, 2020, _IP_TYPE, 9), ("d", 100, 200, 2021, _IP_TYPE, 1),
+                                ("e", 101, 200, 2020, _IP_TYPE, 7)])
+        assert out["a"] == out["b"] == out["c"] == pytest.approx(5.0)
+        assert out["d"] == pytest.approx(1.0)
+        assert out["e"] == pytest.approx(7.0)
+
+    def test_null_skipped_and_all_null_is_null(self, spark):
+        out = _los_mean(spark, [("a", 100, 200, 2020, _IP_TYPE, 3), ("b", 100, 300, 2020, _IP_TYPE, None),
+                                ("c", 101, 200, 2020, _IP_TYPE, None)])
+        assert out["b"] == pytest.approx(3.0)
+        assert out["c"] is None
+
+    def test_union_keeps_ed_rows_out_of_the_inpatient_mean(self, spark):
+        # sender 100 in 2020 on a union: two IP->IP transfers (los 2, 6) and two ED->IP ones, whose fromlos is null
+        # after get_union -> IP rows 4, ED rows null
+        out = _los_mean(spark, [("a", 100, 200, 2020, _IP_TYPE, 2), ("b", 100, 300, 2020, _IP_TYPE, 6),
+                                ("c", 100, 200, 2020, _ED_TYPE, None), ("d", 100, 400, 2020, _ED_TYPE, None)])
+        assert out["a"] == out["b"] == pytest.approx(4.0)
+        assert out["c"] is None and out["d"] is None
+
+    @pytest.mark.parametrize("dropped", ["fromlos", "transferType"])
+    def test_missing_column_raises(self, spark, dropped):
+        from cms.transfers import add_nodeFromLosMean
+        df = make_node_los_df(spark, [("a", 100, 200, 2020, _ED_TYPE, None)]).drop(dropped)
+        with pytest.raises(ValueError):
+            add_nodeFromLosMean(df)
+
+
+# ============================================================
 # Tests for add_nodeToProportionFromEd.
 # ============================================================
 

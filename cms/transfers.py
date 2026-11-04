@@ -235,6 +235,21 @@ def add_nodeProportionTransferredOut(transfersDF):
                          F.col("nodeOutVol") / edDenominator))
     return transfersDF.withColumn("nodeProportionTransferredOut", proportion)
 
+def add_nodeFromLosMean(transfersDF):
+    '''Adds nodeFromLosMean: the mean fromlos over the sending provider's transfers out of the row's transferType that
+    year, the days its inpatientToInpatient transfers stayed there before the transfer; null on edToInpatient rows.
+    Runs on the inpatientToInpatient set or on the union. Raises ValueError without fromlos or transferType.'''
+    #fromlos is the sending stay's los (baseF.add_los, maxed over the stay by staysF.propagate_stay_info); an edToInpatient
+    #set has none, as op claims carry only THRU_DT and no admission date, so an ED visit's los cannot be computed. After
+    #get_union those rows have a null fromlos and get null here: none is imputed
+    missing = [c for c in ["fromlos", "transferType"] if c not in transfersDF.columns]
+    if missing:
+        raise ValueError(f"transfersDF has no {', '.join(missing)}. add_nodeFromLosMean needs inpatientToInpatient "
+                         "transfers (fromlos is the sending stay's los), alone or in a union (get_union).")
+    #transferType in the key keeps it per type on the union, so edToInpatient rows never enter an inpatientToInpatient mean
+    eachFromProviderAndType = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR","transferType"])
+    return transfersDF.withColumn("nodeFromLosMean", F.mean(F.col("fromlos")).over(eachFromProviderAndType))
+
 def _nodeInVolOfTypes(*transferTypes):
     '''Windowed count of the rows whose transferType is one of transferTypes, per receiving provider and
     transfer year (the to-side node basis, see add_node_volume_info).'''
