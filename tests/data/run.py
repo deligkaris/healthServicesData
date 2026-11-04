@@ -1,7 +1,7 @@
 '''Runs the data tests from a batch job, the way an analysis script runs: python tests/data/run.py [pytest options]
 eg python tests/data/run.py -k "not carLine" (see tests/conftest.py for the options). The tests run as two pytest
 sessions, test_pipeline and test_transfers second, each printing its own report. When spark makes no progress for
-stallMinutes, stalls.py prints what the driver is doing to stderr.'''
+stallMinutes, stalls.py prints what the driver is doing to stderr (under subspark, the .spark.log, not the .log).'''
 import os
 import sys
 from pathlib import Path
@@ -15,7 +15,7 @@ yearInitial = 2018 #set the years to test
 yearFinal = 2019
 ################
 pathToAHAData = '/users/PAS2164/deligkaris/DATA/AHA' #the complete AHA data, see sepsis-transfers.py
-pathTmp = '/users/PAS2164/deligkaris/DATA/TMP/dataTests' #the sampled CMS files of the enricher tests, removed at the end
+pathTmp = '/users/PAS2164/deligkaris/DATA/TMP/dataTests' #the enricher tests' sampled data, removed at the end
 stallMinutes = 15 #no spark job or task progress for this long prints the driver's state, see stalls.py
 stallDumps = 3 #the JVM threads are dumped this many times, stallDumpSeconds apart, to tell a stuck thread from a slow one
 stallDumpSeconds = 60

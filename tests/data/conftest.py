@@ -150,12 +150,13 @@ def cmsData(spark, request, years, externalData):
 @pytest.fixture(scope="session")
 def sampledCmsData(spark, request, years, cmsFilenames, externalData):
     '''get_cms_data on the beneficiaries with DSYSRTKY % --beneficiary-sample == 0, for the enrichers that join a
-    beneficiary's claims with each other. Their CMS files are written under --tmp-path, removed at the end.'''
+    beneficiary's claims with each other. Their CMS files and the get_cms_data output are written under --tmp-path,
+    removed at the end.'''
     n = request.config.getoption("--beneficiary-sample")
     (cmsPath, tmpPath) = (request.config.getoption("--cms-path"), request.config.getoption("--tmp-path"))
     if tmpPath is None:
         pytest.fail("--tmp-path is needed, a directory every spark node can write")
-    sampledPath = tmpPath + "/sampledCms"
+    (sampledPath, outputPath) = (tmpPath + "/sampledCms", tmpPath + "/sampledCmsData")
     #the files are cut, not the get_cms_data dataframes: the optimizer pushes a filter on them down through every
     #join of get_cms_data, and planning that ran for hours at OSC
     for path in [path for paths in cmsFilenames.values() for path in paths]:
@@ -166,6 +167,8 @@ def sampledCmsData(spark, request, years, cmsFilenames, externalData):
            .write.mode("overwrite").parquet(sampledPath + path[len(cmsPath):]))
     sampled = cmsUtilitiesF.get_cms_data(sampledPath, *years, spark, externalData)
     #computed once and cut from the get_cms_data lineage, which every enricher would otherwise re-plan and rerun
-    #several times over (add_days_at_home_info reads ipBase four times)
-    yield {k: df.localCheckpoint() for k, df in sampled.items()}
+    #several times over (add_days_at_home_info reads ipBase four times). Written and read back, as the analysis scripts
+    #do: a localCheckpoint keeps the plan's constraints, and on those get_transfers ran out of driver heap planning
+    yield {k: utilitiesF.write_and_read_parquet(df, f"{outputPath}/{k}") for k, df in sampled.items()}
     shutil.rmtree(sampledPath, ignore_errors=True)
+    shutil.rmtree(outputPath, ignore_errors=True)
