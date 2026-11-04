@@ -780,6 +780,54 @@ class TestAddProviderThruDestinationInfo:
 
 
 # ============================================================
+# Tests for add_providerLosMeanExclIpOther / add_providerLosMeanExclIpOtherAndDied
+# ============================================================
+
+def _los_destination_df(spark, rows):
+    """rows: list of (CLAIMNO, ORGNPINM, THRU_DT_YEAR, los, thruDestination). CLAIMNO is only a row id."""
+    return spark.createDataFrame(rows, "CLAIMNO int, ORGNPINM int, THRU_DT_YEAR int, los int, thruDestination string")
+
+
+def _with_los_means(df):
+    from cms.stays import add_providerLosMeanExclIpOther, add_providerLosMeanExclIpOtherAndDied
+    return add_providerLosMeanExclIpOtherAndDied(add_providerLosMeanExclIpOther(df))
+
+
+class TestAddProviderLosMean:
+
+    def test_excludes_ip_other_censored_and_died(self, spark):
+        # hospital 100/2020: home 2, snf 4, ipOther 10, died 6, censored 3 -> (2+4+6)/3 and survivors (2+4)/2,
+        # on every row, the excluded ones included
+        df = _los_destination_df(spark, [(1, 100, 2020, 2, "home"), (2, 100, 2020, 4, "snf"), (3, 100, 2020, 10, "ipOther"),
+                                         (4, 100, 2020, 6, "died"), (5, 100, 2020, 3, None)])
+        rows = _with_los_means(df).collect()
+        assert len(rows) == 5
+        for r in rows:
+            assert r["providerLosMeanExclIpOther"] == pytest.approx(4.0)
+            assert r["providerLosMeanExclIpOtherAndDied"] == pytest.approx(3.0)
+
+    def test_per_hospital_and_discharge_year(self, spark):
+        df = _los_destination_df(spark, [(1, 100, 2020, 2, "home"), (2, 100, 2021, 8, "ipRehab"), (3, 200, 2020, 5, "hosp")])
+        by = {r["CLAIMNO"]: r["providerLosMeanExclIpOther"] for r in _with_los_means(df).collect()}
+        assert by == {1: pytest.approx(2.0), 2: pytest.approx(8.0), 3: pytest.approx(5.0)}
+
+    def test_no_kept_stay_is_null(self, spark):
+        # 100/2020 has only a transfer out and a censored discharge; 200/2020 only a death (null for survivors only)
+        df = _los_destination_df(spark, [(1, 100, 2020, 2, "ipOther"), (2, 100, 2020, 3, None), (3, 200, 2020, 4, "died")])
+        by = {r["CLAIMNO"]: r for r in _with_los_means(df).collect()}
+        assert by[1]["providerLosMeanExclIpOther"] is None and by[2]["providerLosMeanExclIpOtherAndDied"] is None
+        assert by[3]["providerLosMeanExclIpOther"] == pytest.approx(4.0)
+        assert by[3]["providerLosMeanExclIpOtherAndDied"] is None
+
+    def test_one_value_per_hospital_year(self, spark):
+        df = _los_destination_df(spark, [(1, 100, 2020, 2, "home"), (2, 100, 2020, 9, "ipOther"), (3, 100, 2020, 7, None),
+                                         (4, 100, 2021, 1, "home")])
+        out = _with_los_means(df)
+        for c in ("providerLosMeanExclIpOther", "providerLosMeanExclIpOtherAndDied"):
+            assert out.select("ORGNPINM", "THRU_DT_YEAR", c).distinct().count() == 2
+
+
+# ============================================================
 # End-to-end tests for add_provider_stroke_treatment_info
 # ============================================================
 

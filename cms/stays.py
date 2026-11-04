@@ -146,6 +146,28 @@ def add_provider_thruDestination_info(staysDF):
                           .withColumn(name + "Mean", F.mean(flag).over(eachProvider)))
     return staysDF
 
+def _providerLosMeanExcluding(destinations):
+    '''Mean los over the hospital's stays discharged that year (THRU_DT_YEAR) whose thruDestination is known and not
+    one of destinations.'''
+    #a censored discharge (null thruDestination) is dropped: keeping it would assume it was not a transfer out. By
+    #discharge year, a stay still open at the end of the pull (no claim yet) cannot shorten any year's mean
+    destination = F.col("thruDestination")
+    kept = destination.isNotNull() & ~destination.isin(list(destinations))
+    return F.mean(F.when(kept, F.col("los"))).over(Window.partitionBy(["ORGNPINM","THRU_DT_YEAR"]))
+
+def add_providerLosMeanExclIpOther(staysDF):
+    '''Adds providerLosMeanExclIpOther: the mean los of the hospital's stays discharged that year, direct admissions and
+    transfers in, leaving out those discharged to another inpatient stay (thruDestination ipOther) and the censored
+    ones; on every stay, null when none is left. Requires los and thruDestination (add_source_and_destination_info).'''
+    #ipOther stands in for transfers out, whose los the transfer cuts short; it also holds a next-day stay at the same
+    #hospital or at a psychiatric hospital (see get_otherStays)
+    return staysDF.withColumn("providerLosMeanExclIpOther", _providerLosMeanExcluding(["ipOther"]))
+
+def add_providerLosMeanExclIpOtherAndDied(staysDF):
+    '''Adds providerLosMeanExclIpOtherAndDied: providerLosMeanExclIpOther over the survivors only, also leaving out the
+    in-hospital deaths (thruDestination died). Requires los and thruDestination (add_source_and_destination_info).'''
+    return staysDF.withColumn("providerLosMeanExclIpOtherAndDied", _providerLosMeanExcluding(["ipOther", "died"]))
+
 # Date components added by add_admission_date_info / add_through_date_info /
 # add_discharge_date_info / add_death_date_info. They are enricher-added
 # numerics that would otherwise satisfy schema-diff, but they MUST NOT be

@@ -338,6 +338,8 @@ get_data_dictionary <- function() {
     "providerThruDestinationHomeMean","Share of the hospital's discharges that year that went home (thruDestination home)",
     "providerThruDestinationDiedVol","Hospital's discharges that year whose thruDestination is died",
     "providerThruDestinationDiedMean","Share of the hospital's discharges that year that died (thruDestination died)",
+    "providerLosMeanExclIpOther","Mean los of the hospital's stays discharged that year (THRU_DT_YEAR), direct admissions and transfers in, excluding those discharged to another inpatient stay (thruDestination ipOther, the stand-in for transfers out) and censored discharges (NULL thruDestination); NULL if none",
+    "providerLosMeanExclIpOtherAndDied","providerLosMeanExclIpOther over survivors only: also excluding in-hospital deaths (thruDestination died); NULL if none",
 
     # ---- provider capability / volume (sepsis-shock cohort) ----
     # AnnualCapability = performed it at least once that year (each year independent, does not carry forward);
