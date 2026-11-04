@@ -298,8 +298,6 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #https://onlinelibrary.wiley.com/doi/10.1002/emp2.12673
     filenames["strokeCentersCamargo"] = [pathToData + "/CAMARGO-GROUP/2018_Stroke_CMS_2023apr-modifiedHeader.csv"]
 
-    #joint commission website
-    filenames["strokeCentersJC"] = [pathToData + "/JOINT-COMMISSION/StrokeCertificationList.csv"]
     #one row per CCN with its joint commission stroke certification, built by scripts/01-04 from the pos parquet and the
     #accredited organizations export of the joint commission website (the site level jcAccreditation.parquet those
     #scripts also write is an input of the match and an audit trail, not loaded here)
@@ -347,8 +345,6 @@ def read_and_prep_dataframe(filename, file, spark):
         df = prep_aamcHospitalsDF(df)
     elif file=="strokeCentersCamargo":
         df = prep_strokeCentersCamargoDF(df)
-    elif file=="strokeCentersJC":
-        df = prep_strokeCentersJCDF(df)
     elif file=="zipToCounty":
         df = prep_zipToCountyDF(df)
     elif file=="zipToHrr":
@@ -1016,10 +1012,6 @@ def prep_strokeCentersCamargoDF(strokeCentersCamargoDF):
                                                                 .otherwise(F.col("CCN")))
     strokeCentersCamargoDF = strokeCentersCamargoDF.withColumn("strokeCenterCamargo", F.lit(1))
     return strokeCentersCamargoDF
-
-def prep_strokeCentersJCDF(strokeCentersJCDF):
-    strokeCentersJCDF = add_processed_name(strokeCentersJCDF,colToProcess="OrganizationName")
-    return strokeCentersJCDF
 
 def get_nameTokens(col):
     '''The distinctive words of a facility name, as an array Column: "ST MARY MEDICAL CENTER" gives ["mary"].'''
