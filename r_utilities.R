@@ -459,7 +459,13 @@ get_data_dictionary <- function() {
     "dyadGeodesicDistanceKm","Great-circle (straight-line) distance between the dyad's hospitals' geocoded addresses (km)",
     "dyadDrivingDistanceKm","Road driving distance from the sending to the receiving hospital, Google Routes API without traffic (km)",
     "dyadDrivingTimeMin","Road driving time from the sending to the receiving hospital, Google Routes API without traffic (minutes)",
-    "dyadDrivingStatus","Google Routes API status for the dyad: OK, or ZERO_RESULTS when no road connects them (NA if a hospital was not geocoded)"
+    "dyadDrivingStatus","Google Routes API status for the dyad: OK, or ZERO_RESULTS when no road connects them (NA if a hospital was not geocoded)",
+    "nodeFromGeodesicDistanceKmMean","Sending hospital: mean dyadGeodesicDistanceKm over its transfers out that year within its transfer set (each transfer counts once; transfers without a distance left out; NA if none)",
+    "nodeFromDrivingDistanceKmMean","Sending hospital: mean dyadDrivingDistanceKm over its transfers out that year within its transfer set (each transfer counts once; transfers without a route left out; NA if none)",
+    "nodeFromDrivingTimeMinMean","Sending hospital: mean dyadDrivingTimeMin over its transfers out that year within its transfer set (each transfer counts once; transfers without a route left out; NA if none)",
+    "nodeToGeodesicDistanceKmMean","Receiving hospital: mean dyadGeodesicDistanceKm over its transfers in that year within its transfer set (each transfer counts once; transfers without a distance left out; NA if none)",
+    "nodeToDrivingDistanceKmMean","Receiving hospital: mean dyadDrivingDistanceKm over its transfers in that year within its transfer set (each transfer counts once; transfers without a route left out; NA if none)",
+    "nodeToDrivingTimeMinMean","Receiving hospital: mean dyadDrivingTimeMin over its transfers in that year within its transfer set (each transfer counts once; transfers without a route left out; NA if none)"
   )
 }
 

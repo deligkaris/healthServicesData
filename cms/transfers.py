@@ -759,6 +759,22 @@ def add_dyad_distance_info(transfersDF, nodesDF, pathToData, maxCalls=None, keyF
                                               "toproviderLng", pathToData, "dyad", maxCalls=maxCalls, keyFilename=keyFilename)
     return transfersDF
 
+def add_node_distance_info(transfersDF):
+    '''Adds nodeFrom<X>Mean and nodeTo<X>Mean for X in GeodesicDistanceKm, DrivingDistanceKm and DrivingTimeMin: the
+    mean dyad<X> over the sending provider's transfers out, and over the receiving provider's transfers in, that year.
+    Requires add_dyad_distance_info run on the transfers themselves, not on get_edgeList.'''
+    #each row is a transfer, so a destination counts once per patient sent there, not once per dyad; F.mean skips the
+    #nulls of a provider without coordinates or a dyad without a route, and is null when the provider-year has no
+    #distance. Run on each transfer set before the union so the means stay per-set, like the other node columns; the
+    #to-side window keys on fromTHRU_DT_YEAR, as in add_node_volume_info
+    eachFromProvider = Window.partitionBy(["fromORGNPINM","fromTHRU_DT_YEAR"])
+    eachToProvider = Window.partitionBy(["toORGNPINM","fromTHRU_DT_YEAR"])
+    for measure in ["GeodesicDistanceKm", "DrivingDistanceKm", "DrivingTimeMin"]:
+        dyadMeasure = F.col("dyad" + measure)
+        transfersDF = (transfersDF.withColumn(f"nodeFrom{measure}Mean", F.mean(dyadMeasure).over(eachFromProvider))
+                                  .withColumn(f"nodeTo{measure}Mean", F.mean(dyadMeasure).over(eachToProvider)))
+    return transfersDF
+
 def _add_from_and_to_columns(transfersDF, providerDF, keys):
     '''Joins every column of providerDF but its keys (["ORGNPINM"] or ["ORGNPINM", "THRU_DT_YEAR"]) twice, prefixed from
     and to, onto the sending and the receiving provider of each transfer. Raises ValueError if providerDF lacks a key or

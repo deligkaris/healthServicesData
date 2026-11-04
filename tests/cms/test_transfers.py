@@ -5036,6 +5036,62 @@ class TestAddDyadDistanceInfo:
 
 
 # ============================================================
+# Tests for add_node_distance_info -- per provider-year means of the
+# dyad distances over its transfers out and in.
+# ============================================================
+
+def make_node_distance_df(spark, rows):
+    """rows: (fromCLAIMNO, fromORGNPINM, toORGNPINM, fromTHRU_DT_YEAR, km); km fills the three dyad distance columns."""
+    return spark.createDataFrame([r[:4] + (r[4], r[4], r[4]) for r in rows],
+                                 "fromCLAIMNO string, fromORGNPINM string, toORGNPINM string, fromTHRU_DT_YEAR int, "
+                                 "dyadGeodesicDistanceKm double, dyadDrivingDistanceKm double, dyadDrivingTimeMin double")
+
+
+class TestAddNodeDistanceInfo:
+
+    _MEASURES = ("GeodesicDistanceKm", "DrivingDistanceKm", "DrivingTimeMin")
+
+    def test_adds_six_columns(self, spark):
+        from cms.transfers import add_node_distance_info
+        df = make_node_distance_df(spark, [("a1", "100", "200", 2020, 10.0)])
+        added = set(add_node_distance_info(df).columns) - set(df.columns)
+        assert added == {f"node{side}{m}Mean" for side in ("From", "To") for m in self._MEASURES}
+
+    def test_from_side_is_transfer_weighted_per_year(self, spark):
+        # sender 100 in 2020: two transfers to 200 at 10 km and one to 300 at 40 km -> 20 (a mean over dyads would
+        # give 25); its 2021 transfer and sender 101's transfer to 200 are other groups
+        from cms.transfers import add_node_distance_info
+        df = make_node_distance_df(spark, [("a1", "100", "200", 2020, 10.0), ("a2", "100", "200", 2020, 10.0),
+                                           ("a3", "100", "300", 2020, 40.0), ("a4", "100", "200", 2021, 70.0),
+                                           ("a5", "101", "200", 2020, 5.0)])
+        rows = {r["fromCLAIMNO"]: r for r in add_node_distance_info(df).collect()}
+        for c in ("a1", "a2", "a3"):
+            for m in self._MEASURES:
+                assert rows[c][f"nodeFrom{m}Mean"] == pytest.approx(20.0)
+        assert rows["a4"]["nodeFromDrivingDistanceKmMean"] == pytest.approx(70.0)
+        assert rows["a5"]["nodeFromDrivingDistanceKmMean"] == pytest.approx(5.0)
+
+    def test_to_side_per_receiver_year(self, spark):
+        # receiver 200 in 2020 gets 10, 10 (from 100) and 5 (from 101) -> 25/3; receiver 300 gets 40
+        from cms.transfers import add_node_distance_info
+        df = make_node_distance_df(spark, [("a1", "100", "200", 2020, 10.0), ("a2", "100", "200", 2020, 10.0),
+                                           ("a3", "100", "300", 2020, 40.0), ("a5", "101", "200", 2020, 5.0)])
+        rows = {r["fromCLAIMNO"]: r for r in add_node_distance_info(df).collect()}
+        assert rows["a5"]["nodeToDrivingDistanceKmMean"] == pytest.approx(25.0 / 3.0)
+        assert rows["a3"]["nodeToDrivingDistanceKmMean"] == pytest.approx(40.0)
+
+    def test_nulls_skipped_and_all_null_is_null(self, spark):
+        # sender 100: 10 km and a transfer without a route -> 10; sender 101: only a transfer without a route -> null
+        from cms.transfers import add_node_distance_info
+        df = make_node_distance_df(spark, [("a1", "100", "200", 2020, 10.0), ("a2", "100", "300", 2020, None),
+                                           ("a3", "101", "400", 2020, None)])
+        rows = {r["fromCLAIMNO"]: r for r in add_node_distance_info(df).collect()}
+        assert rows["a2"]["nodeFromDrivingDistanceKmMean"] == pytest.approx(10.0)
+        assert rows["a3"]["nodeFromDrivingDistanceKmMean"] is None
+        assert rows["a3"]["nodeToDrivingDistanceKmMean"] is None
+
+
+# ============================================================
 # Tests for add_provider_annual_info / add_provider_block_group_info /
 # add_dyad_annual_info -- provider and dyad tables joined back onto
 # the transfers (sepsis-transfers.py section 05).
