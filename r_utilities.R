@@ -370,6 +370,9 @@ get_data_dictionary <- function() {
     "providerIchStrokeAnnualVolumePrior","Hospital prior-year intracerebral-hemorrhage stroke volume",
     "providerAnyStrokeAnnualVolume","Hospital any-stroke case volume that year",
     "providerAnyStrokeAnnualVolumePrior","Hospital prior-year any-stroke volume",
+    "providerAnyStrokeAnnualVolumeGroup","Hospital any-stroke volume group that year: 0 = none, 1/2/3 = low/average/high tercile among the cohort's hospitals with >= 1 that year (ties share a group)",
+    "providerEvtAnnualVolume","Hospital thrombectomy (evt) case volume that year",
+    "providerEvtAnnualVolumeGroup","Hospital thrombectomy (evt) volume group that year: 0 = none, 1/2/3 = low/average/high tercile among the cohort's hospitals with >= 1 that year (ties share a group)",
 
     # ---- transfer network: node & dyad metrics ----
     # transfer set = one get_transfers call (ED->IP or IP->IP); entries are per transfer set unless they say

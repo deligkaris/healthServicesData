@@ -546,6 +546,58 @@ def _run_stroke_pipeline(spark, rows, inpatient=True):
 
 
 # ============================================================
+# Tests for add_providerAnnualVolumeGroup
+# ============================================================
+
+def _volume_df(spark, rows):
+    """rows: list of (CLAIMNO, ORGNPINM, THRU_DT_YEAR, providerEvtAnnualVolume). CLAIMNO is only a row id."""
+    return spark.createDataFrame(rows, "CLAIMNO int, ORGNPINM int, THRU_DT_YEAR int, providerEvtAnnualVolume long")
+
+
+def _volume_groups(spark, rows):
+    from cms.stays import add_providerAnnualVolumeGroup
+    return {r["CLAIMNO"]: r["providerEvtAnnualVolumeGroup"]
+            for r in add_providerAnnualVolumeGroup(_volume_df(spark, rows), col="evt").collect()}
+
+
+class TestAddProviderAnnualVolumeGroup:
+
+    def test_terciles_rank_hospitals_not_stays(self, spark):
+        # 2020: hospitals 100..103 with volume 0, 1, 2, 3; hospital 103 has 5 stays and still counts once
+        rows = [(1, 100, 2020, 0), (2, 101, 2020, 1), (3, 102, 2020, 2)] + [(10 + i, 103, 2020, 3) for i in range(5)]
+        groups = _volume_groups(spark, rows)
+        assert (groups[1], groups[2], groups[3]) == (0, 1, 2)
+        assert all(groups[10 + i] == 3 for i in range(5))
+
+    def test_ties_share_a_group(self, spark):
+        groups = _volume_groups(spark, [(1, 100, 2020, 1), (2, 101, 2020, 1), (3, 102, 2020, 1), (4, 103, 2020, 5)])
+        assert groups == {1: 1, 2: 1, 3: 1, 4: 3}
+
+    def test_years_are_cut_separately(self, spark):
+        # volume 2 is the top of 2020 (1, 2) but the bottom of 2021 (2, 6, 9)
+        groups = _volume_groups(spark, [(1, 100, 2020, 1), (2, 101, 2020, 2),
+                                        (3, 100, 2021, 2), (4, 101, 2021, 6), (5, 102, 2021, 9)])
+        assert groups[2] == 3 and groups[3] == 1
+
+    def test_null_volume_and_all_zero_year(self, spark):
+        groups = _volume_groups(spark, [(1, 100, 2020, None), (2, 101, 2020, 4), (3, 100, 2021, 0), (4, 101, 2021, 0)])
+        assert groups[1] is None
+        assert groups[3] == 0 and groups[4] == 0
+
+    def test_name_follows_col_and_rows_and_order_kept(self, spark):
+        from cms.stays import add_providerAnnualVolumeGroup
+        df = _volume_df(spark, [(1, 100, 2020, 0), (2, 101, 2020, 3), (3, 101, 2020, 3)])
+        out = add_providerAnnualVolumeGroup(df, col="evt")
+        assert out.columns == df.columns + ["providerEvtAnnualVolumeGroup"]
+        assert out.count() == 3
+
+    def test_missing_volume_raises(self, spark):
+        from cms.stays import add_providerAnnualVolumeGroup
+        with pytest.raises(ValueError):
+            add_providerAnnualVolumeGroup(_volume_df(spark, [(1, 100, 2020, 1)]), col="anyStroke")
+
+
+# ============================================================
 # End-to-end tests for stroke annual volume via add_providerAnnualVolume
 # (col="anyStroke" / col="ishStroke")
 # ============================================================

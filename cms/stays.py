@@ -35,6 +35,35 @@ def add_providerAnnualVolume(staysDF, col="anyStroke"):
     staysDF = staysDF.withColumn(colName, F.sum( F.col(col) ).over(eachProvider))
     return staysDF
 
+def add_providerAnnualVolumeGroup(staysDF, col="anyStroke"):
+    '''Adds provider<Col>AnnualVolumeGroup (e.g. col="evt" -> providerEvtAnnualVolumeGroup) from
+    provider<Col>AnnualVolume (add_providerAnnualVolume with the same col): 0 for a hospital with none that year,
+    1/2/3 for the low/average/high tercile of the hospitals in staysDF with at least 1 that year, null for a null
+    volume. Raises ValueError without the volume column.'''
+    volume = "provider" + col[0].upper() + col[1:] + "AnnualVolume"
+    if volume not in staysDF.columns:
+        raise ValueError(f"staysDF has no {volume}; run add_providerAnnualVolume(staysDF, col=\"{col}\") first")
+    #the hospitals are ranked once each, not once per stay. The none group is apart because for a rare procedure (evt)
+    #most hospitals have 0 and terciles over all of them would collapse; equal volumes share a group, so ties can make
+    #the groups unequal. The cutoffs, one row per year, are broadcast back, so the stays are not shuffled for them, but
+    #staysDF is read twice: cheap when it comes from parquet, otherwise its lineage runs twice
+    hospitalVolume = F.col(volume)
+    cutoffs = (staysDF.select("ORGNPINM", "THRU_DT_YEAR", volume).distinct()
+                      .filter(hospitalVolume > 0)
+                      .groupBy("THRU_DT_YEAR")
+                      .agg(F.percentile(hospitalVolume, [1/3, 2/3]).alias("cutoffs"))
+                      .select(F.col("THRU_DT_YEAR").alias("cutoffYear"),
+                              F.col("cutoffs")[0].alias("cutoffLow"), F.col("cutoffs")[1].alias("cutoffAverage")))
+    #a join condition rather than on="THRU_DT_YEAR" keeps the columns in their order; a year with no hospital above 0
+    #has no cutoffs, and its zeros still get 0
+    group = (F.when(hospitalVolume == 0, 0)
+              .when(hospitalVolume <= F.col("cutoffLow"), 1)
+              .when(hospitalVolume <= F.col("cutoffAverage"), 2)
+              .when(hospitalVolume > F.col("cutoffAverage"), 3))
+    return (staysDF.join(F.broadcast(cutoffs), on=F.col("THRU_DT_YEAR") == F.col("cutoffYear"), how="left_outer")
+                   .withColumn(volume + "Group", group)
+                   .drop("cutoffYear", "cutoffLow", "cutoffAverage"))
+
 def add_providerAnnualDischarges(staysDF):
     '''Adds providerAnnualDischarges -- the number of stays the organization discharged that year
     (THRU_DT_YEAR, the stay's last through date). Assumes staysDF is at stay granularity (post
