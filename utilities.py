@@ -1381,19 +1381,6 @@ def get_ccn_jc_info(jcDF):
     ccnDF = ccnDF.withColumn("jcCcnSource", F.when(F.col("jcBestProgramMatchMethod") == "former", "former").otherwise("current"))
     return ccnDF
 
-def add_ccn_from_pos(DF,posDF, providerZip="providerZip",providerName="providerNameProcessed"): #assumes a zipCode column, providerNameProcessed
-    DF = DF.join(posDF
-                     .select(F.col("FAC_NAMEProcessed"),F.col("ZIP_CD"),F.col("PRVDR_NUM")),
-                 on=[F.col("ZIP_CD")==F.col(f"{providerZip}")],
-                 how="inner")
-    DF = DF.withColumn("levenshteinDistance",
-                       F.levenshtein(F.col(f"{providerName}"), F.col("FAC_NAMEProcessed")))
-    eachZip = Window.partitionBy(f"{providerZip}")
-    DF = DF.withColumn("minLevenshteinDistance",
-                       F.min(F.col("levenshteinDistance")).over(eachZip))
-    DF = DF.filter(F.col("minLevenshteinDistance")==F.col("levenshteinDistance"))
-    return DF
-
 def print_partition_size_info(df):
     print(df.withColumn("partID", F.spark_partition_id()).groupBy("partID").count().describe("count").show())
 

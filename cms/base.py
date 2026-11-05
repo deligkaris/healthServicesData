@@ -265,7 +265,7 @@ def get_septicShockPoaClaims(baseDF):
     return add_septicShockPoa(baseDF).filter(F.col("septicShockPoa")==1).drop("septicShockPoa")
 
 def add_parkinsonsPrncpalDgns(baseDF):
-    baseDF = baseDF.withColumn("parkinsons",
+    baseDF = baseDF.withColumn("parkinsonsPrncpalDgns",
                               F.when((F.regexp_extract( F.trim(F.col("PRNCPAL_DGNS_CD")), r'^G20[\d]*',0) !=''), F.lit(1))
                                .otherwise(F.lit(0)))
     return baseDF

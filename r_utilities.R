@@ -317,6 +317,13 @@ get_data_dictionary <- function() {
     "firstObservableDay","First day covered by the loaded claims (Jan 1 of the first loaded year, cumulative day number)",
     "lastObservableDay","Last day covered by the loaded claims (Dec 31 of the last loaded year, cumulative day number)",
 
+    # ---- first stay (add_first_stay_info, within the stays it is given) ----
+    "onDayOfFirstStay","1 if the stay was admitted on the beneficiary's earliest admission day, else 0 (NULL if ADMSN_DT_DAY is)",
+    "onDayOfFirstStaySum","Beneficiary's stays admitted on that earliest admission day (sum of onDayOfFirstStay)",
+    "singleDayStay",   "1 if los = 1, else 0 (NULL if los is)",
+    "singleDayStaySum","Beneficiary's single-day stays admitted on this stay's admission day (sum of singleDayStay)",
+    "firstStay",       "1 if definitely the beneficiary's first stay: alone on the earliest admission day, or the only single-day stay among several that day (so discharged first); 0 otherwise, including when it cannot be told",
+
     # ---- provider stay counts ----
     "providerAnnualDischarges","Hospital stays discharged that year (THRU_DT_YEAR)",
     "providerAnnualAdmissions","Hospital stays admitted that year (ADMSN_DT_YEAR)",
@@ -374,6 +381,18 @@ get_data_dictionary <- function() {
     "providerEvtAnnualVolume","Hospital thrombectomy (evt) case volume that year",
     "providerEvtAnnualVolumeGroup","Hospital thrombectomy (evt) volume group that year: 0 = none, 1/2/3 = low/average/high tercile among the cohort's hospitals with >= 1 that year (ties share a group)",
 
+    # ---- provider treatment and imaging (by hospital and year over the stays given; NULL flags left out) ----
+    "providerTpaVol",  "Hospital stays with tPA that year (sum of tpa)",
+    "providerTpaMean", "Share of the hospital's stays with tPA that year (mean of tpa)",
+    "providerEvtVol",  "Hospital stays with thrombectomy (evt) that year (sum of evt; added for inpatient stays only)",
+    "providerEvtMean", "Share of the hospital's stays with thrombectomy (evt) that year (mean of evt; added for inpatient stays only)",
+    "providerEdVol",   "Hospital stays with an ED revenue center that year (sum of ed)",
+    "providerEdMean",  "Share of the hospital's stays with an ED revenue center that year (mean of ed)",
+    "providerCtVol",   "Hospital stays with a CT revenue center that year (sum of ct)",
+    "providerCtMean",  "Share of the hospital's stays with a CT revenue center that year (mean of ct)",
+    "providerMriVol",  "Hospital stays with an MRI revenue center that year (sum of mri)",
+    "providerMriMean", "Share of the hospital's stays with an MRI revenue center that year (mean of mri)",
+
     # ---- transfer network: node & dyad metrics ----
     # transfer set = one get_transfers call (ED->IP or IP->IP); entries are per transfer set unless they say
     # pooled; fromproviderAnnualDischarges/Admissions and toproviderAnnualAdmissions count the hospital's stays, not transfers
@@ -399,10 +418,28 @@ get_data_dictionary <- function() {
     "nodeToCtMean",    "Receiving hospital: mean CT flag over its incoming transfers within its transfer set",
     "nodeToMriVol",    "Receiving hospital: sum of MRI flags over its incoming transfers within its transfer set",
     "nodeToMriMean",   "Receiving hospital: mean MRI flag over its incoming transfers within its transfer set",
+    "transfertpa",     "Transfer got tPA at either hospital (totpa or fromtpa) (0/1; NULL flags count as not received)",
+    "transferct",      "Transfer had CT at either hospital (toct or fromct) (0/1; NULL flags count as none)",
+    "transfermri",     "Transfer had MRI at either hospital (tomri or frommri) (0/1; NULL flags count as none)",
+    "transferEvtOrTpa","Transfer got EVT at the receiving hospital (toevt) or tPA at either (transfertpa) (0/1; NULL flags count as not received)",
+    "transfernihss",   "NIHSS score of the sending stay (fromnihss), else of the receiving one (tonihss); NULL if neither has one",
+    "transfernihssGroup","NIHSS group of the sending stay (fromnihssGroup), else of the receiving one (tonihssGroup): 0 = score 0-9, 1 = 10-19, 2 = 20-29, 3 = 30-39, 4 = 40-42; NULL if neither has one",
     "transferTpaOnly", "Transfer got tPA at either hospital (transfertpa) and no EVT at the receiving one (toevt) (0/1; NULL flags count as not received)",
     "transferEvtOnly", "Transfer got EVT at the receiving hospital (toevt) and no tPA at either (transfertpa) (0/1; NULL flags count as not received)",
     "transferEvtAndTpa","Transfer got both tPA (transfertpa) and EVT (toevt) (0/1; NULL flags count as not received)",
     "transferNoEvtNorTpa","Transfer got neither tPA (transfertpa) nor EVT (toevt) (0/1; NULL flags count as not received; = 1 - transferEvtOrTpa)",
+    "nodeFromEvtVol",  "Sending hospital: sum of EVT flags (toevt) over its outgoing transfers that year within its transfer set (NULL flags left out)",
+    "nodeFromEvtMean", "Sending hospital: mean EVT flag (toevt) over its outgoing transfers that year within its transfer set (NULL flags left out)",
+    "nodeFromTpaVol",  "Sending hospital: outgoing transfers that got tPA (transfertpa) that year within its transfer set",
+    "nodeFromTpaMean", "Sending hospital: share of its outgoing transfers that got tPA (transfertpa) that year within its transfer set",
+    "nodeFromEvtOrTpaVol","Sending hospital: outgoing transfers that got EVT or tPA (transferEvtOrTpa) that year within its transfer set",
+    "nodeFromEvtOrTpaMean","Sending hospital: share of its outgoing transfers that got EVT or tPA (transferEvtOrTpa) that year within its transfer set",
+    "nodeToEvtVol",    "Receiving hospital: sum of EVT flags (toevt) over its incoming transfers that year within its transfer set (NULL flags left out)",
+    "nodeToEvtMean",   "Receiving hospital: mean EVT flag (toevt) over its incoming transfers that year within its transfer set (NULL flags left out)",
+    "nodeToTpaVol",    "Receiving hospital: incoming transfers that got tPA (transfertpa) that year within its transfer set",
+    "nodeToTpaMean",   "Receiving hospital: share of its incoming transfers that got tPA (transfertpa) that year within its transfer set",
+    "nodeToEvtOrTpaVol","Receiving hospital: incoming transfers that got EVT or tPA (transferEvtOrTpa) that year within its transfer set",
+    "nodeToEvtOrTpaMean","Receiving hospital: share of its incoming transfers that got EVT or tPA (transferEvtOrTpa) that year within its transfer set",
     "nodeFromTpaOnlyVol","Sending hospital: outgoing transfers that got tPA only (transferTpaOnly) that year within its transfer set",
     "nodeFromTpaOnlyMean","Sending hospital: share of its outgoing transfers that got tPA only (transferTpaOnly) that year within its transfer set",
     "nodeFromEvtOnlyVol","Sending hospital: outgoing transfers that got EVT only (transferEvtOnly) that year within its transfer set",
@@ -442,6 +479,12 @@ get_data_dictionary <- function() {
     "dyadProportionTransfersInPrior","Prior-year value of dyadProportionTransfersIn (0 if the pair had no transfers that year, also when the receiving hospital received none; NULL only when neither hospital of the pair had a transfer in an earlier year)",
     "dyadAcrossCounties","1 if sending & receiving in different counties, 0 same (NULL if missing)",
     "dyadAcrossStates","1 if sending & receiving in different states, 0 same (NULL if missing)",
+    "dyadEvtVol",      "Sum of EVT flags (toevt) over this dyad's (year) transfers within its transfer set (NULL flags left out)",
+    "dyadEvtMean",     "Mean EVT flag (toevt) over this dyad's (year) transfers within its transfer set (NULL flags left out)",
+    "dyadIncludesEvt", "1 if any of this dyad's (year) transfers got EVT (toevt), else 0, within its transfer set (NULL if toevt is NULL on all of them)",
+    "dyadTpaVol",      "This dyad's (year) transfers that got tPA (transfertpa) within its transfer set",
+    "dyadTpaMean",     "Share of this dyad's (year) transfers that got tPA (transfertpa) within its transfer set",
+    "dyadIncludesTpa", "1 if any of this dyad's (year) transfers got tPA (transfertpa), else 0, within its transfer set",
     "nodeHhi",         "Sending hospital: Herfindahl index of outgoing-transfer concentration within its transfer set (1=all to one dest)",
     "nodeHhiPrior",    "Prior-year value of nodeHhi",
 
