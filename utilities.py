@@ -4,6 +4,7 @@ from schemas import hcrisRptSchema, hcrisNmrcSchema
 from geocoding import add_address, add_geocode_info, add_place_info, get_geocode_schema, get_geodesicDistanceKm
 from urllib.request import urlopen
 import json
+import os
 import re
 import time
 from itertools import chain
@@ -154,7 +155,11 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #case mix index from https://www.nber.org/research/data/centers-medicare-medicaid-services-cms-casemix-file-hospital-ipps
     filenames["cmi"] = [pathToData + f'/CASE-MIX-INDEX/casemix{year}.csv' for year in range(2016,2025)]
 
-    filenames["aha"] = [pathToAHAData + f"/AHAAS Raw Data/FY{iYear} ASDB/COMMA/ASPUB" + f"{iYear}"[-2:] + ".CSV" for iYear in range(yearInitial,yearFinal+1)]
+    ahaFile = lambda iYear: pathToAHAData + f"/AHAAS Raw Data/FY{iYear} ASDB/COMMA/ASPUB" + f"{iYear}"[-2:] + ".CSV"
+    #the survey of the year before yearInitial gives the first year's claims ahaBedsIcuPrior (see base.add_aha_info),
+    #it matches no claims itself; left out when that survey is not there
+    filenames["aha"] = ([ahaFile(yearInitial-1)] if os.path.exists(ahaFile(yearInitial-1)) else []) + \
+                       [ahaFile(iYear) for iYear in range(yearInitial,yearFinal+1)]
 
     # NPI numbers and other provider information obtained from CMS: https://download.cms.gov/nppes/NPI_Files.html
     filenames["npi"] = [pathToData + '/npidata_pfile_20050523-20220807.csv']

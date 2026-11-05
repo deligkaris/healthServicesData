@@ -1834,6 +1834,7 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
                ("ahaSystemMember","ahaSystemMember"),
                ("SYSID","ahaSystemMemberId")]                     #member health system ID
     #the prior year's ICU beds come from the survey itself, so they do not depend on which claims or years baseDF holds;
+    #get_data also loads the survey of the year before yearInitial, when there, so the first year has them too;
     #ahaDF is unique on (MCRNUM, year), see tests/data/test_external.py
     ahaDF = ahaDF.join(ahaDF.select("MCRNUM", (F.col("year")+1).alias("year"), F.col("ahaBedsIcu").alias("ahaBedsIcuPrior")),
                        on=["MCRNUM","year"], how="left_outer")
