@@ -1,0 +1,9 @@
+[run]
+branch = True
+source = .
+omit =
+    tests/*
+    scripts/*
+    cms/schemas.py
+    cms/longToShortXW.py
+    schemas.py

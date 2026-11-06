@@ -210,6 +210,7 @@ def add_ct(lineDF, inClaim=False):
 
 def add_mri(lineDF, inClaim=False):
 
+    #possible bug, not yet checked on cms.gov: 70552 (MRI brain with contrast) is missing, while add_ct has all 3 head codes
     mriCond = 'F.col("level1HCPCS_CD").isin([70551,70553])'
 
     if (inClaim):
@@ -223,6 +224,7 @@ def add_mri(lineDF, inClaim=False):
 
 def add_homeVisit(lineDF, inClaim=False):
 
+    #possible bug, not yet checked on cms.gov: the range may need to start at 99341, a new patient home visit
     homeVisitCond = '((F.col("level1HCPCS_CD")>=99342)&(F.col("level1HCPCS_CD")<=99350))' 
 
     if (inClaim):
