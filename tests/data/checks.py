@@ -67,3 +67,18 @@ def check_rates(metrics, check, key, rates):
         metrics.add(check, key, year, rate, floor)
     low = {year: round(rate, 4) for year, rate in rates.items() if rate < floor}
     assert not low, f"{check} {key}: {low} below the floor {floor}"
+
+def check_band(metrics, check, key, values, band):
+    '''Records the lowest and highest of values ({(year, label): value}, None for no data) by year in metrics and returns
+    a failure message for the values outside band (low, high), None if there are none.'''
+    values = {k: v for k, v in values.items() if v is not None}
+    for year in sorted({year for (year, _) in values}):
+        inYear = [v for (y, _), v in values.items() if y == year]
+        metrics.add(check, f"{key} lowest", year, min(inYear))
+        metrics.add(check, f"{key} highest", year, max(inYear))
+    outside = [f"{year} {label} {value:.4g}" for (year, label), value in sorted(values.items()) if not band[0] <= value <= band[1]]
+    if not values:
+        return f"{check} {key}: nothing to compare"
+    if outside:
+        return f"{check} {key}: {len(outside)} outside {band}, eg {outside[:examplesShown]}"
+    return None

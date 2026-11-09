@@ -521,7 +521,9 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
         discharge home or admission from home. The two windows reach in opposite directions, each
         away from its own stay, so they stay consistent across a transfer: the sending stay's
         destination and the receiving stay's source find each other whether the two are dated on the
-        same day or a day apart.
+        same day or a day apart. A one-day stay does not take a stay that starts that day and continues
+        past it as its source (the patient went there), nor a stay that ended that day as its destination
+        (the patient came from there).
       * op: a visit is a single day (its through date, THRU_DT_DAY) with no admission date, so both
         questions are asked about the same day and bare overlap cannot tell source from destination
         -- direction comes from which way the other stay extends past the visit day. An other stay
@@ -624,8 +626,9 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
 
     Limitation: for ip, day-level overlap is symmetric -- a prior stay that ends on the
     current admission day and a concurrent stay that starts on it are not
-    distinguishable here. op sidesteps this by reading direction off the other stay's
-    endpoints relative to the visit day.
+    distinguishable here, nor at the through day, except on a one-day stay (above). op
+    sidesteps this by reading direction off the other stay's endpoints relative to the
+    visit day.
     The two-day windows do not change this: they add a second day to test, but the test
     on each day is still bare overlap, so a stay merely running alongside this one counts
     the same as one the patient actually came from or went to.
@@ -666,11 +669,21 @@ def add_source_and_destination_info(staysDF, cmsDFS, claimType="ip", otherStaysD
         onThruNext      = lambda x: F.array_contains(x.losDays, thru + 1)
         sourceDay       = thru
     else:
-        onAdmission     = lambda x: F.array_contains(x.losDays, F.col("ADMSN_DT_DAY"))
-        onAdmissionPrev = lambda x: F.array_contains(x.losDays, F.col("ADMSN_DT_DAY") - 1)
-        onThru          = lambda x: F.array_contains(x.losDays, F.col("THRU_DT_DAY"))
-        onThruNext      = lambda x: F.array_contains(x.losDays, F.col("THRU_DT_DAY") + 1)
-        sourceDay       = F.col("ADMSN_DT_DAY")
+        (admission, through) = (F.col("ADMSN_DT_DAY"), F.col("THRU_DT_DAY"))
+        #on a one-day stay both boundaries are the same day, so overlap alone would give every neighbouring stay as both
+        #source and destination, but the other stay's endpoints tell them apart: one starting that day and running on is
+        #where the patient went, one that ran up to that day and ended is where the patient came from. Two one-day stays
+        #stay symmetric, nothing says which came first, and a stay running on both sides of the day counts for both
+        isOneDay = through == admission
+        wentThereSameDay     = lambda x: (isOneDay & ~F.array_contains(x.losDays, admission - 1) &
+                                          F.array_contains(x.losDays, admission + 1))
+        cameFromThereSameDay = lambda x: (isOneDay & F.array_contains(x.losDays, through - 1) &
+                                          ~F.array_contains(x.losDays, through + 1))
+        onAdmission     = lambda x: F.array_contains(x.losDays, admission) & ~wentThereSameDay(x)
+        onAdmissionPrev = lambda x: F.array_contains(x.losDays, admission - 1)
+        onThru          = lambda x: F.array_contains(x.losDays, through) & ~cameFromThereSameDay(x)
+        onThruNext      = lambda x: F.array_contains(x.losDays, through + 1)
+        sourceDay       = admission
 
     staysDF = (staysDF
                .join(otherStaysDF, on="DSYSRTKY", how="left_outer")

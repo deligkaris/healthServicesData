@@ -1808,7 +1808,8 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
     #(source column in ahaDF, output alias) pairs -- the telestroke (STRC*) and teleICU (ahaTeleicu*)
     #columns exist in the AHA source only for years after 2016 (see prep_ahaDF), so when ahaDF includes
     #2015/2016 rows they are absent; any source column not present is filled with null below rather than
-    #failing the select with a column-not-found error
+    #failing the select with a column-not-found error, an int null, the type those columns have from 2017 on,
+    #since an untyped null cannot be written to parquet
     ahaCols = [("MCRNUM","PROVIDER"),
                ("year","THRU_DT_YEAR"),
                ("LAT","ahaProviderLat"),
@@ -1838,7 +1839,7 @@ def add_aha_info(baseDF, ahaDF): #american hospital association info
     #ahaDF is unique on (MCRNUM, year), see tests/data/test_external.py
     ahaDF = ahaDF.join(ahaDF.select("MCRNUM", (F.col("year")+1).alias("year"), F.col("ahaBedsIcu").alias("ahaBedsIcuPrior")),
                        on=["MCRNUM","year"], how="left_outer")
-    selectCols =[(F.col(src) if src in ahaDF.columns else F.lit(None)).alias(alias) for (src,alias) in ahaCols]
+    selectCols =[(F.col(src) if src in ahaDF.columns else F.lit(None).cast("int")).alias(alias) for (src,alias) in ahaCols]
     baseDF = baseDF.join(ahaDF.select(selectCols),
                          on=["PROVIDER","THRU_DT_YEAR"],
                          how="left_outer")

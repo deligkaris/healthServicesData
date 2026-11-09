@@ -488,6 +488,25 @@ class TestWriteAndReadParquet:
         assert [r["id"] for r in result.collect()] == [2]
 
 
+class TestGetCountyGeojson:
+
+    def test_downloads_and_parses_with_a_timeout(self, monkeypatch):
+        import io
+        import utilities
+        calls = []
+        def fake_urlopen(url, timeout=None):
+            calls.append((url, timeout))
+            return io.BytesIO(b'{"type": "FeatureCollection", "features": [{"id": "39049"}]}')
+        monkeypatch.setattr(utilities, "urlopen", fake_urlopen)
+        result = utilities.get_county_geojson()
+        assert result == {"type": "FeatureCollection", "features": [{"id": "39049"}]}
+        assert calls == [("https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json", 60)]
+
+    def test_not_among_the_files_get_data_reads(self):
+        from utilities import get_filenames
+        assert "geojsonCounty" not in get_filenames("/data", "/aha", 2018, 2019)
+
+
 class TestPrintElapsed:
 
     def test_prints_step_and_total_minutes_rounded_on_one_line(self, monkeypatch, capsys):

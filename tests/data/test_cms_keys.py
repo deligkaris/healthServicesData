@@ -14,9 +14,12 @@ baseKeys = {"claim": (claimKeys, "claims.get_claims and revenue/line filter_clai
 linesOfBase = {"ipRevenue": "ipBase", "opRevenue": "opBase", "snfRevenue": "snfBase", "hhaRevenue": "hhaBase",
                "hospRevenue": "hospBase", "carLine": "carBase"}
 
-#the mbsf fields a duplicate (DSYSRTKY, RFRNC_YR) row could disagree on and change what prep_mbsf keeps
-mbsfFieldsThatMatter = (["DEATH_DT", "V_DOD_SW", "STATE_CD", "CNTY_CD", "HMO_MO", "BUYIN_MO", "AGE", "SEX", "RACE"] +
-                        [f"BUYIN{m}" for m in range(1, 13)] + [f"HMOIND{m}" for m in range(1, 13)])
+#the mbsf fields a duplicate (DSYSRTKY, RFRNC_YR) row could disagree on and change what prep_mbsf keeps: every raw field
+#mbsf.py and base.py read, including the dual status of medicaidEver and the ESRD fields of anyEsrd
+mbsfFieldsThatMatter = (["DEATH_DT", "V_DOD_SW", "STATE_CD", "CNTY_CD", "HMO_MO", "BUYIN_MO", "AGE", "SEX", "RACE",
+                         "ESRD_IND", "OREC", "CREC"] +
+                        [f"BUYIN{m}" for m in range(1, 13)] + [f"HMOIND{m}" for m in range(1, 13)] +
+                        [f"DUAL_{m:02d}" for m in range(1, 13)] + [f"MDCR_STUS_CD_{m:02d}" for m in range(1, 13)])
 
 @pytest.mark.parametrize("keyName", list(baseKeys))
 def test_base_key_unique(cmsRaw, baseClaimTypePart, keyName):

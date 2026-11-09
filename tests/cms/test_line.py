@@ -4,6 +4,7 @@ from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
 import cms.line as lineF
 from cms.schemas import schemas
+from tests.cms.test_invariants import assert_inClaim_is_any_line, mixed_claims
 
 #the columns the flags read that the raw carLine file does not have
 schema = StructType(schemas["carLine"].fields + [StructField("primaryTaxonomy", StringType()),
@@ -45,7 +46,8 @@ flags = {
     "mri": (hcpcs("70551", "70553"), hcpcs("70550", "70554", None)),
     "homeVisit": (hcpcs("99342", "99350"), hcpcs("99340", "99351", None)),
     #the neuropsychological testing codes changed in 2019, 96116 is in both sets
-    "nptesVisit": (hcpcs("96116", "96118", "96119") + hcpcs("96116", "96121", "96132", "96133", "96136", "96139", year=2019),
+    "nptesVisit": (hcpcs("96116", "96118", "96119") + hcpcs("96116", "96121", "96132", "96133", "96136", "96137", "96138", "96139",
+                                                            year=2019),
                    hcpcs("96115", "96121", "96132") + hcpcs("96118", "96119", "96140", year=2019)),
     "neurologyOpVisit": ([visit("13", "99213")], [visit("13", "99342"), visit("14", "99213")]),
     "pcpOpVisit": ([visit("11", "99213")], [visit("11", "99342"), visit("13", "99213")]),
@@ -82,6 +84,13 @@ def test_inClaim_spreads_over_the_claim_only(spark, column):
     result = add_flag(column)(make_lines(spark, lines), inClaim=True).collect()
     assert sorted((r["DSYSRTKY"], r["CLAIMNO"], r["THRU_DT"], r[column], r[f"{column}InClaim"]) for r in result) == [
         (1, 1, 20180101, 0, 1), (1, 1, 20180101, 1, 1), (1, 1, 20190101, 0, 0), (1, 2, 20180101, 0, 0), (2, 1, 20180101, 0, 0)]
+
+@pytest.mark.parametrize("column", flags)
+def test_inClaim_is_any_line_of_the_claim_on_mixed_claims(spark, column):
+    #many claims, each with its own mix of lines that set the flag and lines that do not
+    lines = make_lines(spark, mixed_claims(*flags[column], seed=sorted(flags).index(column)))
+    add = add_flag(column)
+    assert_inClaim_is_any_line(lines, column, add(lines, inClaim=False), add(lines, inClaim=True), lineF.get_line_summary(add(lines, inClaim=True)))
 
 @pytest.mark.parametrize("column", flags)
 def test_no_inClaim_column_by_default(spark, column):

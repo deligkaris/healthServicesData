@@ -12,6 +12,7 @@ import utilities as utilitiesF
 import cms.utilities as cmsUtilitiesF
 import cms.base as baseF
 import cms.mbsf as mbsfF
+from tests.data import snapshots
 from tests.data.checks import Metrics
 
 metrics = Metrics()
@@ -56,16 +57,21 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("baseClaimTypePart", [k for k in cmsFilenames if k.endswith("Base")])
     externalFilenames = get_external_filenames(config)
     if "externalSource" in metafunc.fixturenames:
-        metafunc.parametrize("externalSource", [k for k in externalFilenames if k != "geojsonCounty"])
+        metafunc.parametrize("externalSource", list(externalFilenames))
     if "sourcePath" in metafunc.fixturenames:
-        sourcePaths = [(k, path) for k, paths in externalFilenames.items() if k != "geojsonCounty" for path in paths]
+        sourcePaths = [(k, path) for k, paths in externalFilenames.items() for path in paths]
         metafunc.parametrize("sourcePath", sourcePaths, ids=[f"{k}-{path.rsplit('/', 1)[-1]}" for k, path in sourcePaths])
 
 def pytest_sessionstart(session):
     #run.py runs two sessions in one python, which imports this module once, so each would print the other's rates
     metrics.rows.clear()
+    snapshots.report.clear()
 
 def pytest_terminal_summary(terminalreporter):
+    if snapshots.report:
+        terminalreporter.section("regression snapshot")
+        for line in snapshots.report:
+            terminalreporter.write_line(line)
     if not metrics.rows:
         return
     terminalreporter.section("data metrics")

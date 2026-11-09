@@ -173,9 +173,6 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     # https://www.census.gov/cgi-bin/geo/shapefiles/index.php
     filenames["shpCounty"] = [pathToData + "/tl2021county/tl_2021_us_county.shp"]
     
-    #county-level data from Plotly
-    filenames["geojsonCounty"] = ['https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json']
-
     # data from USDA ERS
     # https://www.ers.usda.gov/data-products/atlas-of-rural-and-small-town-america/download-the-data/
     # https://www.ers.usda.gov/data-products/rural-urban-continuum-codes.aspx
@@ -314,20 +311,17 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
 
     return filenames
 
-#includes both dataframes and other non-spark data
 def read_data(spark, filenames):
 
      data = dict()
      for file in list(filenames.keys()):
-         if file in ["gazetteer2020","geojsonCounty"]:
+         if file in ["gazetteer2020"]:
              continue
          else:
             data[file] = map(lambda x: read_and_prep_dataframe(x, file, spark), filenames[file])
             data[file] = reduce(lambda x,y: x.unionByName(y,allowMissingColumns=True), data[file])
 
      data["gazetteer2020"] = spark.read.option("delimiter","\t").option("inferSchema", "true").csv(filenames["gazetteer2020"], header=True)
-     with urlopen(filenames["geojsonCounty"][0]) as response:
-        data["geojsonCounty"] = json.load(response)
 
      return data
 
@@ -378,6 +372,13 @@ def get_data(yearInitial, yearFinal, spark, pathToData='/users/PAS2164/deligkari
     filenames = get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal)
     data = read_data(spark, filenames)
     return data
+
+def get_county_geojson(url='https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json', timeout=60):
+    '''Returns plotly's US county outlines, a GeoJSON FeatureCollection whose feature ids are the 5 digit county
+    FIPS codes, for county maps.'''
+    #downloaded only when asked for, not by get_data, so loading the data needs no network
+    with urlopen(url, timeout=timeout) as response:
+        return json.load(response)
 
 def prep_procedureClassesDF(df):
     df = df.withColumn("ICD-10-PCS-CODE", F.regexp_replace(F.col("ICD-10-PCS-CODE"), "'", ""))

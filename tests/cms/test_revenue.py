@@ -3,6 +3,7 @@ import pytest
 
 import cms.revenue as revenueF
 from cms.schemas import schemas
+from tests.cms.test_invariants import assert_inClaim_is_any_line, mixed_claims
 
 key = {"DSYSRTKY": 1, "CLAIMNO": 1, "THRU_DT": 20180101}
 
@@ -50,6 +51,13 @@ def test_inClaim_spreads_over_the_claim_only(spark, column):
     result = add_flag(column)(make_lines(spark, lines), inClaim=True).collect()
     assert sorted((r["DSYSRTKY"], r["CLAIMNO"], r["THRU_DT"], r[column], r[f"{column}InClaim"]) for r in result) == [
         (1, 1, 20180101, 0, 1), (1, 1, 20180101, 1, 1), (1, 1, 20190101, 0, 0), (1, 2, 20180101, 0, 0), (2, 1, 20180101, 0, 0)]
+
+@pytest.mark.parametrize("column", flags)
+def test_inClaim_is_any_line_of_the_claim_on_mixed_claims(spark, column):
+    #many claims, each with its own mix of lines that set the flag and lines that do not
+    lines = make_lines(spark, mixed_claims(*flags[column], seed=sorted(flags).index(column)))
+    add = add_flag(column)
+    assert_inClaim_is_any_line(lines, column, add(lines, inClaim=False), add(lines, inClaim=True), revenueF.get_revenue_summary(add(lines)))
 
 @pytest.mark.parametrize("column", flags)
 def test_no_inClaim_column_by_default(spark, column):

@@ -12,7 +12,8 @@ from tests.data.thresholds import namingExceptions
 repoRoot = Path(__file__).parents[2]
 cmsFiles = sorted(repoRoot.glob("cms/*.py"))
 libraryFiles = cmsFiles + [repoRoot / name for name in ("utilities.py", "geocoding.py", "census.py")]
-#the dictionary is of the transfer dyads, the columns of base, mbsf, line and utilities mostly never reach it
+#the columns stays and transfers add, read off the source; test_end_to_end.py checks the columns that reach each output,
+#which are those an analysis keeps (most of what base, mbsf, line and utilities add is scratch dropped on the way)
 dictionaryFiles = [repoRoot / "cms" / name for name in ("stays.py", "transfers.py")]
 
 def parse(path):

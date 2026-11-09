@@ -2823,3 +2823,16 @@ class TestAddAhaInfo:
         # no 2015 survey loaded, so the year before is unobserved
         assert rows[("360001", 2016)] == (10, None)
         assert rows[("360002", 2017)] == (None, None)
+
+    def test_columns_missing_before_2017_are_int_and_write_to_parquet(self, spark, tmp_path):
+        from cms.base import add_aha_info
+        # a survey of 2016 or earlier has no telestroke or teleICU columns, see prep_ahaDF
+        base = spark.createDataFrame([("360001", 2016)], "PROVIDER string, THRU_DT_YEAR int")
+        aha = spark.createDataFrame([("360001", 2016, 10)], "MCRNUM string, year int, ahaBedsIcu int")
+        result = add_aha_info(base, aha)
+        types = dict(result.dtypes)
+        for c in ["ahaTelestrokeHos", "ahaTelestrokeSys", "ahaTelestrokeVen", "ahaTeleicuHos", "ahaTeleicuSys", "ahaTeleicuVen"]:
+            assert types[c] == "int", c
+        result.write.parquet(str(tmp_path / "aha"))
+        assert spark.read.parquet(str(tmp_path / "aha")).first()["ahaTelestrokeHos"] is None
+

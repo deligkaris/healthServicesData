@@ -16,6 +16,10 @@ def pytest_addoption(parser):
                     help="the enricher tests keep the beneficiaries with DSYSRTKY %% N == 0")
     group.addoption("--tmp-path", default=None,
                     help="where the enricher tests write their sampled CMS files, a directory every spark node can write")
+    group.addoption("--snapshot-path", default=None,
+                    help="where test_regression saves its snapshots, outside the repo (none: the test is skipped)")
+    group.addoption("--baseline", default=None,
+                    help="the snapshot test_regression compares with (default: the newest earlier one of the same years)")
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "data: needs the real CMS and external datasets, run with --run-data")

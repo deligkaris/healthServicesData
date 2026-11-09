@@ -2641,6 +2641,134 @@ class TestAddSourceAndDestinationInfo:
         assert out[0]["admissionSource"] == "snf"
         assert out[0]["admissionSourceLag"] == 1
 
+    def _source_of_first(self, spark, ip_rows, snf_rows=None):
+        """(admissionSource, admissionSourceLag, thruDestination) of ip_rows[0]."""
+        from cms.stays import add_source_and_destination_info
+        staysDF = _ip_staysDF_from(spark, ip_rows[:1])
+        cmsDFS = _build_cmsDFS(spark, ip_rows=ip_rows, snf_rows=snf_rows)
+        row = add_source_and_destination_info(staysDF, cmsDFS).first()
+        return (row["admissionSource"], row["admissionSourceLag"], row["thruDestination"])
+
+    def test_one_day_stay_does_not_take_the_stay_it_moves_to_as_source(self, spark):
+        # Same-day transfer: the receiving stay covers this stay's admission
+        # day, but it starts that day and runs on, so the patient went there.
+        sending = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                                   admsn_dt=20200115, thru_dt=20200115)
+        receiving = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                     admsn_dt=20200115, thru_dt=20200120)
+        assert self._source_of_first(spark, [sending, receiving]) == ("home", None, "ipOther")
+
+    def test_receiving_stay_keeps_the_one_day_stay_as_source(self, spark):
+        sending = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                                   admsn_dt=20200115, thru_dt=20200115)
+        receiving = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                     admsn_dt=20200115, thru_dt=20200120)
+        assert self._source_of_first(spark, [receiving, sending]) == ("ipOther", 0, "home")
+
+    def test_one_day_stay_does_not_take_a_snf_starting_that_day_as_source(self, spark):
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200115)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                admsn_dt=20200115, thru_dt=20200125)
+        assert self._source_of_first(spark, [cur], [snf]) == ("home", None, "snf")
+
+    def test_one_day_stay_keeps_a_stay_ending_that_day_as_source(self, spark):
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200115)
+        receiving = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                     admsn_dt=20200115, thru_dt=20200120)
+        prior = _snf_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                  admsn_dt=20200110, thru_dt=20200115)
+        assert self._source_of_first(spark, [cur, receiving], [prior])[:2] == ("snf", 0)
+
+    def test_one_day_stay_still_finds_a_source_the_day_before(self, spark):
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200115)
+        receiving = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                     admsn_dt=20200115, thru_dt=20200120)
+        prior = _snf_src_dest_row(30, dsysrtky=1, orgnpinm=300,
+                                  admsn_dt=20200110, thru_dt=20200114)
+        assert self._source_of_first(spark, [cur, receiving], [prior])[:2] == ("snf", 1)
+
+    def test_two_one_day_stays_stay_symmetric(self, spark):
+        # Nothing says which came first, so each is the other's source.
+        first = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                                 admsn_dt=20200115, thru_dt=20200115)
+        second = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                  admsn_dt=20200115, thru_dt=20200115)
+        assert self._source_of_first(spark, [first, second])[:2] == ("ipOther", 0)
+
+    def test_longer_stay_keeps_a_stay_starting_the_same_day_as_source(self, spark):
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
+                               admsn_dt=20200115, thru_dt=20200118)
+        other = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200,
+                                 admsn_dt=20200115, thru_dt=20200120)
+        assert self._source_of_first(spark, [cur, other])[:2] == ("ipOther", 0)
+
+    def _destination_of_first(self, spark, ip_rows, snf_rows=None, dies=False, last_day=False):
+        """(thruDestination, thruDestinationLag) of ip_rows[0], which ends on
+        the beneficiary's death day with dies and on lastObservableDay with last_day."""
+        from cms.stays import add_source_and_destination_info
+        staysDF = _ip_staysDF_from(spark, ip_rows[:1])
+        if dies:
+            staysDF = staysDF.withColumn("DEATH_DT_DAY", F.col("THRU_DT_DAY"))
+        if last_day:
+            staysDF = staysDF.withColumn("lastObservableDay", F.col("THRU_DT_DAY"))
+        cmsDFS = _build_cmsDFS(spark, ip_rows=ip_rows, snf_rows=snf_rows)
+        row = add_source_and_destination_info(staysDF, cmsDFS).first()
+        return (row["thruDestination"], row["thruDestinationLag"])
+
+    def _one_day_stay_after_a_transfer(self):
+        """(a one-day stay on Jan 15, the stay that sent the patient to it, which ended that day)."""
+        return (_ip_src_dest_row(10, dsysrtky=1, orgnpinm=200, admsn_dt=20200115, thru_dt=20200115),
+                _ip_src_dest_row(20, dsysrtky=1, orgnpinm=100, admsn_dt=20200110, thru_dt=20200115))
+
+    def test_one_day_stay_does_not_take_the_stay_it_came_from_as_destination(self, spark):
+        (cur, sending) = self._one_day_stay_after_a_transfer()
+        assert self._destination_of_first(spark, [cur, sending]) == ("home", None)
+
+    def test_sending_stay_keeps_the_one_day_stay_as_destination(self, spark):
+        (cur, sending) = self._one_day_stay_after_a_transfer()
+        assert self._destination_of_first(spark, [sending, cur]) == ("ipOther", 0)
+
+    def test_one_day_stay_after_a_transfer_shows_the_death(self, spark):
+        (cur, sending) = self._one_day_stay_after_a_transfer()
+        assert self._destination_of_first(spark, [cur, sending], dies=True) == ("died", None)
+
+    def test_one_day_stay_after_a_transfer_still_finds_the_day_after(self, spark):
+        (cur, sending) = self._one_day_stay_after_a_transfer()
+        snf = _snf_src_dest_row(30, dsysrtky=1, orgnpinm=300, admsn_dt=20200116, thru_dt=20200125)
+        assert self._destination_of_first(spark, [cur, sending], [snf]) == ("snf", 1)
+
+    def test_one_day_stay_after_a_transfer_is_censored_on_the_last_day(self, spark):
+        (cur, sending) = self._one_day_stay_after_a_transfer()
+        assert self._destination_of_first(spark, [cur, sending], last_day=True) == (None, None)
+
+    def test_one_day_stay_does_not_take_a_snf_ending_that_day_as_destination(self, spark):
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100, admsn_dt=20200115, thru_dt=20200115)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200, admsn_dt=20200110, thru_dt=20200115)
+        assert self._destination_of_first(spark, [cur], [snf]) == ("home", None)
+
+    def test_one_day_stay_keeps_the_stay_it_moves_to_as_destination(self, spark):
+        (cur, sending) = self._one_day_stay_after_a_transfer()
+        receiving = _ip_src_dest_row(30, dsysrtky=1, orgnpinm=300, admsn_dt=20200115, thru_dt=20200120)
+        assert self._destination_of_first(spark, [cur, sending, receiving]) == ("ipOther", 0)
+
+    def test_one_day_stay_inside_a_longer_stay_keeps_it_as_destination(self, spark):
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100, admsn_dt=20200115, thru_dt=20200115)
+        snf = _snf_src_dest_row(20, dsysrtky=1, orgnpinm=200, admsn_dt=20200110, thru_dt=20200120)
+        assert self._destination_of_first(spark, [cur], [snf]) == ("snf", 0)
+
+    def test_two_one_day_stays_stay_symmetric_as_destinations(self, spark):
+        first = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100, admsn_dt=20200115, thru_dt=20200115)
+        second = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200, admsn_dt=20200115, thru_dt=20200115)
+        assert self._destination_of_first(spark, [first, second]) == ("ipOther", 0)
+
+    def test_longer_stay_keeps_a_stay_ending_the_same_day_as_destination(self, spark):
+        cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100, admsn_dt=20200112, thru_dt=20200115)
+        other = _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200, admsn_dt=20200110, thru_dt=20200115)
+        assert self._destination_of_first(spark, [cur, other]) == ("ipOther", 0)
+
     def test_admission_source_two_days_before_is_home(self, spark):
         from cms.stays import add_source_and_destination_info
         cur = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100,
