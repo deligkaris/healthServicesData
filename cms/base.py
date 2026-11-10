@@ -1303,8 +1303,10 @@ def get_aggregate_summary(baseDF, aggItems, aggBy = ["ssaCounty"], alsoReturnIte
 
     eachUnit = Window.partitionBy(aggBy)
 
+    #every row of the unit, also those whose unit is null (unknown county): counting the unit column would skip them and
+    #leave those claims with a total of 0 (tests/cms/test_aggregate_summary.py)
     baseDF = baseDF.withColumn("total", #find total in unit
-                               F.count(F.col(aggBy[0])).over(eachUnit))
+                               F.count(F.lit(1)).over(eachUnit))
     returnItems = aggBy + ["total"] + alsoReturnItems
 
     for i in aggItems:
@@ -1322,34 +1324,6 @@ def get_aggregate_summary(baseDF, aggItems, aggBy = ["ssaCounty"], alsoReturnIte
     aggregateSummary.count()
 
     return aggregateSummary
-
-def test_get_aggregate_summary(summaryDF):
-
-    #summaryColumns = summaryDF.colRegex("`.+InUnit$`") #not working, not a list
-    summaryColumns = [column for column in summaryDF.columns if column.endswith("InUnit")]
-    allWell = 1
-    # check for any unreasonable results
-    for col in summaryColumns:
-        if (summaryDF.filter( F.col(col) > F.col("total") ).count() != 0):
-            print(f'F.col({col}) > F.col("total") failed')
-            allWell = 0
-
-        if (summaryDF.filter( 
-                            (F.col(col).contains('None')) |
-                            (F.col(col).contains('NULL')) |
-                            (F.col(col) == '' ) |
-                            (F.col(col).isNull()) |
-                            (F.isnan(col)) ).count() != 0 ):
-            print(f'{col} includes meaningless entries')
-            allWell = 0
-
-        if (summaryDF.filter( 
-                            (F.col(col) < 0 )).count() != 0 ):
-            print(f'{col} includes negative entries')
-            allWell = 0
-
-    if (allWell==1):
-        print("No issues found.")
 
 def add_rehabilitationFromCCN(baseDF):
     #https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r29soma.pdf
