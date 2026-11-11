@@ -10,7 +10,7 @@ line, eg
     RUN_MUTATION=1 MUTATION_WORKERS=16 subspark run.py -n 1 -m 20G -c 10 -d 100G -t 27:00:00 -w 1
     RUN_UNIT       1 or 0, the unit tests, pytest tests/cms (default 0)
     RUN_MUTATION   1 or 0, mutation testing of every library module (tests/mutation.allModules), hours; its report,
-                   mutation-<date>.txt, is written to the current directory, the job folder under subspark, after every
+                   mutation-<date>.log, is written to the current directory, the job folder under subspark, after every
                    mutant, so a job out of time leaves what it ran (default 0)
     MUTATION_WORKERS  the mutants run in parallel, each a local spark of 2 cores and about 2 GB (default 4)
 The defaults are in the block below. Run directly, the options --unit, --mutation and --workers override the variables.
@@ -94,7 +94,7 @@ if steps.unit:
                                      "-q", "-p", "no:cacheprovider", "--tb=short"], cwd=repo,
                                     env={**environment, "TESTS_SPARK_MEMORY": "4g"}).returncode)
 if steps.mutation:
-    report = Path.cwd() / f"mutation-{datetime.datetime.now():%Y%m%d-%H%M}.txt"
+    report = Path.cwd() / f"mutation-{datetime.datetime.now():%Y%m%d-%H%M}.log"
     exitCodes.append(subprocess.run([sys.executable, str(repo / "tests" / "mutation.py"), "--workers", str(steps.workers),
                                      "--out", str(report)], cwd=repo, env=environment).returncode)
 #a -k that selects the tests of one session only leaves the other with none

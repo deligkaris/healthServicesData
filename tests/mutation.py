@@ -11,7 +11,7 @@ Usage: python tests/mutation.py [MODULE ...] [--workers N] [--tests TEST ...] [-
     --timeout   seconds a mutant's tests may take at least, a timeout counts as caught (default 600); a module whose
                 tests take longer than a third of it on the unchanged code gets 3 times that
     --out       where the report is written, after every mutant, so a run stopped midway (a job out of time) leaves
-                what it ran (default mutation-<date>.txt in the current directory)
+                what it ran (default mutation-<date>.log in the current directory)
 
 The report holds only code. The exit code is 0 once every mutant has run, whatever survived; 2 if the tests fail on
 the unchanged code, which would make every mutant look caught. tests/data/run.py --mutation runs this at OSC.'''
@@ -330,7 +330,7 @@ def main(argv=None):
     parser.add_argument("--tests", nargs="+", default=None)
     parser.add_argument("--tmp", default=os.environ.get("TMPDIR"))
     parser.add_argument("--timeout", type=int, default=600)
-    parser.add_argument("--out", default=f"mutation-{datetime.datetime.now():%Y%m%d-%H%M%S}.txt")
+    parser.add_argument("--out", default=f"mutation-{datetime.datetime.now():%Y%m%d-%H%M%S}.log")
     args = parser.parse_args(argv)
     start = time.time()
     def write(results, pending=0):
