@@ -7,14 +7,13 @@ spark makes no progress for stallMinutes, stalls.py prints what the driver is do
 Steps after the data tests run each in a python of its own with a local spark, as the unit tests need. subspark passes
 no options to the script, but it submits with --export=ALL, so they are set by environment variables on its command
 line, eg
-    RUN_MUTATION=1 MUTATION_WORKERS=16 subspark run.py -n 1 -m 20G -c 10 -d 100G -t 27:00:00 -w 1
-    RUN_UNIT       1 or 0, the unit tests, pytest tests/cms (default 0)
+    RUN_MUTATION=1 MUTATION_WORKERS=48 subspark run.py -n 1 -m 20G -c 10 -d 100G -t 12:00:00 -w 1 (an Ascend nextgen node, 120 cores)
     RUN_MUTATION   1 or 0, mutation testing of every library module (tests/mutation.allModules), hours; its report,
                    mutation-<date>.log, is written to the current directory, the job folder under subspark, after every
                    mutant, so a job out of time leaves what it ran (default 0)
     MUTATION_WORKERS  the mutants run in parallel, each a local spark of 2 cores and about 2 GB (default 4)
-The defaults are in the block below. Run directly, the options --unit, --mutation and --workers override the variables.
-The data tests always run. The steps run are printed first.'''
+The defaults are in the block below. Run directly, the options --mutation and --workers override the variables.
+The data tests, then the unit tests (pytest tests/cms), always run. The steps run are printed first.'''
 import argparse
 import datetime
 import os
@@ -38,7 +37,6 @@ stallDumps = 3 #the JVM threads are dumped this many times, stallDumpSeconds apa
 stallDumpSeconds = 60
 ################
 #the defaults of the steps of the job, overridden by the environment variables of the docstring
-runUnit = False #the unit tests, pytest tests/cms
 runMutation = False #mutation testing of every library module, see tests/mutation.py; report in the job folder
 mutationWorkers = 4 #mutants run in parallel, each a local spark of 2 cores and about 2 GB
 ################
@@ -57,13 +55,12 @@ def setting(name, default):
 repo = Path(__file__).resolve().parents[2]
 tests = repo / "tests" / "data"
 stepOptions = argparse.ArgumentParser(add_help=False)
-stepOptions.add_argument("--unit", action="store_true", default=setting("RUN_UNIT", runUnit))
 stepOptions.add_argument("--mutation", action="store_true", default=setting("RUN_MUTATION", runMutation))
 stepOptions.add_argument("--workers", type=int, default=setting("MUTATION_WORKERS", mutationWorkers))
 #the rest of the command line goes to pytest
 (steps, pytestOptions) = stepOptions.parse_known_args()
 #first in the log, so a job shows at once whether the variables reached it
-print(f"run.py steps: data tests yes, unit tests {'yes' if steps.unit else 'no'}, "
+print(f"run.py steps: data tests yes, unit tests yes, "
       f"mutation {f'yes, {steps.workers} workers' if steps.mutation else 'no'}", flush=True)
 #test_pipeline, test_transfers, test_regression and test_benchmarks run get_cms_data on the loaded claims, and pytest prints
 #the failures only at the end of a session, so a hang there would take the report of every other test with it
@@ -88,11 +85,10 @@ stopStalls.set()
 sys.path.insert(0, str(repo))
 from tests.mutation import local_spark_environment
 environment = local_spark_environment()
-if steps.unit:
-    #one session runs all the unit tests, and the node has the memory the laptop does not (see tests/conftest.py)
-    exitCodes.append(subprocess.run([sys.executable, "-m", "pytest", str(repo / "tests" / "cms"), "--rootdir", str(repo),
-                                     "-q", "-p", "no:cacheprovider", "--tb=short"], cwd=repo,
-                                    env={**environment, "TESTS_SPARK_MEMORY": "4g"}).returncode)
+#one session runs all the unit tests, and the node has the memory the laptop does not (see tests/conftest.py)
+exitCodes.append(subprocess.run([sys.executable, "-m", "pytest", str(repo / "tests" / "cms"), "--rootdir", str(repo),
+                                 "-q", "-p", "no:cacheprovider", "--tb=short"], cwd=repo,
+                                env={**environment, "TESTS_SPARK_MEMORY": "4g"}).returncode)
 if steps.mutation:
     report = Path.cwd() / f"mutation-{datetime.datetime.now():%Y%m%d-%H%M}.log"
     exitCodes.append(subprocess.run([sys.executable, str(repo / "tests" / "mutation.py"), "--workers", str(steps.workers),
