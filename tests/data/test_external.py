@@ -6,7 +6,7 @@ import pytest
 import pyspark.sql.functions as F
 from pyspark.sql.types import StringType
 
-from tests.data.checks import get_duplicate_keys, get_counts, get_null_rates
+from tests.data.checks import get_duplicate_keys, get_counts, get_examples, get_null_rates
 from tests.data.thresholds import keyFormatExceptions
 
 ccn = r"^[0-9A-Z]{6}$"
@@ -145,3 +145,31 @@ def test_aha_columns_filled_every_year(externalData, yearList):
     empty = {year: cols for year, cols in empty.items() if cols}
     absent = [c for c in ahaColumnsSince if c not in aha.columns and (ahaColumnsSince[c] or 0) <= max(yearList)]
     assert not empty and not absent, f"aha: all null {empty}, absent {absent}"
+
+def test_ma_penetration_fips_keeps_leading_zero(externalData, metricsTable):
+    #a 4 digit maPenetration.FIPS that is a county of the cbsa crosswalk once 0-padded is a county of states 01-09
+    #that lost its leading 0, which add_maPenetration and add_providerMaPenetration then never match; how many 5 digit
+    #FIPS are counties of the crosswalk is the baseline that share is read against
+    ma = (externalData["maPenetration"].select(F.col("Year").cast("int").alias("Year"),
+                                               F.col("FIPS").cast("string").alias("FIPS"))
+                                       .dropna()
+                                       .withColumn("padded", F.lpad(F.col("FIPS"), 5, "0")))
+    counties = (externalData["cbsa"].select(F.col("fipscounty").alias("padded"), F.col("countyname"))
+                                    .dropna()
+                                    .dropDuplicates(["padded"]))
+    ma = ma.join(counties, on="padded", how="left_outer")
+    four = F.col("FIPS").rlike(r"^\d{4}$")
+    five = F.col("FIPS").rlike(r"^\d{5}$")
+    county = F.col("countyname").isNotNull()
+    counts = {"four": four, "fourCounty": four & county, "five": five, "fiveCounty": five & county}
+    rows = ma.groupBy("Year").agg(*[F.sum(c.cast("int")).alias(name) for name, c in counts.items()]).collect()
+    for r in rows:
+        metricsTable.add("maPenetration FIPS", "4 digits", r["Year"], r["four"])
+        for (key, n, k) in [("4 digits, a county once 0-padded", "four", "fourCounty"),
+                            ("5 digits, a county", "five", "fiveCounty")]:
+            if r[n]:
+                metricsTable.add("maPenetration FIPS", key, r["Year"], r[k] / r[n])
+    lost = sum(r["fourCounty"] for r in rows)
+    examples = get_examples(ma, four & county, ["FIPS", "countyname"]) if lost else []
+    assert lost == 0, (f"maPenetration: {lost} of {sum(r['four'] for r in rows)} 4 digit FIPS are counties once "
+                       f"0-padded, counties of states 01-09 that lost their leading 0, eg {examples}")

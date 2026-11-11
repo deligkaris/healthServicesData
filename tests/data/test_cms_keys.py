@@ -8,8 +8,8 @@ claimKeys = ["DSYSRTKY", "CLAIMNO", "THRU_DT"]
 #each key and the code that relies on it being unique
 baseKeys = {"claim": (claimKeys, "claims.get_claims and revenue/line filter_claims"),
             "claimnoYear": (["CLAIMNO", "THRU_DT_YEAR"], "get_cms_data's old runTests check"),
-            "claimnoDay": (["CLAIMNO", "THRU_DT_DAY"], "the transfers.get_clean_transfers windows, no DSYSRTKY"),
-            "beneficiaryClaimno": (["DSYSRTKY", "CLAIMNO"], "base.add_los_at_X_info join back, no THRU_DT")}
+            "claimnoDay": (["CLAIMNO", "THRU_DT_DAY"],
+                           "the transfers.get_clean_transfers windows and base.add_los_at_X_info, no DSYSRTKY")}
 
 linesOfBase = {"ipRevenue": "ipBase", "opRevenue": "opBase", "snfRevenue": "snfBase", "hhaRevenue": "hhaBase",
                "hospRevenue": "hospBase", "carLine": "carBase"}

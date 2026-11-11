@@ -528,13 +528,15 @@ def add_imv(baseDF):
 
 def add_ecmoPrcdr(baseDF):
     '''Extracorporeal membrane oxygenation.'''
-    ecmoPrcdrCodes = ("5A1522F", "5A1522G", "5A1522H") #VA, VA and VV
+    #5A15223 (membrane) is the one ECMO code of ICD-10-PCS FY2016-FY2018, discharges to Sep 30 2018; from FY2019 it
+    #is split into 5A1522F, 5A1522G, 5A1522H (VA, VA and VV), see the CMS ICD-10-PCS order files
+    ecmoPrcdrCodes = ("5A15223", "5A1522F", "5A1522G", "5A1522H")
     baseDF = baseDF.withColumn("ecmoPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {ecmoPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
 def add_ecmo(baseDF):
     '''Extracorporeal membrane oxygenation.
-    Flags rows that contain any ICD10 procedure code in {5A1522F, 5A1522G, 5A1522H} in prcdrCodeAll.
+    Flags rows that contain any ICD10 procedure code in {5A15223, 5A1522F, 5A1522G, 5A1522H} in prcdrCodeAll.
     Reference: https://doi.org/10.1051/ject/2025043'''
     baseDF = add_ecmoPrcdr(baseDF)
     baseDF = baseDF.withColumn("ecmo", F.when( F.col("ecmoPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
@@ -1941,11 +1943,14 @@ def add_los_at_X_info(baseDF, XDF, lastObservableDay, X="hosp"):
             .withColumnRenamed(f"losDaysOver{XString}Until365DaysFromADMSN_DT_DAY", f"losDaysAt{X}365"))
 
     #bring results back to base 
+    #a CLAIMNO is unique only within a year's file, a beneficiary can have it on a claim of each year, so the through
+    #day keeps each result on the claim it was computed for
     baseDF = baseDF.join(XDF.select(F.col("baseCLAIMNO").alias("CLAIMNO"), F.col("DSYSRTKY"),
+                                    F.col("baseTHRU_DT_DAY").alias("THRU_DT_DAY"),
                                     F.col(f"losAt{X}90"), F.col(f"losDaysAt{X}90"),
                                     F.col(f"losAt{X}365"), F.col(f"losDaysAt{X}365"))
                             .distinct(),
-                         on=["CLAIMNO","DSYSRTKY"],
+                         on=["CLAIMNO","DSYSRTKY","THRU_DT_DAY"],
                          how="left_outer")
 
     # A beneficiary with no matching X claim gets 0 -- but only when the window is fully observed. When the

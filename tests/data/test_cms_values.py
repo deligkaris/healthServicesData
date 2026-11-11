@@ -90,6 +90,26 @@ def test_claim_key_format(cmsRaw, part, column, pattern):
     examples = get_examples(df, bad, [column]) if number > allowed else []
     assert number <= allowed, f"{part}.{column}: {number} values not {pattern}, eg {examples}"
 
+@pytest.mark.parametrize("part", facilityBases)
+def test_provider_keeps_leading_zero(cmsRaw, metricsTable, part):
+    #a CCN starts with the provider's 2 digit state code, the claim's PRSTATE; one stored as a number loses the leading 0
+    #of states 01-09, which shows as a 5 digit PROVIDER whose state code, once 0-padded, is PRSTATE. How often a 6
+    #character PROVIDER starts with PRSTATE is the baseline that comparison is read against
+    df = cmsRaw[part]
+    six = F.col("PROVIDER").rlike(ccn)
+    five = F.col("PROVIDER").rlike(r"^\d{5}$")
+    fiveLostZero = five & (F.lpad(F.col("PROVIDER"), 6, "0").substr(1, 2) == F.col("PRSTATE"))
+    counts = get_counts(df, {"six": six, "sixState": six & (F.col("PROVIDER").substr(1, 2) == F.col("PRSTATE")),
+                             "five": five, "fiveLostZero": fiveLostZero})
+    metricsTable.add("PROVIDER 5 digits", part, None, counts["five"])
+    for (key, n, agree) in [("6 chars", "six", "sixState"), ("5 digits 0-padded", "five", "fiveLostZero")]:
+        if counts[n]:
+            metricsTable.add("PROVIDER state=PRSTATE", f"{part} {key}", None, counts[agree] / counts[n])
+    examples = get_examples(df, fiveLostZero, ["PROVIDER", "PRSTATE"]) if counts["fiveLostZero"] else []
+    assert counts["fiveLostZero"] == 0, (f"{part}: {counts['fiveLostZero']} of {counts['five']} 5 digit PROVIDER have "
+                                         f"PRSTATE as their state code once 0-padded, a CCN that lost its leading 0, "
+                                         f"eg {examples}")
+
 @pytest.mark.parametrize("part", ["ipBase", "opBase"])
 def test_icd_code_format(cmsRaw, part):
     df = icd10_claims(cmsRaw[part])

@@ -5,6 +5,7 @@ import pyspark.sql.functions as F
 
 import cms.base as baseF
 import cms.mbsf as mbsfF
+from utilities import daysInYearsPriorDict
 from tests.data.checks import get_counts, get_examples, check_rates
 
 #(claimTypePart, raw date, the day number derived from it): a date that does not parse as YYYYMMDD, or falls outside
@@ -22,6 +23,28 @@ def test_date_has_a_day_number(cmsRaw, part, dateCol, dayCol):
     lost = F.col(dateCol).isNotNull() & F.col(dayCol).isNull()
     number = get_counts(df, {"lost": lost})["lost"]
     assert number == 0, f"{part}: {number} {dateCol} with no {dayCol}, eg {get_examples(df, lost, [dateCol])}"
+
+@pytest.mark.parametrize("part, dateCol, dayCol", dateDays, ids=[f"{p}-{d}" for p, d, _ in dateDays])
+def test_date_without_day_number_is_outside_the_frame(cmsRaw, metricsTable, part, dateCol, dayCol):
+    #a date with no day number should be a real date of a year daysInYearsPriorDict does not number (eg the admission
+    #of a long stay begun before 2010), not a malformed one or one of a numbered year; the dates with no day number, by
+    #year (malformed for the ones that are no date), go into the metrics table
+    df = cmsRaw[part]
+    text = F.col(dateCol).cast("string")
+    (year, month, day) = (text.substr(1, 4).cast("int"), text.substr(5, 2).cast("int"), text.substr(7, 2).cast("int"))
+    #make_date rather than to_date, which raises on some strings under the default timeParserPolicy
+    valid = text.rlike(r"^\d{8}$") & F.make_date(year, month, day).isNotNull()
+    rows = (df.filter(F.col(dateCol).isNotNull() & F.col(dayCol).isNull())
+              .groupBy(F.when(valid, year).alias("year"))
+              .count()
+              .collect())
+    for r in rows:
+        metricsTable.add("no day number", f"{part}.{dateCol}", r["year"] if r["year"] is not None else "malformed",
+                         r["count"])
+    unexplained = {r["year"] if r["year"] is not None else "malformed": r["count"] for r in rows
+                   if r["year"] is None or r["year"] in daysInYearsPriorDict}
+    assert not unexplained, (f"{part}: {dateCol} with no {dayCol} that are not dates of a year outside "
+                             f"{min(daysInYearsPriorDict)}-{max(daysInYearsPriorDict)} (year: dates): {unexplained}")
 
 def test_valid_death_date_has_a_day_number(cmsRaw):
     df = cmsRaw["mbsf"]

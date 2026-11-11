@@ -1113,7 +1113,7 @@ class TestAddRrt:
 # End-to-end tests for add_ecmo (add_ecmoPrcdr + add_ecmo)
 # ============================================================
 
-ECMO_PRCDR_CODES = ["5A1522F", "5A1522G", "5A1522H"]
+ECMO_PRCDR_CODES = ["5A15223", "5A1522F", "5A1522G", "5A1522H"]
 
 
 class TestAddEcmo:
@@ -2836,3 +2836,18 @@ class TestAddAhaInfo:
         result.write.parquet(str(tmp_path / "aha"))
         assert spark.read.parquet(str(tmp_path / "aha")).first()["ahaTelestrokeHos"] is None
 
+
+class TestAddLosAtXInfoClaimnoInTwoYears:
+    """add_los_at_X_info when a beneficiary's 2018 and 2019 claims share a CLAIMNO (claim numbers are unique only
+    within a year's file): each claim keeps one row, with the days of the stays that follow it alone."""
+
+    def test_each_claim_keeps_its_own_los(self, spark):
+        from cms.base import add_los_at_X_info
+        base = spark.createDataFrame([(1, 7, 100, 105, None), (1, 7, 500, 505, None)],
+                                     "DSYSRTKY int, CLAIMNO long, ADMSN_DT_DAY int, THRU_DT_DAY int, DEATH_DT_DAY int")
+        # a 10 day hospice stay after the first claim, a 5 day one after the second
+        hospice = spark.createDataFrame([(1, 110, 119), (1, 510, 514)],
+                                        "DSYSRTKY int, ADMSN_DT_DAY int, THRU_DT_DAY int")
+        rows = add_los_at_X_info(base, hospice, lastObservableDay=10000).collect()
+        assert sorted((r["THRU_DT_DAY"], r["losAthosp90"], r["losAthosp365"]) for r in rows) == \
+               [(105, 10, 10), (505, 5, 5)]
