@@ -402,7 +402,7 @@ get_data_dictionary <- function() {
     "providerIshStrokeAnnualVolumePrior","Hospital prior-year ischemic-stroke volume",
     "providerIchStrokeAnnualVolume","Hospital intracerebral-hemorrhage stroke case volume that year",
     "providerIchStrokeAnnualVolumePrior","Hospital prior-year intracerebral-hemorrhage stroke volume",
-    "providerAnyStrokeAnnualVolume","Hospital any-stroke case volume that year",
+    "providerAnyStrokeAnnualVolume","Hospital any-stroke case volume that year: stays with ishStroke, ichStroke or tiaStroke (whichever the stays have)",
     "providerAnyStrokeAnnualVolumePrior","Hospital prior-year any-stroke volume",
     "providerAnyStrokeAnnualVolumeGroup","Hospital any-stroke volume group that year: 0 = none, 1/2/3 = low/average/high tercile among the cohort's hospitals with >= 1 that year (ties share a group)",
     "providerEvtAnnualVolume","Hospital thrombectomy (evt) case volume that year",

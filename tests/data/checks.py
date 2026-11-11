@@ -76,7 +76,9 @@ def check_band(metrics, check, key, values, band):
         inYear = [v for (y, _), v in values.items() if y == year]
         metrics.add(check, f"{key} lowest", year, min(inYear))
         metrics.add(check, f"{key} highest", year, max(inYear))
-    outside = [f"{year} {label} {value:.4g}" for (year, label), value in sorted(values.items()) if not band[0] <= value <= band[1]]
+    #a label can be None (eg beneficiaries with no state), which does not sort with the others
+    inOrder = sorted(values.items(), key=lambda item: (str(item[0][0]), str(item[0][1])))
+    outside = [f"{year} {label} {value:.4g}" for (year, label), value in inOrder if not band[0] <= value <= band[1]]
     if not values:
         return f"{check} {key}: nothing to compare"
     if outside:

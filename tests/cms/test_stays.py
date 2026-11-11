@@ -490,8 +490,8 @@ class TestAddProviderEverCapability:
 #     -> add_through_date_info             (THRU_DT_YEAR, THRU_DT_DAY)
 #     -> add_dgnsCodeAll                   (dgnsCodeAll array)
 #     -> add_prcdrCodeAll                  (prcdrCodeAll array)
-#     -> add_ishStroke / add_otherStroke / add_ichStroke / add_tiaStroke
-#     -> add_anyStroke                     (OR of the four stroke flags)
+#     -> add_ishStroke / add_ichStroke / add_tiaStroke
+#     -> add_anyStroke                     (OR of the three stroke flags)
 #     -> add_tpa(inpatient=...)            (tpa from DRG/DGNS/PRCDR codes)
 #     -> add_evt (inpatient only)          (evt from DRG/PRCDR codes)
 #     -> add_los                           (THRU_DT_DAY - ADMSN_DT_DAY + 1)
@@ -499,7 +499,7 @@ class TestAddProviderEverCapability:
 
 # Codes that trigger each per-claim flag the stays functions consume.
 _ISH_STROKE_DGNS_CODE = "I639"   # add_ishStrokeDgns matches /^I63\d*/
-_OTHER_STROKE_CODE = "I64"       # add_otherStroke
+_ICH_STROKE_CODE = "I619"        # add_ichStroke, a stroke that is not ischemic
 _TPA_PRCDR_CODE = "3E03317"      # add_tpaPrcdr
 _EVT_PRCDR_CODE = "03CG3ZZ"      # add_evtPrcdr
 
@@ -525,7 +525,7 @@ def _run_stroke_pipeline(spark, rows, inpatient=True):
     from cms.base import (
         add_admission_date_info,
         add_dgnsCodeAll, add_prcdrCodeAll,
-        add_ishStroke, add_otherStroke, add_ichStroke, add_tiaStroke,
+        add_ishStroke, add_ichStroke, add_tiaStroke,
         add_anyStroke, add_tpa, add_evt, add_los,
     )
     df = make_real_claim_df(spark, "ipBase", rows)
@@ -534,7 +534,6 @@ def _run_stroke_pipeline(spark, rows, inpatient=True):
     df = add_dgnsCodeAll(df)
     df = add_prcdrCodeAll(df)
     df = add_ishStroke(df, inpatient=inpatient)
-    df = add_otherStroke(df)
     df = add_ichStroke(df)
     df = add_tiaStroke(df)
     df = add_anyStroke(df)
@@ -606,12 +605,12 @@ class TestAddProviderStrokeAnnualVolume:
 
     def test_anyStroke_sums_per_provider_year(self, spark):
         from cms.stays import add_providerAnnualVolume
-        # 3 ish-stroke + 1 other-stroke claims for provider 100/2020; the 5th claim is no stroke.
+        # 3 ish-stroke + 1 intracerebral hemorrhage claims for provider 100/2020; the 5th claim is no stroke.
         rows = [
             _stroke_row(1, 100, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
             _stroke_row(2, 100, 20200201, 20200205, dgns=_ISH_STROKE_DGNS_CODE),
             _stroke_row(3, 100, 20200305, 20200310, dgns=_ISH_STROKE_DGNS_CODE),
-            _stroke_row(4, 100, 20200410, 20200412, dgns=_OTHER_STROKE_CODE),
+            _stroke_row(4, 100, 20200410, 20200412, dgns=_ICH_STROKE_CODE),
             _stroke_row(5, 100, 20200515, 20200520, dgns="I10"),
         ]
         df = _run_stroke_pipeline(spark, rows)
@@ -628,7 +627,7 @@ class TestAddProviderStrokeAnnualVolume:
             _stroke_row(3, 100, 20200410, 20200412, dgns="I10"),
             _stroke_row(4, 100, 20210110, 20210115, dgns=_ISH_STROKE_DGNS_CODE),
             _stroke_row(5, 200, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
-            _stroke_row(6, 200, 20200201, 20200205, dgns=_OTHER_STROKE_CODE),
+            _stroke_row(6, 200, 20200201, 20200205, dgns=_ICH_STROKE_CODE),
             _stroke_row(7, 200, 20200305, 20200310, dgns=_ISH_STROKE_DGNS_CODE),
         ]
         df = _run_stroke_pipeline(spark, rows)
@@ -646,7 +645,7 @@ class TestAddProviderStrokeAnnualVolume:
         rows = [
             _stroke_row(1, 100, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
             _stroke_row(2, 100, 20200201, 20200205, dgns=_ISH_STROKE_DGNS_CODE),
-            _stroke_row(3, 100, 20200410, 20200412, dgns=_OTHER_STROKE_CODE),  # other, not ish
+            _stroke_row(3, 100, 20200410, 20200412, dgns=_ICH_STROKE_CODE),  # hemorrhagic, not ish
         ]
         df = _run_stroke_pipeline(spark, rows)
         df = add_providerAnnualVolume(df, col="ishStroke")
@@ -965,7 +964,7 @@ class TestAddProviderStrokeInfo:
                         dgns=_ISH_STROKE_DGNS_CODE, prcdr=_TPA_PRCDR_CODE),
             _stroke_row(2, 100, 20200201, 20200205,
                         dgns=_ISH_STROKE_DGNS_CODE, prcdr=_EVT_PRCDR_CODE),
-            _stroke_row(3, 100, 20200305, 20200310, dgns=_OTHER_STROKE_CODE),
+            _stroke_row(3, 100, 20200305, 20200310, dgns=_ICH_STROKE_CODE),
             _stroke_row(4, 100, 20200410, 20200412, dgns="I10"),
         ]
         df = _run_stroke_pipeline(spark, rows, inpatient=True)
@@ -999,7 +998,7 @@ class TestAddProviderStrokeInfo:
         from cms.stays import add_provider_stroke_info
         rows = [
             _stroke_row(1, 100, 20200115, 20200120, dgns=_ISH_STROKE_DGNS_CODE),
-            _stroke_row(2, 100, 20200201, 20200205, dgns=_OTHER_STROKE_CODE),
+            _stroke_row(2, 100, 20200201, 20200205, dgns=_ICH_STROKE_CODE),
         ]
         df = _run_stroke_pipeline(spark, rows, inpatient=True)
         df = add_provider_stroke_info(df, inpatient=True, stroke="ishStroke")

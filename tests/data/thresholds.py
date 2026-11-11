@@ -8,29 +8,37 @@ def get_floor(check, key):
     return rateFloors.get(f"{check} {key}", 0.0)
 
 #(low, high) of each comparison of test_benchmarks.py, keyed "<check> <key>" as the metrics table prints them (less its
-#lowest/highest). Provisional until the first OSC run: set each from the lowest and highest it prints, with a # reason,
-#after looking into anything far off rather than widening the band around it
+#lowest/highest). Set from the first OSC run (2018-2019, 11/2026) at about two to three times the gap it showed, so a year
+#to year change passes and a regression does not; the ones marked provisional wait for a run that measures them
 benchmarkBands = {
-    #the Original Medicare population rebuilt from the mbsf against BENES_OM_CNT, 100% of the mbsf
-    "geographic variation omCountRatio": (0.98, 1.02),
-    #BENE_AVG_AGE is rounded to whole years
-    "geographic variation meanAgeDifference": (-1.0, 1.0),
-    "geographic variation femaleShareDifference": (-0.01, 0.01),
-    "geographic variation dualShareDifference": (-0.02, 0.02),
-    #stays are rebuilt from the claims (continuous periods of one service type, covered days only), see benchmarks.py
-    "geographic variation ipStaysRelativeDifference": (-0.15, 0.15),
-    "geographic variation erVisitsRelativeDifference": (-0.15, 0.15),
-    #the library's ffs and CMS's Original Medicare differ by design (see test_benchmarks.py), loose bands that only show a
-    #sudden change
-    "ffs definitions cmsOmAlsoFfs": (0.9, 1.0),
+    #the Original Medicare population rebuilt from the mbsf against BENES_OM_CNT, 100% of the mbsf: 0.997-1.005
+    "geographic variation omCountRatio": (0.99, 1.01),
+    #ours is about a year below CMS's in every state (-1.56 to -0.51): uniform, so a definition, not the data; CMS rounds
+    #BENE_AVG_AGE to whole years and likely takes the age at another point of the year than the mbsf AGE
+    "geographic variation meanAgeDifference": (-2.0, 0.0),
+    #-0.0005 to 0.0006
+    "geographic variation femaleShareDifference": (-0.002, 0.002),
+    #-0.0028 to 0.0031
+    "geographic variation dualShareDifference": (-0.01, 0.01),
+    #stays rebuilt from the claims (continuous periods of one service type, covered days only), see benchmarks.py:
+    #-2.0% to +0.7%
+    "geographic variation ipStaysRelativeDifference": (-0.05, 0.05),
+    #-1.7% to +0.9%
+    "geographic variation erVisitsRelativeDifference": (-0.05, 0.05),
+    #the library's ffs and CMS's Original Medicare differ by design (see test_benchmarks.py): 0.9982-0.9996 of CMS's are ffs
+    "ffs definitions cmsOmAlsoFfs": (0.99, 1.0),
+    #provisional: not measured, the first run stopped on a state labelled None
     "ffs definitions ffsNotCmsOm": (0.0, 0.1),
-    #CMS divides by the ever enrolled eligibles, 2.5-3% above the enrolled ones
+    #provisional: the counties of states 01-09 join only since their FIPS is padded (prep_maPenetrationDF), so the next
+    #run compares about 600 more; CMS divides by the ever enrolled eligibles, 2.5-3% above the enrolled ones
     "ma penetration meanAbsoluteDifference": (0.0, 0.03),
     "ma penetration countiesWithin3Points": (0.8, 1.0),
-    "hospital coverage posWithClaim acute": (0.9, 1.0),
-    "hospital coverage posWithClaim cah": (0.9, 1.0),
-    "hospital coverage claimsInPos acute": (0.95, 1.0),
-    "hospital coverage claimsInPos cah": (0.95, 1.0)}
+    #0.989-0.991 and 0.992-0.993 of the POS hospitals active that year have an ip claim
+    "hospital coverage posWithClaim acute": (0.97, 1.0),
+    "hospital coverage posWithClaim cah": (0.97, 1.0),
+    #0.9988 and 0.9985 of the claims' CCNs are POS hospitals active that year
+    "hospital coverage claimsInPos acute": (0.995, 1.0),
+    "hospital coverage claimsInPos cah": (0.995, 1.0)}
 
 def get_band(check, key):
     return benchmarkBands[f"{check} {key}"]

@@ -86,6 +86,11 @@ def test_outpatient_codes_count_when_repeated(spark):
 def test_lookback_is_the_360_days_up_to_the_stay(spark, thruDay, expected):
     assert get_conditions(spark, ip=[(thruDay, "I219", 0)])["myocardialInfraction"] == expected
 
+#outpatient needs the code twice: once well inside the lookback, once on thruDay
+@pytest.mark.parametrize("thruDay,expected", [(stayDay, 1), (stayDay - 360, 1), (stayDay - 361, 0), (stayDay + 1, 0)])
+def test_outpatient_lookback_is_the_360_days_up_to_the_stay(spark, thruDay, expected):
+    assert get_conditions(spark, op=[(stayDay - 10, "I219", 0), (thruDay, "I219", 0)])["myocardialInfraction"] == expected
+
 @pytest.mark.parametrize("event,claimType,expected", [
     ((stayDay, "I219", 1), "ip", 0),
     ((stayDay, "I219", 0), "ip", 1),

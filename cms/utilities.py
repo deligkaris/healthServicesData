@@ -113,6 +113,10 @@ def read_and_prep_dataframe(filename, claimTypePart, spark):
     #if DESY_SORT_KEY exists in columns names then mark that as a df that is using the long column names
     if ("DESY_SORT_KEY" in df.columns):
         df = enforce_short_names(df, claimType=claimType, claimPart=claimPart)
+    else:
+        #a file in the short names can still have a column under its long name (the carLine files of 2018 and 2019 have
+        #LINE_NUM, short CLM_LN), which enforce_schema would drop as not in the schema
+        df = rename_long_names(df, claimType=claimType, claimPart=claimPart)
     #some columns need to have zeros padded (state and county codes)
     df = pad_zeros(df, claimType=claimType, claimPart=claimPart)
     #mbsf files 2015 and prior have only 2 digits for the RFRNC_YR
@@ -133,6 +137,15 @@ def enforce_short_names(df, claimType, claimPart):
     df = df.select( [(F.col(c).alias(xw[c])) for c in df.columns] )
     return df 
 
+def rename_long_names(df, claimType, claimPart):
+    '''Renames each column of a file in the short names that has a long name of the crosswalk to its short name, unless
+    the file already has that short name.'''
+    #no long name of the crosswalks is the short name of another column, so only a long name is renamed; a part with no
+    #crosswalk (the mbsf) is left as it is
+    xw = longToShortXW.get(f"{claimType}{claimPart}" if (claimType!="mbsf") else "mbsf", {})
+    return df.select([F.col(f"`{c}`").alias(xw[c]) if (c in xw and xw[c] != c and xw[c] not in df.columns) else F.col(f"`{c}`")
+                      for c in df.columns])
+
 def pad_zeros(df, claimType, claimPart):
     '''inputs: dataframe with inferred schema by spark
        outputs: dataframe with state and county codes properly formatted'''
@@ -144,6 +157,11 @@ def pad_zeros(df, claimType, claimPart):
                 .withColumn("CNTY_CD", F.lpad(F.col("CNTY_CD").cast('int').cast("string"),3,'0')))
         if (claimType in ["op","ip","snf","hha","hosp"]):
             df = df.withColumn("PRSTATE", F.lpad(F.col("PRSTATE").cast('int').cast("string"),2,'0'))
+            #a CCN is 6 characters, the first 2 the state: a file that stored it as a number lost the leading zero of the
+            #states 01-09 (the hha files of 2018 and 2019 have 77166 for 077166); a CCN with a letter keeps its own
+            if ("PROVIDER" in df.columns):
+                provider = F.col("PROVIDER").cast("string")
+                df = df.withColumn("PROVIDER", F.when(provider.rlike("^[0-9]{5}$"), F.lpad(provider, 6, "0")).otherwise(provider))
 
     if (claimType=="mbsf"): #logic for mbsf
         stCntCols = [f"STATE_CNTY_FIPS_CD_{x:02d}" for x in range(1,13)]

@@ -120,3 +120,8 @@ def test_check_band_records_the_extremes_and_names_what_is_outside():
                                                     ("omCountRatio lowest", 2018, 1.0), ("omCountRatio lowest", 2019, 0.9)]
     assert check_band(Metrics(), "c", "k", {(2019, "OH"): 1.0}, (0.98, 1.02)) is None
     assert "nothing to compare" in check_band(Metrics(), "c", "k", {}, (0, 1))
+
+def test_check_band_takes_a_group_with_no_label():
+    #beneficiaries with no state are a group of their own, labelled None
+    message = check_band(Metrics(), "ffs definitions", "cmsOmAlsoFfs", {(2019, "39"): 0.999, (2019, None): 0.5}, (0.9, 1.0))
+    assert "2019 None 0.5" in message

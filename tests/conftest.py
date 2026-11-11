@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,15 @@ def spark():
                .config("spark.default.parallelism", "2")
                .config("spark.ui.enabled", "false")
                .config("spark.driver.bindAddress", "127.0.0.1")
+               #in local mode the driver is all of spark, and one session runs every test: Spark keeps a little for each
+               #query, and on the default 1 GB the transfer pipeline tests near the end ran out of heap at OSC. A ceiling,
+               #not an allocation, but one the laptop's memory must leave room for: at 4 GB macOS killed the JVM midway.
+               #tests/data/run.py sets TESTS_SPARK_MEMORY to 4g for the unit tests at OSC
+               .config("spark.driver.memory", os.environ.get("TESTS_SPARK_MEMORY", "2g"))
+               #Spark sizes its memory pages from the heap, 32 MB at 2 GB, each one block of contiguous heap: after a few
+               #hundred tests the heap had no such block left, the end-to-end benchmark test waited 25 minutes for one and
+               #the executor stopped the JVM for missed heartbeats. The test rows fit in pages of 2 MB
+               .config("spark.buffer.pageSize", "2m")
                # NOTE: intentionally left at Spark 3.5 defaults (ANSI SQL mode OFF) to match the OSC
                # cluster, which runs stock Apache Spark 3.5.1. Do not enable spark.sql.ansi.enabled here.
                .getOrCreate())

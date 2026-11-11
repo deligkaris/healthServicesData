@@ -66,6 +66,15 @@ class TestGetLastObservableDay:
         assert days == sorted(days)
 
 
+class TestGetFirstObservableDay:
+
+    def test_is_the_day_add_through_date_info_gives_january_1(self, spark):
+        from cms.utilities import get_firstObservableDay, add_through_date_info
+        df = spark.createDataFrame([(20180101,), (20171231,)], ["THRU_DT"])
+        (jan1, dec31) = [r["THRU_DT_DAY"] for r in add_through_date_info(df).collect()]
+        assert get_firstObservableDay(2018) == jan1 == dec31 + 1
+
+
 class TestGetClaimTypeClaimPart:
 
     def test_opBase(self):
@@ -111,9 +120,15 @@ class TestGetFilenames:
         from cms.utilities import get_filenames
         filenames = get_filenames("/data/cms", 2017, 2019)
         n_years = 3  # 2017, 2018, 2019
-        for key in ["mbsf", "opBase", "ipBase", "snfBase", "hhaBase",
-                     "hospBase", "carBase"]:
+        for key in filenames:
             assert len(filenames[key]) == n_years, f"{key} has {len(filenames[key])} files, expected {n_years}"
+
+    def test_carrier_files_start_in_2016(self):
+        from cms.utilities import get_filenames
+        filenames = get_filenames("/data/cms", 2015, 2017)
+        assert len(filenames["ipBase"]) == 3
+        for key in ["carBase", "carLine"]:
+            assert [f.rsplit("_", 1)[1] for f in filenames[key]] == ["2016.parquet", "2017.parquet"]
 
     def test_filenames_contain_year(self):
         from cms.utilities import get_filenames
@@ -191,7 +206,41 @@ class TestEnforceShortNames:
         assert "CLAIMNO" in result.columns
 
 
+class TestRenameLongNames:
+    '''A file in the short names with one column under its long name, as the carLine files of 2018 and 2019 have LINE_NUM.'''
+
+    def test_the_long_name_becomes_the_short_one_and_the_rest_stay(self, spark):
+        from cms.utilities import rename_long_names
+        df = spark.createDataFrame([(1, 7, 3, "99213")], ["DSYSRTKY", "CLAIMNO", "LINE_NUM", "HCPCS_CD"])
+        result = rename_long_names(df, claimType="car", claimPart="Line")
+        assert result.columns == ["DSYSRTKY", "CLAIMNO", "CLM_LN", "HCPCS_CD"]
+        assert result.first()["CLM_LN"] == 3
+
+    def test_a_short_name_already_there_is_kept(self, spark):
+        from cms.utilities import rename_long_names
+        df = spark.createDataFrame([(1, 3, 4)], ["DSYSRTKY", "CLM_LN", "LINE_NUM"])
+        assert rename_long_names(df, claimType="car", claimPart="Line").columns == ["DSYSRTKY", "CLM_LN", "LINE_NUM"]
+
+    def test_a_part_with_no_crosswalk_is_left_as_it_is(self, spark):
+        from cms.utilities import rename_long_names
+        df = spark.createDataFrame([(1, 2019)], ["DSYSRTKY", "RFRNC_YR"])
+        assert rename_long_names(df, claimType="mbsf", claimPart=None).columns == ["DSYSRTKY", "RFRNC_YR"]
+
+    def test_read_keeps_the_line_number_of_such_a_file(self, spark, tmp_path):
+        from cms.utilities import read_and_prep_dataframe
+        path = str(tmp_path / "carLine.parquet")
+        spark.createDataFrame([(1, 7, 3, 20190105)], ["DSYSRTKY", "CLAIMNO", "LINE_NUM", "THRU_DT"]).write.parquet(path)
+        assert read_and_prep_dataframe(path, "carLine", spark).first()["CLM_LN"] == 3
+
+
 class TestPadZeros:
+
+    def test_a_ccn_that_lost_its_leading_zero_gets_it_back(self, spark):
+        from cms.utilities import pad_zeros
+        df = spark.createDataFrame([(5, 10, 3, "77166"), (39, 49, 36, "360001"), (5, 10, 5, "05S001"), (5, 10, 5, None)],
+                                   "STATE_CD int, CNTY_CD int, PRSTATE int, PROVIDER string")
+        result = pad_zeros(df, claimType="hha", claimPart="Base")
+        assert [r["PROVIDER"] for r in result.collect()] == ["077166", "360001", "05S001", None]
 
     def test_base_state_and_county_padded(self, spark):
         from cms.utilities import pad_zeros
@@ -488,6 +537,14 @@ class TestWriteAndReadParquet:
         assert [r["id"] for r in result.collect()] == [2]
 
 
+class TestGetCountyShapefile:
+
+    def test_the_path_under_pathToData_and_not_loaded_by_get_data(self):
+        from utilities import get_county_shapefile, get_filenames
+        assert get_county_shapefile("/data") == "/data/tl2021county/tl_2021_us_county.shp"
+        assert not [k for k, paths in get_filenames("/data", "/aha", 2018, 2019).items() if any(p.endswith(".shp") for p in paths)]
+
+
 class TestGetCountyGeojson:
 
     def test_downloads_and_parses_with_a_timeout(self, monkeypatch):
@@ -774,3 +831,13 @@ class TestCleanThroughDates:
     def test_leaves_op_untouched(self, spark):
         from cms.utilities import clean_through_dates
         assert clean_through_dates(self._dataframes(spark))["opBase"].count() == 1
+
+
+class TestPrepMaPenetrationDF:
+
+    def test_the_counties_of_states_01_to_09_get_their_leading_zero(self, spark):
+        from utilities import prep_maPenetrationDF
+        df = spark.createDataFrame([("1001", "45.67%", "2019"), ("06037", "52.10%", "2019"), ("39049", "40.00%", "2019")],
+                                   ["FIPS", "Penetration", "Year"])
+        rows = {r["FIPS"]: r["Penetration"] for r in prep_maPenetrationDF(df).collect()}
+        assert rows == {"01001": 45, "06037": 52, "39049": 40}

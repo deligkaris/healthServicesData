@@ -104,7 +104,7 @@ def write_external_files(spark, pathToData, pathToAHAData):
     write_csv(filenames["procedureClasses"][0], ["ICD-10-PCS-CODE"], [["'0016070'"]])
     write_csv(filenames["gazetteer2020"][0], ["GEOID", "NAME"], [[fipsCounty, "Franklin"]], delimiter="\t")
     #no prep function reads these, they only have to be there
-    for source in ["shpCounty", "ersPeople", "ersJobs", "ersIncome", "cbiHospitals", "cbiDetails", "npiMedicareXw", "medicareHospitalInfo"]:
+    for source in ["ersPeople", "ersJobs", "ersIncome", "cbiHospitals", "cbiDetails", "npiMedicareXw", "medicareHospitalInfo"]:
         write_csv(filenames[source][0], ["stub"], [[1]])
 
 def mbsf(beneficiary, year, hmoMonths=0, deathDate=None, state=ssaState, county=ssaCounty):

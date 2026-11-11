@@ -1,5 +1,6 @@
 '''tests/mutation.py, the mutation testing of tests/data/run.py --mutation: the mutants it makes of a source, and the run
 of a module's tests on each, on a toy repo with no Spark.'''
+import re
 import textwrap
 
 import pytest
@@ -54,9 +55,10 @@ def test_docstrings_comments_and_other_strings_are_left_alone():
     assert {d for (_, _, d) in found} == {"0 -> 1"}
 
 def test_every_mutant_of_the_library_modules_parses():
-    for module in ("cms/revenue.py", "cms/line.py"):
+    #a mutant that does not parse fails its tests on the import, and would count as caught
+    for module in mutation.allModules:
         mutants = mutation.get_mutants(module)
-        assert len(mutants) > 50
+        assert len(mutants) > 10, module
         for m in mutants:
             mutation._parse(m.source)
         assert len({m.source for m in mutants}) == len(mutants)
@@ -83,7 +85,12 @@ def toy_repo(path, test):
 
 def test_the_run_reports_what_the_tests_catch(tmp_path):
     root = toy_repo(tmp_path / "repo", "assert (toy.flag(200), toy.flag(199)) == (1, 0)")
-    results = mutation.run(["toy.py"], workers=2, tests=["tests/test_toy.py"], tmp=str(tmp_path), root=root)
+    pending = []
+    results = mutation.run(["toy.py"], workers=2, tests=["tests/test_toy.py"], tmp=str(tmp_path), root=root,
+                           progress=lambda soFar, left: pending.append((sum(map(len, soFar.values())), left)))
+    #the report is rewritten after every mutant, so a run stopped midway leaves what it ran
+    assert pending[-1] == (len(results["toy.py"]), 0) and all(ran + left == pending[-1][0] for (ran, left) in pending)
+    assert mutation.report(results, 2, 1.0, pending=3)[0].endswith("3 mutants not run yet")
     outcomes = {(m.function, m.description): o for (m, o) in results["toy.py"]}
     assert outcomes[("flag", ">= -> >")] == "killed" and outcomes[("flag", "200 -> 201")] == "killed"
     assert outcomes[("untested", "5 -> 6")] == "survived"
@@ -106,3 +113,21 @@ def test_subprocesses_do_not_inherit_the_cluster_spark(monkeypatch):
     env = mutation.local_spark_environment()
     assert not {"PYSPARK_GATEWAY_PORT", "PYSPARK_GATEWAY_SECRET", "PYSPARK_SUBMIT_ARGS"} & set(env)
     assert env["SPARK_HOME"] == "/spark" and mutation._environment()["PYTHONDONTWRITEBYTECODE"] == "1"
+
+def test_a_jvm_that_died_is_an_error_not_a_kill(tmp_path):
+    #pytest fails, but on a dead spark JVM, which says nothing of the mutant
+    root = toy_repo(tmp_path / "repo", "raise ConnectionRefusedError(61, 'Connection refused')")
+    assert mutation.run_tests(root, ["tests/test_toy.py"], timeout=120) == "error"
+    root = toy_repo(tmp_path / "repo2", "assert toy.flag(200) == 0")
+    assert mutation.run_tests(root, ["tests/test_toy.py"], timeout=120) == "killed"
+
+def test_the_tests_of_each_module_are_there():
+    #a test file or id that no longer matches (a renamed test) would stop the run at OSC on its baseline, a job lost
+    assert set(mutation.otherTests) <= set(mutation.allModules)
+    assert mutation.default_tests("cms/mbsf.py") == ["tests/cms/test_mbsf.py"]
+    assert mutation.default_tests("utilities.py")[0] == mutation.default_tests("cms/utilities.py")[0] == "tests/cms/test_utilities.py"
+    for module in mutation.allModules:
+        for test in mutation.default_tests(module):
+            (path, *names) = test.split("::")
+            source = (mutation.repo / path).read_text(encoding="utf-8")
+            assert all(re.search(rf"(class|def) {name}\b", source) for name in names), test

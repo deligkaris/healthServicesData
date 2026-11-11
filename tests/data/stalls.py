@@ -21,11 +21,13 @@ maxFrames = 30
 noAnswer = object()
 
 def start(out, stallMinutes, dumps, dumpSeconds, pollSeconds=60, jvmSeconds=120):
-    '''Starts the thread; out is a stream pytest does not capture.'''
+    '''Starts the thread; out is a stream pytest does not capture. Returns an event that stops it once set.'''
     mainThreadId = threading.main_thread().ident
+    stop = threading.Event()
     threading.Thread(target=watch, args=(out, mainThreadId, stallMinutes * 60, dumps, dumpSeconds, pollSeconds,
-                                         JvmCalls(jvmSeconds)),
+                                         JvmCalls(jvmSeconds), stop),
                      name="stalls", daemon=True).start()
+    return stop
 
 class JvmCalls:
     '''Runs the JVM calls one at a time on a thread of their own, and returns noAnswer after seconds without a reply.'''
@@ -53,10 +55,10 @@ class JvmCalls:
             raise result["error"]
         return result["value"]
 
-def watch(out, mainThreadId, stallSeconds, dumps, dumpSeconds, pollSeconds, jvm):
+def watch(out, mainThreadId, stallSeconds, dumps, dumpSeconds, pollSeconds, jvm, stop=None):
     (last, since, reported) = (None, time.time(), False)
-    while True:
-        time.sleep(pollSeconds)
+    stop = stop if stop is not None else threading.Event()
+    while not stop.wait(pollSeconds):
         #the spark fixture of tests/data/conftest.py starts the context
         sc = SparkContext._active_spark_context
         #the context is set before its JVM side while it starts

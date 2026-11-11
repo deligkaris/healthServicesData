@@ -2,19 +2,22 @@
 list, a window key, a join), runs the module's tests on it, and reports the changes no test catches, the code whose
 result nothing checks.
 
-Usage: python tests/mutation.py MODULE [MODULE ...] [--workers N] [--tests TEST ...] [--tmp DIR] [--timeout S] [--out PATH]
+Usage: python tests/mutation.py [MODULE ...] [--workers N] [--tests TEST ...] [--tmp DIR] [--timeout S] [--out PATH]
 
-    MODULE      a path from the repo root, eg cms/revenue.py
+    MODULE      a path from the repo root, eg cms/revenue.py (default: every module of allModules)
     --workers   mutants run in parallel, each worker on its own copy of the repo in --tmp (default $TMPDIR), so the
                 working tree is never changed; each test run builds its own local Spark, about 2 GB a worker
-    --tests     the tests to run (default: tests/cms/test_<module>.py)
-    --timeout   seconds a mutant's tests may take, a timeout counts as caught (default 600)
-    --out       where the report is written (default mutation-<date>.txt in the current directory)
+    --tests     the tests to run (default: tests/cms/test_<module>.py, then those in otherTests)
+    --timeout   seconds a mutant's tests may take at least, a timeout counts as caught (default 600); a module whose
+                tests take longer than a third of it on the unchanged code gets 3 times that
+    --out       where the report is written, after every mutant, so a run stopped midway (a job out of time) leaves
+                what it ran (default mutation-<date>.txt in the current directory)
 
 The report holds only code. The exit code is 0 once every mutant has run, whatever survived; 2 if the tests fail on
 the unchanged code, which would make every mutant look caught. tests/data/run.py --mutation runs this at OSC.'''
 import argparse
 import ast
+import concurrent.futures
 import datetime
 import os
 import queue
@@ -170,8 +173,13 @@ def get_mutants(module, source=None):
     #the nodes of get_edits come from its own parse, matched back by position
     byPosition = {(n.lineno, n.col_offset, type(n).__name__): owners[n] for n in ast.walk(tree) if hasattr(n, "lineno")}
     mutants = []
+    seen = set()
     for (a, b, new, node, description) in get_edits(source):
         mutated = (text[:a] + new.encode("utf-8") + text[b:]).decode("utf-8")
+        #dropping the first and the last of a list of one make the same mutant
+        if mutated in seen:
+            continue
+        seen.add(mutated)
         try:
             _parse(mutated)
         except SyntaxError:
@@ -180,8 +188,29 @@ def get_mutants(module, source=None):
         mutants.append(Mutant(module, owner, node.lineno, description, mutated))
     return mutants
 
+#every library module with mutants and tests, the quick ones first, so the report written as the run goes has them early
+allModules = ["cms/claims.py", "cms/comorbidities.py", "cms/revenue.py", "cms/line.py", "cms/mbsf.py", "cms/utilities.py",
+              "geocoding.py", "utilities.py", "cms/stays.py", "cms/transfers.py", "cms/base.py"]
+
+#the tests of a module in other files, the slowest last: every file that calls a function of the module test_<module>.py
+#does not (base's functions are mostly tested where the stays, transfers and nihss pipelines use them, 670 of its 912
+#mutants), but test_end_to_end.py, 13 minutes, and the strict xfails of test_invariants.py, which a broken mutant keeps
+#failing and only a mutant that happened to fix them would fail, as an XPASS. For stays and transfers, the invariant
+#that the output does not depend on row order or partitioning, whose inputs have the ties a window key or an order decides
+staysInvariant = "tests/cms/test_invariants.py::TestSameOutputInAnyOrder::test_unique_stays_and_their_source_and_destination"
+transfersInvariant = "tests/cms/test_invariants.py::TestSameOutputInAnyOrder::test_node_and_dyad_columns_and_their_priors"
+otherTests = {"cms/line.py": ["tests/cms/test_revenue.py"],
+              "cms/utilities.py": ["tests/cms/test_base.py", "tests/cms/test_stays.py"],
+              "utilities.py": ["tests/cms/test_geocoding.py", "tests/cms/test_line.py", "tests/cms/test_base.py",
+                               "tests/cms/test_jc_pipeline.py", "tests/cms/test_stays.py", "tests/cms/test_transfers.py"],
+              "cms/stays.py": ["tests/cms/test_base.py", staysInvariant],
+              "cms/transfers.py": [transfersInvariant],
+              "cms/base.py": ["tests/cms/test_aggregate_summary.py", "tests/cms/test_nihss.py", "tests/cms/test_mbsf.py",
+                              "tests/cms/test_stays.py", "tests/cms/test_transfers.py"]}
+
 def default_tests(module):
-    return [f"tests/cms/test_{Path(module).stem}.py"]
+    '''tests/cms/test_<module>.py, first, as pytest stops at the first failure, then its tests in other files.'''
+    return [f"tests/cms/test_{Path(module).stem}.py"] + otherTests.get(Path(module).as_posix(), [])
 
 #spark-submit (slurm-spark-submit at OSC) sets these for the python it starts; a python inheriting them would join that
 #JVM, the cluster's driver, instead of starting the local spark of tests/conftest.py
@@ -197,18 +226,24 @@ def _environment():
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
 
+#a test that fails because spark's JVM died (killed for memory, eg on a laptop with other spark runs) did not catch the
+#mutant, so such a run is an error, not a kill
+jvmGone = ("ConnectionRefusedError", "Py4JNetworkError", "Answer from Java side is empty", "OutOfMemoryError")
+
 def run_tests(root, tests, timeout):
     '''killed, survived, timeout or error, of the tests run in root.'''
     command = [sys.executable, "-m", "pytest", *tests, "-x", "-q", "-p", "no:cacheprovider", "--no-header"]
     try:
-        code = subprocess.run(command, cwd=root, env=_environment(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                              timeout=timeout).returncode
+        run = subprocess.run(command, cwd=root, env=_environment(), capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return "timeout"
-    return {0: "survived", 1: "killed"}.get(code, "error")
+    if run.returncode != 0 and any(marker in run.stdout + run.stderr for marker in jvmGone):
+        return "error"
+    return {0: "survived", 1: "killed"}.get(run.returncode, "error")
 
-def run(modules, workers=1, tests=None, tmp=None, timeout=600, root=repo, log=sys.stderr):
-    '''{module: [(mutant, outcome)]}, raising RuntimeError if the tests fail on the unchanged code.'''
+def run(modules, workers=1, tests=None, tmp=None, timeout=600, root=repo, log=sys.stderr, progress=None):
+    '''{module: [(mutant, outcome)]}, raising RuntimeError if the tests fail on the unchanged code. progress, if given,
+    is called with the results so far and the number of mutants still to run after each mutant.'''
     testsOf = {m: tests or default_tests(m) for m in modules}
     mutants = [mutant for m in modules for mutant in get_mutants(m, (Path(root) / m).read_text(encoding="utf-8"))]
     base = Path(tempfile.mkdtemp(prefix="mutation-", dir=tmp))
@@ -218,16 +253,27 @@ def run(modules, workers=1, tests=None, tmp=None, timeout=600, root=repo, log=sy
             copy = base / f"worker{i}"
             shutil.copytree(root, copy, ignore=ignored)
             copies.append(copy)
-        for m in modules:
-            outcome = run_tests(copies[0], testsOf[m], timeout)
-            if outcome != "survived":
-                raise RuntimeError(f"the tests of {m} ({' '.join(testsOf[m])}) do not pass on the unchanged code: {outcome}")
+        def baseline(i, m):
+            start = time.time()
+            return (run_tests(copies[i % len(copies)], testsOf[m], None), time.time() - start)
+        #the modules' tests on the unchanged code, side by side on the workers' copies
+        with concurrent.futures.ThreadPoolExecutor(len(copies)) as pool:
+            baselines = dict(zip(modules, pool.map(baseline, range(len(modules)), modules)))
+        failed = [f"{m} ({' '.join(testsOf[m])}): {outcome}" for m, (outcome, _) in baselines.items() if outcome != "survived"]
+        if failed:
+            raise RuntimeError(f"the tests do not pass on the unchanged code: {'; '.join(failed)}")
+        #a timeout counts as caught, so it must mean a mutant that hangs, not tests that are slow (test_transfers takes
+        #6 minutes): 3 times the unchanged run, or timeout if longer
+        timeoutOf = {m: max(timeout, 3 * seconds) for m, (_, seconds) in baselines.items()}
         print(f"{len(mutants)} mutants of {', '.join(modules)}, {len(copies)} workers", file=log, flush=True)
         work = queue.Queue()
         for mutant in mutants:
             work.put(mutant)
         results = []
         lock = threading.Lock()
+        order = {id(m): i for i, m in enumerate(mutants)}
+        def by_module():
+            return {m: sorted([(mu, o) for (mu, o) in results if mu.module == m], key=lambda r: order[id(r[0])]) for m in modules}
         def worker(copy):
             while True:
                 try:
@@ -238,13 +284,15 @@ def run(modules, workers=1, tests=None, tmp=None, timeout=600, root=repo, log=sy
                 original = path.read_text(encoding="utf-8")
                 path.write_text(mutant.source, encoding="utf-8")
                 try:
-                    outcome = run_tests(copy, testsOf[mutant.module], timeout)
+                    outcome = run_tests(copy, testsOf[mutant.module], timeoutOf[mutant.module])
                 finally:
                     path.write_text(original, encoding="utf-8")
                 with lock:
                     results.append((mutant, outcome))
                     if len(results) % max(1, len(mutants) // 10) == 0:
                         print(f"  {len(results)}/{len(mutants)} mutants run", file=log, flush=True)
+                    if progress:
+                        progress(by_module(), len(mutants) - len(results))
         threads = [threading.Thread(target=worker, args=(copy,)) for copy in copies]
         for t in threads:
             t.start()
@@ -252,17 +300,19 @@ def run(modules, workers=1, tests=None, tmp=None, timeout=600, root=repo, log=sy
             t.join()
     finally:
         shutil.rmtree(base, ignore_errors=True)
-    order = {id(m): i for i, m in enumerate(mutants)}
-    return {m: sorted([(mu, o) for (mu, o) in results if mu.module == m], key=lambda r: order[id(r[0])]) for m in modules}
+    return by_module()
 
-def report(results, workers, minutes):
-    lines = [f"mutation testing, {datetime.datetime.now():%Y-%m-%d %H:%M}, {workers} workers, {minutes:.0f} min"]
+def report(results, workers, minutes, pending=0):
+    lines = [f"mutation testing, {datetime.datetime.now():%Y-%m-%d %H:%M}, {workers} workers, {minutes:.0f} min"
+             + (f", stopped or still running: {pending} mutants not run yet" if pending else "")]
     for module, rows in results.items():
         count = {o: sum(1 for (_, outcome) in rows if outcome == o) for o in ("killed", "survived", "timeout", "error")}
         tested = len(rows) - count["error"]
         score = (count["killed"] + count["timeout"]) / tested if tested else 0
         lines.append(f"{module}: {len(rows)} mutants, {count['killed']} killed, {count['survived']} survived, "
                      f"{count['timeout']} timeouts, {count['error']} errors, score {score:.2f}")
+        if count["error"]:
+            lines.append(f"  {count['error']} errors: the tests could not run (eg spark's JVM died), rerun them")
         function = None
         for (mutant, outcome) in rows:
             if outcome != "survived":
@@ -275,7 +325,7 @@ def report(results, workers, minutes):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("modules", nargs="+")
+    parser.add_argument("modules", nargs="*", default=allModules)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--tests", nargs="+", default=None)
     parser.add_argument("--tmp", default=os.environ.get("TMPDIR"))
@@ -283,13 +333,16 @@ def main(argv=None):
     parser.add_argument("--out", default=f"mutation-{datetime.datetime.now():%Y%m%d-%H%M%S}.txt")
     args = parser.parse_args(argv)
     start = time.time()
+    def write(results, pending=0):
+        lines = report(results, args.workers, (time.time() - start) / 60, pending)
+        Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return lines
     try:
-        results = run(args.modules, args.workers, args.tests, args.tmp, args.timeout)
+        results = run(args.modules, args.workers, args.tests, args.tmp, args.timeout, progress=write)
     except RuntimeError as e:
         print(e, file=sys.stderr)
         return 2
-    lines = report(results, args.workers, (time.time() - start) / 60)
-    Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    lines = write(results)
     print("\n".join(lines))
     print(f"report written to {args.out}")
     return 0

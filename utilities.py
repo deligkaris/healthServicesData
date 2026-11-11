@@ -169,10 +169,6 @@ def get_filenames(pathToData, pathToAHAData, yearInitial, yearFinal):
     #https://www.nber.org/research/data/census-core-based-statistical-area-cbsa-federal-information-processing-series-fips-county-crosswalk
     filenames["cbsa"] = [pathToData + '/cbsatocountycrosswalk.csv']
 
-    # county level data were obtained from US Census Bureau
-    # https://www.census.gov/cgi-bin/geo/shapefiles/index.php
-    filenames["shpCounty"] = [pathToData + "/tl2021county/tl_2021_us_county.shp"]
-    
     # data from USDA ERS
     # https://www.ers.usda.gov/data-products/atlas-of-rural-and-small-town-america/download-the-data/
     # https://www.ers.usda.gov/data-products/rural-urban-continuum-codes.aspx
@@ -379,6 +375,13 @@ def get_county_geojson(url='https://raw.githubusercontent.com/plotly/datasets/ma
     #downloaded only when asked for, not by get_data, so loading the data needs no network
     with urlopen(url, timeout=timeout) as response:
         return json.load(response)
+
+def get_county_shapefile(pathToData='/users/PAS2164/deligkaris/DATA'):
+    '''Returns the path of the US Census county shapefile (TIGER/Line 2021) under pathToData, get_data's, for county
+    maps; read it with a shapefile reader (eg geopandas.read_file).'''
+    #not a table, so get_data does not load it: spark.read.csv made its binary content into rows of control characters
+    #https://www.census.gov/cgi-bin/geo/shapefiles/index.php
+    return pathToData + "/tl2021county/tl_2021_us_county.shp"
 
 def prep_procedureClassesDF(df):
     df = df.withColumn("ICD-10-PCS-CODE", F.regexp_replace(F.col("ICD-10-PCS-CODE"), "'", ""))
@@ -619,7 +622,10 @@ def prep_zipToHrrDF(zipToHrrDF, filename):
 
 def prep_maPenetrationDF(maPenetrationDF):
     maPenetrationDF = (maPenetrationDF.withColumn("Penetration", F.split( F.trim(F.col("Penetration")), r'\.' ).getItem(0).cast('int') )
-                                      .withColumn("Year", F.col("Year").cast('int')))
+                                      .withColumn("Year", F.col("Year").cast('int'))
+                                      #the CMS file writes the counties of the states 01-09 with 4 digits (1001 for 01001),
+                                      #which match no fipsCounty
+                                      .withColumn("FIPS", F.lpad(F.col("FIPS").cast('int').cast('string'), 5, '0')))
     return maPenetrationDF
 
 def get_hcrisDF(spark, pathToHcris, yearInitial=2015, yearFinal=2026, filename=None, lastCompleteYear=2024):

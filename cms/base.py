@@ -197,14 +197,8 @@ def add_ishStroke(baseDF, inpatient=True):
         baseDF = baseDF.withColumn("ishStroke", F.when( F.col("ishStrokeDgns")==1, 1).otherwise(0))
     return baseDF
 
-def add_otherStroke(baseDF):
-    #Stroke, not specified as haemorrhage or infarction
-    #https://icd.who.int/browse10/2016/en#/I60-I69
-    baseDF = baseDF.withColumn("otherStroke",
-                              # ^I64[\d]: beginning of string I64 matches 0 or more digit characters 0-9
-                              F.when( F.regexp_extract( F.col("PRNCPAL_DGNS_CD"), r'^I64[\d]*',0) !='', 1)
-                               .otherwise(0))
-    return baseDF
+#there is no otherStroke for "stroke, not specified as haemorrhage or infarction": its WHO ICD-10 code I64 is not in
+#ICD-10-CM, the claims code that stroke as I63.9 (cerebral infarction, unspecified), which ishStroke takes
 
 def add_ichStroke(baseDF):
     baseDF = baseDF.withColumn("ichStroke",
@@ -223,7 +217,7 @@ def add_tiaStroke(baseDF):
 def add_anyStroke(baseDF):
     '''anyStroke refers to any type of stroke that is at the moment present in the df'''
     anyStrokeCondition = '(' + '|'.join(f"(F.col('{stroke}')==1)" for stroke in 
-                                        ["ishStroke", "otherStroke", "ichStroke","tiaStroke"] if stroke in baseDF.columns) + ')'
+                                        ["ishStroke", "ichStroke","tiaStroke"] if stroke in baseDF.columns) + ')'
     baseDF = baseDF.withColumn("anyStroke", F.when( eval(anyStrokeCondition), 1).otherwise(0))
     return baseDF
 

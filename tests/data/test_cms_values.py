@@ -49,7 +49,7 @@ valuesTested = [("ipBase", "STUS_CD", [1, 2, 5, 20], "base.add_diedInVisit, add_
                 ("mbsf", "MDCR_STUS_CD_01", [11, 21, 31], "mbsf.add_anyEsrd")]
 
 #the flags whose prevalence is followed from year to year, by the file they are computed on
-ipFlags = ["ishStroke", "ichStroke", "tiaStroke", "otherStroke", "septicShock", "shockDgns", "acuteRespiratoryFailure",
+ipFlags = ["ishStroke", "ichStroke", "tiaStroke", "septicShock", "shockDgns", "acuteRespiratoryFailure",
            "acuteNeurologicalFailure", "coagulopathy", "acuteHepaticInjuryFailure", "acuteRenalInjuryFailure",
            "acidosis", "imv", "ecmo", "rrt", "endoscopy", "intubation", "tracheostomy", "peg", "parkinsons"]
 revenueFlags = {"ipRevenue": ["ed", "icu", "mri", "ct"], "opRevenue": ["ed", "mri", "ct", "echo"]}
