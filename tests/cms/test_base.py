@@ -2779,6 +2779,7 @@ class TestAddProviderNpiInfo:
         base = spark.createDataFrame([("1",), ("2",), ("3",)], "ORGNPINM string")
         rows = {r["ORGNPINM"]: r for r in add_provider_npi_info(base, npi).collect()}
         assert rows["1"]["providerAddress"] == "410 DEWEY ST,WISCONSIN RAPIDS,WI,54494"
+        assert rows["1"]["providerZip"] == "54494"
         assert rows["2"]["providerAddress"] is None #every part null
         assert rows["3"]["providerAddress"] is None #not in the NPI file
 
@@ -2851,3 +2852,340 @@ class TestAddLosAtXInfoClaimnoInTwoYears:
         rows = add_los_at_X_info(base, hospice, lastObservableDay=10000).collect()
         assert sorted((r["THRU_DT_DAY"], r["losAthosp90"], r["losAthosp365"]) for r in rows) == \
                [(105, 10, 10), (505, 5, 5)]
+
+
+# ============================================================
+# The flags the mutation run found untested: each code list by its first and last code, each cut-off from both sides,
+# and each flag's 1 and 0. The POA flags are left without direct tests, as decided.
+# ============================================================
+
+_flagColumns = {"CLAIMNO": "int", "DSYSRTKY": "int", "ORGNPINM": "bigint", "PROVIDER": "string", "PRSTATE": "string",
+                "STATE_CD": "string", "PMTDNLCD": "string", "PRNCPAL_DGNS_CD": "string", "DRG_CD": "int", "HCPCS_CD": "string",
+                "FAC_TYPE": "int", "STUS_CD": "int", "los": "int", "providerStateFIPS": "string", "fipsState": "string",
+                "prcdrCodeAll": "array<string>", "dgnsCodeAll": "array<string>", "dgnsPoaCodeAll": "array<string>",
+                **{f"ICD_DGNS_CD{x}": "string" for x in range(1, 26)}}
+
+def _flag_df(spark, row):
+    values = {"CLAIMNO": 1, "DSYSRTKY": 1, "prcdrCodeAll": [], "dgnsCodeAll": [], "dgnsPoaCodeAll": [], **row}
+    return spark.createDataFrame([tuple(values.get(c) for c in _flagColumns)],
+                                 ", ".join(f"{c} {t}" for c, t in _flagColumns.items()))
+
+def _call(name, **options):
+    import cms.base as baseF
+    return lambda df: getattr(baseF, name)(df, **options)
+
+def _evt_drg(df):
+    import cms.base as baseF
+    return baseF.add_evtDrg(baseF.add_ishStrokeDgns(df))
+
+#(function, column, row, expected)
+_flagCases = (
+    [(_call("add_ishStroke", inpatient=False), "ishStroke", {"PRNCPAL_DGNS_CD": d}, e) for d, e in [("I639", 1), ("I619", 0)]] +
+    [(_call("add_ishStroke"), "ishStroke", {"DRG_CD": d}, e) for d, e in [(61, 1), (62, 1), (63, 1), (60, 0), (64, 0)]] +
+    [(_call("add_tiaStroke"), "tiaStroke", {"PRNCPAL_DGNS_CD": d}, e) for d, e in [("G459", 1), ("I639", 0)]] +
+    [(_call("add_parkinsonsPrncpalDgns"), "parkinsonsPrncpalDgns", {"PRNCPAL_DGNS_CD": d}, e) for d, e in [("G20", 1), ("G211", 0)]] +
+    [(_call("add_parkinsons"), "parkinsons", r, e) for r, e in [({"ICD_DGNS_CD1": "G20"}, 1), ({"ICD_DGNS_CD25": "G209"}, 1), ({}, 0)]] +
+    [(_call("add_dbsPrcdr"), "dbsPrcdr", {"prcdrCodeAll": c}, e) for c, e in [(["00H00MZ"], 1), (["00H03MZ"], 1), ([], 0)]] +
+    [(_call("add_dbsCpt"), "dbsCpt", {"HCPCS_CD": c}, e) for c, e in [("61855", 1), ("61867", 1), ("61850", 0)]] +
+    [(_call(f"add_{name}"), name, {"prcdrCodeAll": c}, e)
+     for name, first, last in [("intubation", "0BH17EZ", "0WHQ7YZ"), ("tracheostomy", "0B110F4", "0B114Z4"), ("peg", "0DH63UZ", "0DHA8UZ")]
+     for c, e in [([first], 1), ([last], 1), ([], 0)]] +
+    [(_call("add_life_sustaining_treatment_info"), "lifeSustainingTreatment", {"prcdrCodeAll": c}, e) for c, e in [(["0B110F4"], 1), ([], 0)]] +
+    [(_call("add_pegDgns"), "pegDgns", {"dgnsCodeAll": c}, e) for c, e in [(["Z931"], 1), ([], 0)]] +
+    [(_call("add_imv"), "imv", {"prcdrCodeAll": ["5A1955Z"]}, 1), (_call("add_endoscopy"), "endoscopy", {"prcdrCodeAll": ["3E1G88Z"]}, 1)] +
+    [(_call("add_evtPrcdr"), "evtPrcdr", {"prcdrCodeAll": c}, e) for c, e in [(["03CG3ZZ"], 1), (["03CQ3ZZ"], 1), ([], 0)]] +
+    [(_evt_drg, "evtDrg", {"DRG_CD": d, "PRNCPAL_DGNS_CD": "I639"}, e) for d, e in [(23, 1), (24, 1), (25, 0)]] +
+    [(_call("add_ccvPrcdr"), "ccvPrcdr", {"prcdrCodeAll": c}, e)
+     for c, e in [(["00J00ZZ"], 1), (["00B04ZZ"], 1), (["Z982"], 1), (["00994ZZ"], 1), ([], 0)]] +
+    #tpaDrg: DRGs 61-63, or 65 with a tPA procedure or diagnosis
+    [(_call("add_tpa"), "tpaDrg", r, e) for r, e in [
+        ({"DRG_CD": 61}, 1), ({"DRG_CD": 62}, 1), ({"DRG_CD": 63}, 1), ({"DRG_CD": 64}, 0),
+        ({"DRG_CD": 65, "prcdrCodeAll": ["3E03317"]}, 1), ({"DRG_CD": 65, "dgnsCodeAll": ["Z9282"]}, 1), ({"DRG_CD": 65}, 0),
+        ({"DRG_CD": 64, "prcdrCodeAll": ["3E03317"]}, 0), ({"DRG_CD": 66, "dgnsCodeAll": ["Z9282"]}, 0)]] +
+    [(_call("add_tpa"), "tpa", r, e) for r, e in [({"DRG_CD": 61}, 1), ({"prcdrCodeAll": ["3E03317"]}, 1),
+                                                   ({"dgnsCodeAll": ["Z9282"]}, 1), ({}, 0)]] +
+    [(_call("add_tpa", inpatient=False), "tpa", {"prcdrCodeAll": c}, e) for c, e in [(["3E03317"], 1), ([], 0)]] +
+    [(_call("add_tpaDgns"), "tpaDgns", {"dgnsCodeAll": c}, e) for c, e in [(["Z9282"], 1), ([], 0)]] +
+    [(_call("add_tpaCpt"), "tpaCpt", {"HCPCS_CD": c}, e) for c, e in [("37195", 1), ("37202", 1), ("37200", 0)]] +
+    [(_call("add_acuteRenalInjuryFailurePrcdr"), "acuteRenalInjuryFailurePrcdr", {"prcdrCodeAll": c}, e)
+     for c, e in [(["5A1D70Z"], 1), (None, 0)]] +
+    #CCNs: positions 3-6 of 1300-1399 are a critical access hospital, 3025-3099 or a T in position 3 a rehabilitation unit
+    [(_call("add_ccnCah"), "ccnCah", {"PROVIDER": p}, e) for p, e in [("361300", 1), ("361399", 1), ("361299", 0), ("361400", 0)]] +
+    [(_call("add_rehabilitationFromCCN"), "rehabilitationFromCCN", {"PROVIDER": p}, e)
+     for p, e in [("363025", 1), ("363099", 1), ("363024", 0), ("363100", 0), ("36T001", 1), ("360001", 0)]] +
+    [(_call("add_hospitalFromClaim"), "hospitalFromClaim", {"FAC_TYPE": f}, e) for f, e in [(1, 1), (2, 0)]] +
+    [(_call("add_providerIn50StatesOrDc"), "providerIn50StatesOrDc", {"PRSTATE": s}, e) for s, e in [("36", 1), ("40", 0)]] +
+    [(_call("add_ohProvider"), "ohProvider", {"PRSTATE": s}, e) for s, e in [("36", 1), ("39", 0)]] +
+    [(_call("add_osu"), "osu", {"ORGNPINM": n}, e) for n, e in [(1447359997, 1), (1447359998, 0)]] +
+    [(_call("add_denied"), "denied", {"PMTDNLCD": c}, e) for c, e in [("0", 1), ("00", 1), ("1", 0)]] +
+    [(_call("add_cAppalachiaResident"), "cAppalachiaResident", {"STATE_CD": s}, e) for s, e in [("18", 1), ("51", 1), ("17", 0)]] +
+    [(_call("add_dischargeHomeWithin2Days"), "dischargeHomeWithin2Days", {"STUS_CD": s, "los": l}, e)
+     for s, l, e in [(1, 3, 1), (1, 4, 0), (2, 1, 0)]] +
+    #regions by state FIPS: 06 California west, 48 Texas south, 39 Ohio midwest, 36 New York northeast
+    [(_call(f), c, {k: s}, e) for f, c, k in [("add_providerRegion", "providerRegion", "providerStateFIPS"), ("add_region", "region", "fipsState")]
+     for s, e in [("06", 4), ("48", 3), ("39", 2), ("36", 1), ("72", None)]])
+
+@pytest.mark.parametrize("function, column, row, expected", _flagCases, ids=[f"{c}-{i}" for i, (_, c, _, _) in enumerate(_flagCases)])
+def test_flag(spark, function, column, row, expected):
+    assert function(_flag_df(spark, row)).first()[column] == expected
+
+def test_first_and_last_claim_of_a_beneficiary(spark):
+    from cms.base import add_firstClaim, add_lastClaim
+    df = spark.createDataFrame([(1, 1, 100, 105), (2, 1, 200, 210), (3, 2, 150, 150)],
+                               "CLAIMNO int, DSYSRTKY int, ADMSN_DT_DAY int, THRU_DT_DAY int")
+    rows = {r["CLAIMNO"]: (r["firstClaim"], r["lastClaim"]) for r in add_lastClaim(add_firstClaim(df)).collect()}
+    assert rows == {1: (1, 0), 2: (0, 1), 3: (1, 1)}
+
+@pytest.mark.parametrize("function, flagFrom", [("get_providerIn50StatesOrDcClaims", None), ("get_septicShockPoaClaims", "dgnsPoaCodeAll")])
+def test_claim_filters_keep_the_flagged_claims(spark, function, flagFrom):
+    import cms.base as baseF
+    if flagFrom:
+        df = spark.createDataFrame([(1, ["R6521"]), (2, [])], "CLAIMNO int, dgnsPoaCodeAll array<string>")
+    else:
+        df = spark.createDataFrame([(1, 1), (2, 0)], "CLAIMNO int, providerIn50StatesOrDc int")
+    assert [r["CLAIMNO"] for r in getattr(baseF, function)(df).collect()] == [1]
+
+def test_majorDiagnosticOrTherapeuticOrProcedures_takes_classes_3_and_4(spark):
+    from cms.base import add_majorDiagnosticOrTherapeuticOrProcedures
+    classes = spark.createDataFrame([("0A", 3), ("0B", 4), ("0C", 2)], "`ICD-10-PCS-CODE` string, `PROCEDURE-CLASS` int")
+    df = spark.createDataFrame([(1, ["0A"]), (2, ["0B"]), (3, ["0C"]), (4, [])], "CLAIMNO int, prcdrCodeAll array<string>")
+    out = add_majorDiagnosticOrTherapeuticOrProcedures(df, classes, spark)
+    assert {r["CLAIMNO"]: r["majorDiagnosticOrTherapeuticOrProcedures"] for r in out.collect()} == {1: 1, 2: 1, 3: 0, 4: 0}
+
+
+# ============================================================
+# Windows, cut-offs and day offsets of the stays and outcomes the mutation run found untested
+# ============================================================
+
+def _groups(value, cuts):
+    return 0 if value == 0 else next((g for g, cut in enumerate(cuts, start=1) if value <= cut), None)
+
+def test_days_at_home_groups_at_each_cut_off(spark):
+    #homeDays from the death branch: died on DEATH_DT_DAY, admitted on day 1000 with no facility stay after, so
+    #homeDays = DEATH_DT_DAY - 1000 + 1; STUS_CD 20 (died in the stay) gives 0, and a survivor 90 and 365
+    from cms.base import add_days_at_home_info
+    homeDays90 = [1, 30, 31, 60, 61]
+    homeDays365 = [122, 123, 244, 245]
+    rows = ([(1, 20, None, 0, 0)] + [(i + 2, 1, 999 + v, 1, 1) for i, v in enumerate(homeDays90)] +
+            [(i + 10, 1, 999 + v, 0, 1) for i, v in enumerate(homeDays365)] + [(20, 1, None, 0, 0)])
+    base = spark.createDataFrame([(1, claim, 1000, 1005, death, stus, d90, d365) for (claim, stus, death, d90, d365) in rows],
+                                 "DSYSRTKY int, CLAIMNO int, ADMSN_DT_DAY int, THRU_DT_DAY int, DEATH_DT_DAY int, STUS_CD int, "
+                                 "`90DaysAfterAdmissionDateDead` int, `365DaysAfterAdmissionDateDead` int")
+    empty = spark.createDataFrame([], "DSYSRTKY int, ADMSN_DT_DAY int, THRU_DT_DAY int")
+    out = {r["CLAIMNO"]: r for r in add_days_at_home_info(base, empty, empty, empty, empty, lastObservableDay=10**6).collect()}
+    for claim, row in out.items():
+        for kind in ("homeDays", "homeDaysIndependent"):
+            (d90, d365) = (row[f"{kind}90"], row[f"{kind}365"])
+            assert (row[f"{kind}90Group"], row[f"{kind}365Group"]) == (_groups(d90, [30, 60, 90]), _groups(d365, [122, 244, 365])), claim
+    assert sorted(r["homeDays90"] for r in out.values()) == [0] + homeDays90 + [90] * 5
+    assert sorted(r["homeDays365"] for r in out.values()) == [0] + homeDays90 + homeDays365 + [365]
+
+def test_first_claims(spark):
+    #beneficiary 1: one first claim; 2: a one-day and a longer claim at two hospitals on the first day, the one-day one is
+    #first; 3: two one-day claims at two hospitals that day, order unknown, both dropped; 4: a stay in two claims at one
+    #hospital, both kept; and each has a later claim, which is never first
+    from cms.base import get_first_claims
+    rows = [(1, 1, 100, 20200110, 20200112), (2, 1, 100, 20200301, 20200302),
+            (3, 2, 100, 20200110, 20200110), (4, 2, 200, 20200110, 20200115), (5, 2, 100, 20200301, 20200302),
+            (6, 3, 100, 20200110, 20200110), (7, 3, 200, 20200110, 20200110), (8, 3, 100, 20200301, 20200302),
+            (9, 4, 100, 20200110, 20200112), (10, 4, 100, 20200110, 20200115), (11, 4, 100, 20200301, 20200302)]
+    df = spark.createDataFrame(rows, "CLAIMNO int, DSYSRTKY int, ORGNPINM int, ADMSN_DT int, THRU_DT int")
+    df = df.withColumn("ADMSN_DT_DAY", F.datediff(F.to_date(F.col("ADMSN_DT").cast("string"), "yyyyMMdd"), F.lit("2010-01-01")))
+    df = df.withColumn("THRU_DT_DAY", F.datediff(F.to_date(F.col("THRU_DT").cast("string"), "yyyyMMdd"), F.lit("2010-01-01")))
+    out = {r["CLAIMNO"]: (r["moreThan1ClaimsPerStay"], r["minClaimNoPerStay"]) for r in get_first_claims(df).collect()}
+    assert out == {1: (0, 1), 3: (0, 3), 9: (1, 9), 10: (1, 9)}
+
+def test_claims_per_stay_key_on_beneficiary_hospital_and_admission(spark):
+    from cms.base import add_moreThan1ClaimsPerStay, filter_minClaimNoPerStay
+    #claims 1 and 2 are one stay; 3, 4 and 5 differ from it in the beneficiary, the hospital and the admission date
+    df = spark.createDataFrame([(1, 1, 100, 20200101), (2, 1, 100, 20200101), (3, 2, 100, 20200101), (4, 1, 200, 20200101),
+                                (5, 1, 100, 20200201)], "CLAIMNO int, DSYSRTKY int, ORGNPINM int, ADMSN_DT int")
+    assert {r["CLAIMNO"]: r["moreThan1ClaimsPerStay"] for r in add_moreThan1ClaimsPerStay(df).collect()} == {1: 1, 2: 1, 3: 0, 4: 0, 5: 0}
+    assert sorted(r["CLAIMNO"] for r in filter_minClaimNoPerStay(df).collect()) == [1, 3, 4, 5]
+
+def test_discharge_date_day_and_year(spark):
+    from cms.base import add_discharge_date_info
+    from utilities import daysInYearsPriorDict
+    #March 15 2020 is day 75 of a leap year
+    row = add_discharge_date_info(spark.createDataFrame([(20200315,)], "DSCHRGDT int"), claimType="ip").first()
+    assert (row["DSCHRGDT_YEAR"], row["DSCHRGDT_DAY"]) == (2020, daysInYearsPriorDict[2020] + 75)
+
+@pytest.mark.parametrize("column", ["hospitalizationsIn12Months", "hospitalizedIn12Months", "hospitalizationsIn6Months", "hospitalizedIn6Months"])
+def test_prior_hospitalization_refuses_a_rerun(spark, column):
+    from cms.base import add_prior_hospitalization_info
+    base = spark.createDataFrame([(1, 1, 100, 20, 1)], f"DSYSRTKY int, CLAIMNO int, ADMSN_DT_DAY int, ADMSN_DT_MONTH int, {column} int")
+    ip = spark.createDataFrame([], "DSYSRTKY int, THRU_DT_DAY int, shortTermInpatientOrganization int")
+    with pytest.raises(ValueError, match=column):
+        add_prior_hospitalization_info(base, ip)
+
+def test_a_discharge_the_day_before_is_a_prior_hospitalization(spark):
+    from cms.base import add_prior_hospitalization_info
+    base = spark.createDataFrame([(1, 1, 1000, 30, 1)], "DSYSRTKY int, CLAIMNO int, ADMSN_DT_DAY int, ADMSN_DT_MONTH int, ffsFirstMonth int")
+    ip = spark.createDataFrame([(1, 999, 1), (1, 1000, 1)], "DSYSRTKY int, THRU_DT_DAY int, shortTermInpatientOrganization int")
+    row = add_prior_hospitalization_info(base, ip).first()
+    assert (row["hospitalizationsIn12Months"], row["hospitalizationsIn6Months"]) == (1, 1)
+
+def test_losDays_of_a_claim_without_an_admission_date(spark):
+    from cms.base import add_losDays
+    df = spark.createDataFrame([(1, 10, 12), (2, None, 12), (3, None, None)], "CLAIMNO int, ADMSN_DT_DAY int, THRU_DT_DAY int")
+    assert {r["CLAIMNO"]: r["losDays"] for r in add_losDays(df).collect()} == {1: [10, 11, 12], 2: [12], 3: None}
+
+def test_los_at_hospice_counts_a_stay_starting_on_the_discharge_day(spark):
+    #a hospice stay admitted the day the claim ends counts; the window is observed when it ends on lastObservableDay
+    from cms.base import add_los_at_X_info
+    base = spark.createDataFrame([(1, 7, 100, 105, None)], "DSYSRTKY int, CLAIMNO long, ADMSN_DT_DAY int, THRU_DT_DAY int, DEATH_DT_DAY int")
+    hospice = spark.createDataFrame([(1, 105, 109)], "DSYSRTKY int, ADMSN_DT_DAY int, THRU_DT_DAY int")
+    row = add_los_at_X_info(base, hospice, lastObservableDay=190).first()
+    assert (row["losAthosp90"], row["losAthosp365"]) == (5, None)
+    #a death on the last day of the window makes it observed, whatever the data's end
+    died = base.withColumn("DEATH_DT_DAY", F.lit(190))
+    assert add_los_at_X_info(died, hospice, lastObservableDay=150).first()["losAthosp90"] == 5
+
+def test_los_total_is_0_without_stays(spark):
+    from cms.base import add_los_total_info
+    df = spark.createDataFrame([(1, None, None)], "CLAIMNO int, losDaysAthosp90 array<int>, losDaysAthosp365 array<int>")
+    row = add_los_total_info(df, X="hosp").first()
+    assert (row["losAthospTotal90"], row["losAthospTotal365"]) == (0, 0)
+
+def test_window_defaults(spark):
+    from cms.base import add_XDaysFromYDAY, add_daysDeadAfterAdmissionDate, add_XDaysAfterYDateDead
+    df = spark.createDataFrame([(100, 100, 150)], "ADMSN_DT_DAY int, THRU_DT_DAY int, DEATH_DT_DAY int")
+    assert add_XDaysFromYDAY(df).first()["90DaysFromADMSN_DT_DAY"] == 190
+    assert add_XDaysAfterYDateDead(add_daysDeadAfterAdmissionDate(df), lastObservableDay=1000).first()["365DaysAfterAdmissionDateDead"] == 1
+
+def test_clean_through_dates_keeps_a_claim_ending_on_the_death_day(spark):
+    from cms.base import get_clean_through_dates
+    #and a one-day claim, admitted the day it ends, is kept
+    df = spark.createDataFrame([(1, 100, 105, 105), (2, 100, 106, 105), (3, 100, 100, None)],
+                               "CLAIMNO int, ADMSN_DT_DAY int, THRU_DT_DAY int, DEATH_DT_DAY int")
+    assert sorted(r["CLAIMNO"] for r in get_clean_through_dates(df).collect()) == [1, 3]
+
+def test_afterYearClaims_leaves_out_that_year(spark):
+    from cms.base import get_afterYearClaims
+    df = spark.createDataFrame([(1, 2018), (2, 2019)], "CLAIMNO int, ADMSN_DT_YEAR int")
+    assert [r["CLAIMNO"] for r in get_afterYearClaims(df, 2018).collect()] == [2]
+
+@pytest.mark.parametrize("ccnRehab, taxonomy, expected", [("363025", 0, 1), ("360001", 1, 1), ("360001", 0, 0)])
+def test_rehabilitation_from_the_ccn_or_the_taxonomy(spark, ccnRehab, taxonomy, expected):
+    from cms.base import add_rehabilitation
+    df = spark.createDataFrame([(ccnRehab, taxonomy)], "PROVIDER string, rehabilitationFromTaxonomyPrimary int")
+    assert add_rehabilitation(df).first()["rehabilitation"] == expected
+
+def test_mbsf_info_keeps_a_claim_with_no_mbsf_year(spark):
+    from cms.base import add_mbsf_info
+    columns = ["fipsCounty", "AGE", "ffsFirstMonth", "anyEsrd", "medicaidEver", "SEX", "RACE", "rucc", "region", "maPenetration",
+               "meanContinuousFfsAndRfrncYrForCountyYear", "medianHhIncome", "medianHhIncomeAdjusted", "medianDistanceEd",
+               "medianDistanceIcu", "medianDistanceTrauma"]
+    mbsf = spark.createDataFrame([(1, 2019, None, None) + (None,) * len(columns)],
+                                 "DSYSRTKY int, RFRNC_YR int, V_DOD_SW string, DEATH_DT int, " + ", ".join(f"{c} double" for c in columns))
+    mbsf = mbsf.withColumn("DEATH_DT_DAY", F.lit(None).cast("int")).withColumn("DEATH_DT_YEAR", F.lit(None).cast("int"))
+    base = spark.createDataFrame([(1, 1, 2019), (2, 1, 2020)], "CLAIMNO int, DSYSRTKY int, THRU_DT_YEAR int")
+    assert sorted(r["CLAIMNO"] for r in add_mbsf_info(base, mbsf).collect()) == [1, 2]
+
+
+# ============================================================
+# The joins onto the claims keep every claim once: claim 1 matches the lookup, claim 2 does not
+# ============================================================
+
+_hcrisColumns = ["providerHcrisBedsIcu", "providerHcrisBedsCriticalCare", "providerHcrisBedsTotal", "providerHcrisBedDaysIcu",
+                 "providerHcrisBedDaysCriticalCare", "providerHcrisBedDaysTotal", "providerHcrisResidents",
+                 "providerHcrisResidentToBedRatio", "providerHcrisIsRural"]
+
+#(function, the claims' key columns and their values for claim 1 and claim 2, the lookups (DDL, rows), column, value of
+#claim 1, of claim 2)
+_joinCases = [
+    ("add_providerCountyName", "providerFIPS string", ("39049", "99999"), [("countyname string, fipscounty string", [("Franklin", "39049")])],
+     "providerCountyName", "Franklin", None),
+    ("add_provider_pos_info", "PROVIDER string", ("360001", "999999"),
+     [("PRVDR_NUM string, providerFIPS string, providerStateFIPS string, GNRL_CNTL_TYPE_CD string, posCah int, posIsRural int",
+       [("360001", "39049", "39", "04", 1, 0)])], "posCah", 1, None),
+    ("add_provider_system_info", "PROVIDER string, THRU_DT_YEAR int", (("360001", 2019), ("360001", 2020)),
+     [("ccn string, health_sys_id string, isVI int, year int", [("360001", "SYS1", 1, 2019)])], "providerSysId", "SYS1", None),
+    ("add_providerCmi", "PROVIDER string, THRU_DT_YEAR int", (("360001", 2019), ("999999", 2019)),
+     [("provider string, year int, casemixindex double", [("360001", 2019, 1.5)])], "providerCmi", 1.5, None),
+    ("add_fipsCounty", "ssaCounty string", ("36250", "99999"), [("ssaCounty string, fipsCounty string", [("36250", "39049")])],
+     "fipsCounty", "39049", None),
+    ("add_rucc", "fipsCounty string", ("39049", "99999"), [("FIPS string, RUCC_2013 int", [("39049", 1)])], "rucc", 1, None),
+    ("add_regional_info", "fipsCounty string", ("39049", "99999"),
+     [("fipsCounty string, populationDensity double, bsOrHigher double, medianHouseholdIncome double, unemploymentRate double",
+       [("39049", 100.0, 0.3, 50000.0, 0.05)])], "populationDensity", 100.0, None),
+    ("add_providerMaPenetration", "providerFIPS string, THRU_DT_YEAR int", (("39049", 2019), ("39049", 2020)),
+     [("FIPS string, Penetration double, Year int", [("39049", 35.0, 2019)])], "providerMaPenetration", 35.0, None),
+    ("add_provider_rucc_info", "providerFIPS string", ("39049", "99999"),
+     [("FIPS string, RUCC_2013 int, ruccGroup int", [("39049", 1, 1)])], "providerRucc", 1, None),
+    ("add_cbi_info", "PROVIDER string", ("360001", "999999"),
+     [("hospital_bed_count int, urban_location_f string, medicare_provider_number string", [(200, "Y", "360001")])],
+     "hospital_bed_count", 200, None),
+    ("add_cothMember", "PROVIDER string", ("360001", "999999"), [("cothMember int, `Medicare ID` string", [(1, "360001")])],
+     "cothMember", 1, None),
+    ("add_rbr", "PROVIDER string", ("360001", "999999"), [("`FY20 IRB` string, `Medicare ID` string", [("0.3", "360001")])],
+     "rbr", 0.3, None),
+    ("add_aamc_teaching_info", "PROVIDER string", ("360001", "999999"),
+     [("`Medicare ID` string, aamcTeachingStatus int, aamcMajorTeachingStatus int", [("360001", 1, 1)])], "aamcTeachingStatus", 1, None),
+    ("add_strokeCenterCamargo", "PROVIDER string", ("360001", "999999"), [("CCN string, strokeCenterCamargo int", [("360001", 1)])],
+     "strokeCenterCamargo", 1, 0),
+    ("add_acgmeXInZip", "providerZip string", ("43210", "99999"), [("siteZip string, siteNameProcessed string", [("43210", "osu")])],
+     "acgmeSitesInZip", ["osu"], None),
+    ("add_hcris_info", "PROVIDER string, THRU_DT_YEAR int", (("360001", 2019), ("360001", 2020)),
+     [("PRVDR_NUM string, hcrisYear int, " + ", ".join(f"{c} double" for c in _hcrisColumns), [("360001", 2019) + (5.0,) * 9])],
+     "providerHcrisBedsIcu", 5.0, None),
+    ("add_regional_info_from_ers", "fipsCounty string", ("39049", "99999"),
+     [("FIPS string, PopDensity2010 double, Ed5CollegePlusPct double", [("39049", 100.0, 30.0)]),
+      ("FIPS string, UnempRate2019 double", [("39049", 4.0)]), ("FIPS string, Median_HH_Inc_ACS double", [("39049", 50000.0)])],
+     "Median_HH_Inc_ACS", 50000.0, None)]
+
+@pytest.mark.parametrize("function, keys, values, lookups, column, matched, unmatched", _joinCases, ids=[c[0] for c in _joinCases])
+def test_join_keeps_every_claim_once(spark, function, keys, values, lookups, column, matched, unmatched):
+    import cms.base as baseF
+    rows = [(i + 1, *(v if isinstance(v, tuple) else (v,))) for i, v in enumerate(values)]
+    base = spark.createDataFrame(rows, f"CLAIMNO int, {keys}")
+    out = getattr(baseF, function)(base, *[spark.createDataFrame(r, ddl) for ddl, r in lookups])
+    got = sorted((r["CLAIMNO"], r[column]) for r in out.collect())
+    assert got == [(1, matched), (2, unmatched)]
+    if function == "add_regional_info_from_ers":
+        assert [r["PopDensity2010"] for r in out.orderBy("CLAIMNO").collect()] == [100.0, None]
+        assert [r["UnempRate2019"] for r in out.orderBy("CLAIMNO").collect()] == [4.0, None]
+
+def test_hcris_bed_groups(spark):
+    from cms.base import add_hcris_info
+    beds = [99, 100, 399, 400]
+    hcris = spark.createDataFrame([(f"36000{i}", 2019) + (float(b),) * 9 for i, b in enumerate(beds)],
+                                  "PRVDR_NUM string, hcrisYear int, " + ", ".join(f"{c} double" for c in _hcrisColumns))
+    base = spark.createDataFrame([(i, f"36000{i}", 2019) for i in range(len(beds))], "CLAIMNO int, PROVIDER string, THRU_DT_YEAR int")
+    out = {r["CLAIMNO"]: r["providerHcrisBedsTotalGroup"] for r in add_hcris_info(base, hcris).collect()}
+    assert out == {0: 0, 1: 1, 2: 1, 3: 2}
+
+def _acgme(spark, rows, sites):
+    base = spark.createDataFrame(rows, "CLAIMNO int, providerName string, providerOtherName string, providerZip string")
+    return base, spark.createDataFrame(sites, "siteZip string, siteNameProcessed string")
+
+def test_acgme_site_by_name_distance_or_containment(spark):
+    #within the provider's zip: a site name 3 edits from the provider's (not 4), or containing its name or other name
+    from cms.base import add_acgmeX
+    rows = [(1, "abcdefgh", None, "00001"), (2, "abcdefgh", None, "00002"), (3, "ohio", None, "00003"),
+            (4, "zzzzzzzz", "ohio", "00004"), (5, "zzzzzzzz", None, "00005")]
+    sites = [("00001", "abcdexyz"), ("00002", "abcdwxyz"), ("00003", "the ohio state"), ("00004", "the ohio state"), ("00005", "nothing alike")]
+    out = add_acgmeX(*_acgme(spark, rows, sites), X="Site")
+    assert {r["CLAIMNO"]: r["acgmeSite"] for r in out.collect()} == {1: 1, 2: 0, 3: 1, 4: 1, 5: 0}
+
+def test_teaching_hospital_by_coth_rbr_or_acgme_program(spark):
+    from cms.base import add_teachingHospital
+    base = spark.createDataFrame([(1, "360001", "zzzzzzzz", None, "00001"), (2, "360002", "zzzzzzzz", None, "00001"),
+                                  (3, "360003", "zzzzzzzz", None, "00001"), (4, "360004", "ohio", None, "00002"),
+                                  (5, "360005", "zzzzzzzz", None, "00001")],
+                                 "CLAIMNO int, PROVIDER string, providerName string, providerOtherName string, providerZip string")
+    aamc = spark.createDataFrame([("360001", "0", 1), ("360002", "0.25", 0), ("360003", "0.24", 0), ("360004", "0", 0)],
+                                 "`Medicare ID` string, `FY20 IRB` string, cothMember int")
+    programs = spark.createDataFrame([("00002", "the ohio state")], "programZip string, programNameProcessed string")
+    out = add_teachingHospital(base, aamc, programs)
+    assert {r["CLAIMNO"]: r["teachingHospital"] for r in out.collect()} == {1: 1, 2: 1, 3: 0, 4: 1, 5: 0}
+
+def test_death_date_is_the_latest_mbsf_year_of_each_beneficiary(spark):
+    #beneficiary 1's death is in the 2018 and 2019 mbsf, beneficiary 2's in the 2018 one only
+    from cms.base import add_death_date_info
+    mbsf = spark.createDataFrame([(1, 2018, "V", 2019, 3650, 20191231), (1, 2019, "V", 2019, 3650, 20191231),
+                                  (2, 2018, "V", 2018, 3000, 20180301)],
+                                 "DSYSRTKY int, RFRNC_YR int, V_DOD_SW string, DEATH_DT_YEAR int, DEATH_DT_DAY int, DEATH_DT int")
+    base = spark.createDataFrame([(1, 1), (2, 2), (3, 3)], "CLAIMNO int, DSYSRTKY int")
+    out = {r["CLAIMNO"]: r["DEATH_DT_DAY"] for r in add_death_date_info(base, mbsf).collect()}
+    assert out == {1: 3650, 2: 3000, 3: None}

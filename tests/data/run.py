@@ -83,12 +83,13 @@ stopStalls.set()
 #the later steps build the local[2] session of tests/conftest.py in a python of their own: in this one getOrCreate would
 #hand them the cluster session, and with this python's environment they would join the cluster's JVM
 sys.path.insert(0, str(repo))
-from tests.mutation import local_spark_environment
+from tests.mutation import local_spark_environment, java_cpus_environment
 environment = local_spark_environment()
-#one session runs all the unit tests, and the node has the memory the laptop does not (see tests/conftest.py)
+#one session runs all the unit tests, and the node has the memory the laptop does not (see tests/conftest.py). Its JVM
+#is sized for 10 cores, the laptop's, where they take 25 minutes; at OSC, sized for the node's 120, they took 76
 exitCodes.append(subprocess.run([sys.executable, "-m", "pytest", str(repo / "tests" / "cms"), "--rootdir", str(repo),
                                  "-q", "-p", "no:cacheprovider", "--tb=short"], cwd=repo,
-                                env={**environment, "TESTS_SPARK_MEMORY": "4g"}).returncode)
+                                env=java_cpus_environment({**environment, "TESTS_SPARK_MEMORY": "4g"}, 10)).returncode)
 if steps.mutation:
     report = Path.cwd() / f"mutation-{datetime.datetime.now():%Y%m%d-%H%M}.log"
     exitCodes.append(subprocess.run([sys.executable, str(repo / "tests" / "mutation.py"), "--workers", str(steps.workers),

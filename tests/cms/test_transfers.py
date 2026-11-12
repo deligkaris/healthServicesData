@@ -4622,6 +4622,10 @@ class TestAddNodeProportionTransferredOut:
         # staysDF lacks the sender-year -> 0-filled -> null, not a division by zero
         assert _prop_out(spark, [("r", _OUT_IP, 5, 0)])["r"] is None
 
+    def test_ip_one_stay_is_its_ratio(self, spark):
+        # only a denominator of 0 is null
+        assert _prop_out(spark, [("r", _OUT_IP, 1, 1)])["r"] == pytest.approx(1.0)
+
     def test_union_rows_use_their_own_formula(self, spark):
         # Same sender-year in both sets: each row divides by its own type's denominator.
         by = _prop_out(spark, [("ed", _OUT_ED, 10, 100), ("ip", _OUT_IP, 10, 100)])
@@ -4970,6 +4974,13 @@ def _ed15_ip5(spark, stays=100):
 
 class TestAddNodeProportionTransferredInFromEd:
 
+    def test_one_admission_is_its_ratio(self, spark):
+        # only a denominator of 0 is null
+        from cms.transfers import add_nodeInVolFromEd, add_nodeProportionTransferredInFromEd
+        df = make_node_in_by_type_df(spark, _admissions(200, 2020, _ED, 1, 1))
+        out = add_nodeProportionTransferredInFromEd(add_nodeInVolFromEd(df))
+        assert _by_receiver_year(out, "nodeProportionTransferredInFromEd")[(200, 2020)] == pytest.approx(1.0)
+
     def test_ratio_over_all_admissions(self, spark):
         from cms.transfers import add_nodeInVolFromEd, add_nodeProportionTransferredInFromEd
         out = add_nodeProportionTransferredInFromEd(add_nodeInVolFromEd(_ed15_ip5(spark)))
@@ -5226,3 +5237,83 @@ class TestAddDyadAnnualInfo:
             add_dyad_annual_info(once, infoDF, suffix="AllTransfers")
         with pytest.raises(ValueError, match="suffix"):
             add_dyad_annual_info(transfersDF, infoDF, suffix="")
+
+
+# ============================================================
+# The node windows key on a provider and the year: on transfers that differ in the sending provider, the receiving
+# provider or the year alone, each node column is its aggregate over exactly that key.
+# ============================================================
+
+#two senders, two receivers, two years: from, to, year, toevt, transfertpa, fromed, fromct, frommri, toed, toct, tomri,
+#geodesic km; the values make every aggregate differ once any one key is left out (the test checks it)
+_keyedTransfers = [(100, 200, 2019, 1, 0, 1, 1, 0, 1, 0, 0, 10.0),
+                   (100, 201, 2019, 0, 1, 0, 1, 1, 0, 1, 0, 25.0),
+                   (101, 200, 2019, 1, 0, 1, 0, 0, 0, 0, 1, 31.0),
+                   (100, 200, 2020, 0, 1, 0, 0, 1, 1, 1, 1, 40.0),
+                   (101, 201, 2020, 0, 0, 0, 0, 0, 0, 0, 0, 52.0),
+                   (101, 200, 2020, 1, 1, 1, 1, 1, 1, 0, 1, 67.0)]
+_nodeKeys = {"From": ["fromORGNPINM", "fromTHRU_DT_YEAR"], "To": ["toORGNPINM", "fromTHRU_DT_YEAR"]}
+
+
+def _keyed_transfers_df(spark):
+    from cms.transfers import add_transferEvtOrTpa
+    columns = ("fromORGNPINM int, toORGNPINM int, fromTHRU_DT_YEAR int, toevt int, transfertpa int, fromed int, fromct int, "
+               "frommri int, toed int, toct int, tomri int, dyadGeodesicDistanceKm double")
+    df = (spark.createDataFrame(_keyedTransfers, columns)
+               .withColumn("fromCLAIMNO", F.concat_ws("-", "fromORGNPINM", "toORGNPINM", "fromTHRU_DT_YEAR"))
+               .withColumn("toTHRU_DT_YEAR", F.col("fromTHRU_DT_YEAR"))
+               .withColumn("dyadDrivingDistanceKm", F.col("dyadGeodesicDistanceKm") * 1.5)
+               .withColumn("dyadDrivingTimeMin", F.col("dyadGeodesicDistanceKm") * 0.8))
+    return _add_treatment_groups(add_transferEvtOrTpa(df))
+
+
+def _node_reference(rows, keys, source, stat):
+    groups = {}
+    for r in rows:
+        groups.setdefault(tuple(r[k] for k in keys), []).append(r[source])
+    aggregate = {"Vol": sum, "Mean": lambda v: sum(v) / len(v), "Set": lambda v: sorted(set(v)), "Size": lambda v: len(set(v))}[stat]
+    return {r["fromCLAIMNO"]: aggregate(groups[tuple(r[k] for k in keys)]) for r in rows}
+
+
+_treatments = [("Evt", "toevt"), ("Tpa", "transfertpa")]
+_groups = ["TpaOnly", "EvtOnly", "EvtAndTpa", "NoEvtNorTpa"]
+#(function, column, side, input column, aggregate)
+_nodeColumns = ([("add_node_stroke_treatment_info", f"node{side}{name}{stat}", side, source, stat)
+                 for side in _nodeKeys for (name, source) in _treatments for stat in ("Vol", "Mean")] +
+                [("add_node_evtOrTpa_info", f"node{side}EvtOrTpa{stat}", side, "transferEvtOrTpa", stat)
+                 for side in _nodeKeys for stat in ("Vol", "Mean")] +
+                [("add_node_treatment_group_info", f"node{side}{group}{stat}", side, f"transfer{group}", stat)
+                 for side in _nodeKeys for group in _groups for stat in ("Vol", "Mean")] +
+                [("add_node_revenue_info", f"node{side}{name}{stat}", side, f"{side.lower()}{name.lower()}", stat)
+                 for side in _nodeKeys for name in ("Ed", "Ct", "Mri") for stat in ("Vol", "Mean")] +
+                [("add_node_distance_info", f"node{side}{measure}Mean", side, f"dyad{measure}", "Mean")
+                 for side in _nodeKeys for measure in ("GeodesicDistanceKm", "DrivingDistanceKm", "DrivingTimeMin")] +
+                [("add_node_from_to_info", f"nodeFrom{stat}OfToNodes", "From", "toORGNPINM", stat) for stat in ("Set", "Size")] +
+                [("add_node_from_to_info", f"nodeTo{stat}OfFromNodes", "To", "fromORGNPINM", stat) for stat in ("Set", "Size")])
+
+
+@pytest.mark.parametrize("function, column, side, source, stat", _nodeColumns, ids=[c[1] for c in _nodeColumns])
+def test_node_column_is_its_aggregate_over_provider_and_year(spark, function, column, side, source, stat):
+    import cms.transfers as transfersF
+    df = _keyed_transfers_df(spark)
+    rows = [r.asDict() for r in df.collect()]
+    expected = _node_reference(rows, _nodeKeys[side], source, stat)
+    #the input tells the keys apart: without any one of them the aggregate is another
+    for left in _nodeKeys[side]:
+        assert _node_reference(rows, [k for k in _nodeKeys[side] if k != left], source, stat) != expected, left
+    got = {r["fromCLAIMNO"]: (sorted(r[column]) if stat == "Set" else r[column]) for r in getattr(transfersF, function)(df).collect()}
+    assert got == (pytest.approx(expected) if stat == "Mean" else expected)
+
+
+def test_newDyad_marks_the_first_year_of_each_pair(spark):
+    from cms.transfers import add_newDyad
+    df = _keyed_transfers_df(spark)
+    rows = [r.asDict() for r in df.collect()]
+    first = {}
+    for r in rows:
+        pair = (r["fromORGNPINM"], r["toORGNPINM"])
+        first[pair] = min(first.get(pair, r["fromTHRU_DT_YEAR"]), r["fromTHRU_DT_YEAR"])
+    expected = {r["fromCLAIMNO"]: int(r["fromTHRU_DT_YEAR"] == first[(r["fromORGNPINM"], r["toORGNPINM"])]) for r in rows}
+    #(101, 201) starts in 2020, after both 101's and 201's other pairs
+    assert sorted(expected.values()) == [0, 0, 1, 1, 1, 1]
+    assert {r["fromCLAIMNO"]: r["newDyad"] for r in add_newDyad(df).collect()} == expected

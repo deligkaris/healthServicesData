@@ -10,7 +10,7 @@ import cms.utilities as cmsUtilitiesF
 from cms.schemas import schemas
 from cms.longToShortXW import longToShortXW
 from tests.data.checks import get_counts
-from tests.data.thresholds import castLossAllowed, columnsMissingSomeYears
+from tests.data.thresholds import castLossAllowed, castLossAllowedValues, columnsMissingSomeYears, providerStoredAsNumber
 
 #the DUAL_01-DUAL_12 values mbsf.add_medicaidEver counts as a dual month
 dualCodes = (1, 2, 3, 4, 5, 6, 8)
@@ -41,9 +41,12 @@ def test_long_names_have_a_crosswalk(spark, cmsFile):
     assert not unmapped, f"{claimTypePart} {year}: {len(unmapped)} long names not in longToShortXW, eg {unmapped[:5]}"
 
 def test_columns_are_in_schema(spark, cmsFile):
-    #enforce_schema keeps only the schema's columns, so any other column is dropped without a word
+    #enforce_schema keeps only the schema's columns, so any other column is dropped without a word; after
+    #rename_long_names, as read_and_prep_dataframe reads it (carLine's LINE_NUM of 2018-2019 is CLM_LN)
     (claimTypePart, year, path) = cmsFile
-    extra = sorted(set(read_named(spark, claimTypePart, path).columns) - set(schemas[claimTypePart].fieldNames()))
+    (claimType, claimPart) = cmsUtilitiesF.get_claimType_claimPart(claimTypePart)
+    named = cmsUtilitiesF.rename_long_names(read_named(spark, claimTypePart, path), claimType, claimPart)
+    extra = sorted(set(named.columns) - set(schemas[claimTypePart].fieldNames()))
     assert not extra, f"{claimTypePart} {year}: {len(extra)} columns not in schemas, dropped on read: {extra[:10]}"
 
 def test_columns_present_every_year(spark, cmsFilenames, claimTypePart):
@@ -67,7 +70,14 @@ def test_no_value_lost_when_typed(spark, cmsFile):
     stored = named.select("*", *[F.col(c).alias(f"stored{c}") for c in named.columns])
     prepped = cmsUtilitiesF.fix_year(cmsUtilitiesF.pad_zeros(stored, claimType, claimPart), claimType, claimPart)
     fields = [f for f in schemas[claimTypePart].fields if f.name in named.columns]
-    failing = {f.name: F.col(f"stored{f.name}").isNotNull() & F.col(f.name).cast(f.dataType).isNull() for f in fields}
+    #typed as enforce_schema types them, so a date stored as a date (the snf files of 2019) is not lost, and less the
+    #values thresholds.castLossAllowedValues lets turn null
+    allowedValues = castLossAllowedValues.get(claimTypePart, {})
+    def lost_value(f):
+        lost = F.col(f"stored{f.name}").isNotNull() & cmsUtilitiesF.get_typed_column(prepped, f).isNull()
+        values = allowedValues.get(f.name)
+        return (lost & ~F.col(f"stored{f.name}").cast("string").isin(*values)) if values else lost
+    failing = {f.name: lost_value(f) for f in fields}
     lost = get_counts(prepped, failing)
     allowed = castLossAllowed.get((claimTypePart, year), {})
     lost = {c: n for c, n in lost.items() if n > allowed.get(c, 0)}
@@ -128,6 +138,8 @@ def test_provider_stored_as_text(spark, cmsFile):
     if "PROVIDER" not in named.columns:
         return
     stored = named.schema["PROVIDER"].dataType
+    if (claimTypePart, year) in providerStoredAsNumber:
+        return
     assert isinstance(stored, StringType), \
         f"{claimTypePart} {year}: PROVIDER stored as {stored.simpleString()}, a CCN starting with 0 loses it"
 

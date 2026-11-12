@@ -18,13 +18,6 @@ dateDays = ([(part, "THRU_DT", "THRU_DT_DAY") for part in ["ipBase", "opBase", "
 stayBases = ["ipBase", "snfBase", "hhaBase", "hospBase"]
 
 @pytest.mark.parametrize("part, dateCol, dayCol", dateDays, ids=[f"{p}-{d}" for p, d, _ in dateDays])
-def test_date_has_a_day_number(cmsRaw, part, dateCol, dayCol):
-    df = cmsRaw[part]
-    lost = F.col(dateCol).isNotNull() & F.col(dayCol).isNull()
-    number = get_counts(df, {"lost": lost})["lost"]
-    assert number == 0, f"{part}: {number} {dateCol} with no {dayCol}, eg {get_examples(df, lost, [dateCol])}"
-
-@pytest.mark.parametrize("part, dateCol, dayCol", dateDays, ids=[f"{p}-{d}" for p, d, _ in dateDays])
 def test_date_without_day_number_is_outside_the_frame(cmsRaw, metricsTable, part, dateCol, dayCol):
     #a date with no day number should be a real date of a year daysInYearsPriorDict does not number (eg the admission
     #of a long stay begun before 2010), not a malformed one or one of a numbered year; the dates with no day number, by

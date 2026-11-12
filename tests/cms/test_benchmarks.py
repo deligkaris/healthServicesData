@@ -5,7 +5,7 @@ import pytest
 
 import cms.mbsf as mbsfF
 from tests.data import benchmarks
-from tests.data.checks import Metrics, check_band
+from tests.data.checks import Metrics, check_band, check_rates
 
 def mbsf_row(bene, buyIn="3" * 12, hmo="0" * 12, deathMonth=None, state="39", county="39049", age=70, sex=2, dual=0, year=2019):
     row = {"DSYSRTKY": bene, "RFRNC_YR": year, "fipsState": state, "fipsCounty": county, "AGE": age, "SEX": sex,
@@ -120,6 +120,11 @@ def test_check_band_records_the_extremes_and_names_what_is_outside():
                                                     ("omCountRatio lowest", 2018, 1.0), ("omCountRatio lowest", 2019, 0.9)]
     assert check_band(Metrics(), "c", "k", {(2019, "OH"): 1.0}, (0.98, 1.02)) is None
     assert "nothing to compare" in check_band(Metrics(), "c", "k", {}, (0, 1))
+
+def test_check_rates_fails_on_a_rate_of_none():
+    #every claim of a year with no through date (the snf files of 2019, once) gave a rate of None, which raised TypeError
+    with pytest.raises(AssertionError, match="None"):
+        check_rates(Metrics(), "through <= death", "snfBase", {None: None, 2018: 0.99})
 
 def test_check_band_takes_a_group_with_no_label():
     #beneficiaries with no state are a group of their own, labelled None

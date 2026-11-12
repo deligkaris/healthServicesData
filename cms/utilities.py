@@ -5,7 +5,7 @@ import cms.base as baseF
 import cms.revenue as revenueF
 import cms.mbsf as mbsfF
 import pyspark.sql.functions as F
-from pyspark.sql.types import StructType
+from pyspark.sql.types import StructType, DateType, IntegerType, LongType
 import re
 from functools import reduce
 from utilities import yearMin, yearMax, daysInYearsPriorDict, get_daysInYearsPrior, get_monthsInYearsPrior
@@ -190,8 +190,17 @@ def enforce_schema(df, claimType, claimPart):
     #the schema for this df is a subset of the one I just loaded, so adjust it
     schema = StructType( [field for field in schema.fields if field.name in df.columns] )
     #cast right schema
-    df = df.select([df[field.name].cast(field.dataType) for field in schema.fields])
+    df = df.select([get_typed_column(df, field) for field in schema.fields])
     return df
+
+def get_typed_column(df, field):
+    '''The column field.name of df as field's type, the schemas' yyyymmdd number for a date the file stores as a date.'''
+    #the schemas type dates as yyyymmdd numbers, and with ANSI off a date cast to a number is null: the snf files of 2019
+    #store every date as a date, which lost THRU_DT and the other dates of all their claims and revenue lines. A timestamp
+    #is not converted, no file stores one, and its date would depend on the session time zone
+    if isinstance(df.schema[field.name].dataType, DateType) and isinstance(field.dataType, (IntegerType, LongType)):
+        return F.date_format(df[field.name], "yyyyMMdd").cast(field.dataType).alias(field.name)
+    return df[field.name].cast(field.dataType)
 
 def add_preliminary_info(dataframes, data, lastObservableDay, firstObservableDay=None):
     '''inputs: original CMS dataframes

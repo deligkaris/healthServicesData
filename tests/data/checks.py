@@ -65,7 +65,8 @@ def check_rates(metrics, check, key, rates):
     floor = get_floor(check, key)
     for year, rate in rates.items():
         metrics.add(check, key, year, rate, floor)
-    low = {year: round(rate, 4) for year, rate in rates.items() if rate < floor}
+    #a rate of None (eg every claim of a year with no through date, the snf files of 2019 once) fails, it does not crash
+    low = {year: (None if rate is None else round(rate, 4)) for year, rate in rates.items() if rate is None or rate < floor}
     assert not low, f"{check} {key}: {low} below the floor {floor}"
 
 def check_band(metrics, check, key, values, band):

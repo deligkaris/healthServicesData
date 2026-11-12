@@ -233,6 +233,22 @@ class TestRenameLongNames:
         assert read_and_prep_dataframe(path, "carLine", spark).first()["CLM_LN"] == 3
 
 
+class TestReadDatesStoredAsDates:
+
+    def test_snf_claims_keep_their_dates_and_day_numbers(self, spark, tmp_path):
+        import datetime
+        from cms.utilities import read_and_prep_dataframe, add_through_date_info
+        from utilities import daysInYearsPriorDict
+        #the snf files of 2019 store every date as a date
+        path = str(tmp_path / "snfBase.parquet")
+        spark.createDataFrame([(2, 22, datetime.date(2019, 5, 15), datetime.date(2019, 5, 5), "36", "49", "36")],
+                              "DSYSRTKY int, CLAIMNO long, THRU_DT date, ADMSN_DT date, STATE_CD string, CNTY_CD string, "
+                              "PRSTATE string").write.parquet(path)
+        row = add_through_date_info(read_and_prep_dataframe(path, "snfBase", spark)).first()
+        assert (row["THRU_DT"], row["ADMSN_DT"], row["THRU_DT_YEAR"]) == (20190515, 20190505, 2019)
+        assert row["THRU_DT_DAY"] == daysInYearsPriorDict[2019] + 135
+
+
 class TestPadZeros:
 
     def test_a_ccn_that_lost_its_leading_zero_gets_it_back(self, spark):
@@ -346,6 +362,20 @@ class TestFixYear:
 
 
 class TestEnforceSchema:
+
+    def test_a_date_stored_as_a_date_becomes_its_yyyymmdd_number(self, spark):
+        import datetime
+        from cms.utilities import enforce_schema
+        #with ANSI off a date cast to the schemas' int is null, which lost every date of the snf files of 2019
+        dates = spark.createDataFrame([(1, datetime.date(2019, 1, 1), datetime.date(2020, 2, 29), "ABC001"),
+                                       (2, None, datetime.date(2019, 12, 31), "ABC002")],
+                                      "DSYSRTKY int, THRU_DT date, ADMSN_DT date, PROVIDER string")
+        result = enforce_schema(dates, claimType="snf", claimPart="Base")
+        assert dict(result.dtypes)["THRU_DT"] == "int"
+        assert [(r["THRU_DT"], r["ADMSN_DT"], r["PROVIDER"]) for r in result.collect()] == \
+               [(20190101, 20200229, "ABC001"), (None, 20191231, "ABC002")]
+        numbers = spark.createDataFrame([(1, 20190515)], "DSYSRTKY int, THRU_DT int")
+        assert enforce_schema(numbers, claimType="snf", claimPart="Base").first()["THRU_DT"] == 20190515
 
     def test_casts_columns_to_schema_types(self, spark):
         from cms.utilities import enforce_schema

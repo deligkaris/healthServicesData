@@ -12,7 +12,7 @@ import cms.line as lineF
 import cms.comorbidities as comorbiditiesF
 from utilities import icd10Day
 from tests.data.checks import get_counts, get_examples, check_rates
-from tests.data.thresholds import keyFormatExceptions, prevalenceYearRatio
+from tests.data.thresholds import keyFormatExceptions, icdFormatExceptions, prevalenceYearRatio
 
 ccn = r"^[0-9A-Z]{6}$"
 npi = r"^\d{10}$"
@@ -81,12 +81,12 @@ def check_prevalence(name, prevalence):
     assert not never and not jumps, f"{name}: never fire {never}; change over {prevalenceYearRatio}x {jumps}"
 
 @pytest.mark.parametrize("part, column, pattern", claimFormats, ids=[f"{p}-{c}" for p, c, _ in claimFormats])
-def test_claim_key_format(cmsRaw, part, column, pattern):
+def test_claim_key_format(cmsRaw, yearList, part, column, pattern):
     df = cmsRaw[part]
     value = F.col(column).cast("string")
     bad = value.isNotNull() & ~value.rlike(pattern)
     number = get_counts(df, {"bad": bad})["bad"]
-    allowed = keyFormatExceptions.get((part, column), 0)
+    allowed = keyFormatExceptions.get((part, column), 0) * len(yearList)
     examples = get_examples(df, bad, [column]) if number > allowed else []
     assert number <= allowed, f"{part}.{column}: {number} values not {pattern}, eg {examples}"
 
@@ -111,14 +111,18 @@ def test_provider_keeps_leading_zero(cmsRaw, metricsTable, part):
                                          f"eg {examples}")
 
 @pytest.mark.parametrize("part", ["ipBase", "opBase"])
-def test_icd_code_format(cmsRaw, part):
+def test_icd_code_format(cmsRaw, yearList, part):
     df = icd10_claims(cmsRaw[part])
     cols = [c for c in icdFormats if c in df.columns]
     bad = get_counts(df, {c: F.col(c).isNotNull() & ~F.col(c).rlike(icdFormats[c]) for c in cols})
     bad = {c: n for c, n in bad.items() if n}
-    first = next(iter(bad), None)
-    examples = get_examples(df, F.col(first).isNotNull() & ~F.col(first).rlike(icdFormats[first]), [first]) if first else []
-    assert not bad, f"{part}: ICD codes not in the unpunctuated upper case format: {bad}, eg {examples}"
+    allowed = icdFormatExceptions.get(part, 0) * len(yearList)
+    if sum(bad.values()) <= allowed:
+        return
+    first = next(iter(bad))
+    examples = get_examples(df, F.col(first).isNotNull() & ~F.col(first).rlike(icdFormats[first]), [first])
+    assert not bad, (f"{part}: {sum(bad.values())} ICD codes, {allowed} allowed, not in the unpunctuated upper case format: "
+                     f"{bad}, eg {examples}")
 
 @pytest.mark.parametrize("part", ["ipBase", "opBase"])
 def test_principal_is_first_diagnosis(cmsRaw, metricsTable, part):

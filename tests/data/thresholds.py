@@ -8,8 +8,8 @@ def get_floor(check, key):
     return rateFloors.get(f"{check} {key}", 0.0)
 
 #(low, high) of each comparison of test_benchmarks.py, keyed "<check> <key>" as the metrics table prints them (less its
-#lowest/highest). Set from the first OSC run (2018-2019, 11/2026) at about two to three times the gap it showed, so a year
-#to year change passes and a regression does not; the ones marked provisional wait for a run that measures them
+#lowest/highest). Set from the OSC runs (2018-2019, 11/2026) at about two to three times the gap they showed, so a year
+#to year change passes and a regression does not
 benchmarkBands = {
     #the Original Medicare population rebuilt from the mbsf against BENES_OM_CNT, 100% of the mbsf: 0.997-1.005
     "geographic variation omCountRatio": (0.99, 1.01),
@@ -27,12 +27,13 @@ benchmarkBands = {
     "geographic variation erVisitsRelativeDifference": (-0.05, 0.05),
     #the library's ffs and CMS's Original Medicare differ by design (see test_benchmarks.py): 0.9982-0.9996 of CMS's are ffs
     "ffs definitions cmsOmAlsoFfs": (0.99, 1.0),
-    #provisional: not measured, the first run stopped on a state labelled None
+    #0.014-0.043 of the library's ffs are not in CMS's Original Medicare, by state
     "ffs definitions ffsNotCmsOm": (0.0, 0.1),
-    #provisional: the counties of states 01-09 join only since their FIPS is padded (prep_maPenetrationDF), so the next
-    #run compares about 600 more; CMS divides by the ever enrolled eligibles, 2.5-3% above the enrolled ones
-    "ma penetration meanAbsoluteDifference": (0.0, 0.03),
-    "ma penetration countiesWithin3Points": (0.8, 1.0),
+    #with the counties of states 01-09, which join since their FIPS is padded (prep_maPenetrationDF): 0.0055-0.0057 apart
+    #on average, and 0.976-0.978 of the counties within 3 points; CMS divides by the ever enrolled eligibles, 2.5-3% above
+    #the enrolled ones
+    "ma penetration meanAbsoluteDifference": (0.0, 0.015),
+    "ma penetration countiesWithin3Points": (0.93, 1.0),
     #0.989-0.991 and 0.992-0.993 of the POS hospitals active that year have an ip claim
     "hospital coverage posWithClaim acute": (0.97, 1.0),
     "hospital coverage posWithClaim cah": (0.97, 1.0),
@@ -57,8 +58,31 @@ castLossAllowed = {("carLine", 2016): {"SRVC_CNT": 4},
 #claimTypePart -> schema columns allowed in some loaded years and not others (eg a J/K format difference)
 columnsMissingSomeYears = {}
 
-#(source, column) -> rows allowed not to match the key format (test_external.py)
-keyFormatExceptions = {}
+#the counts of bad values allowed per year loaded, the tests multiply them by the years of the run: the values the 2018-2019
+#run found (11/2026), a year, at about twice
+
+#(part or source, column) -> rows a year allowed not to match the key format (test_cms_values.py, test_external.py)
+keyFormatExceptions = {("carLine", "PRF_NPI"): 40,     #41 in 2018-2019, NPIs of 9 digits
+                       ("carLine", "HCPCS_CD"): 5,     #5, eg '3'
+                       ("ipRevenue", "HCPCS_CD"): 170, #165, eg '885', 'GY', '1'
+                       ("opRevenue", "HCPCS_CD"): 270, #266, eg '0636', 'N BV', 'GZ'
+                       ("aha", "MCRNUM"): 2}           #2 'Y', no CCN, so they match no claim
+
+#claimTypePart -> ICD codes a year allowed outside the unpunctuated upper case format, all columns together
+#(test_cms_values.py): 3 ip procedure codes in 2018-2019, truncated (eg '0TY1'), and 240 op codes
+icdFormatExceptions = {"ipBase": 3, "opBase": 240}
+
+#source -> rows allowed with a value wrapped in quotes (test_external.py), of the one file each loads: 172 and 4
+quoteWrappedAllowed = {"npi": 350, "npiMedicareXw": 10}
+
+#claimTypePart -> {column: values a cast to the schema type may turn null} (test_files.py): the mbsf writes a month that
+#is not dual as 'NA' in 2018-2019 (about 49 M beneficiaries a month), which mbsf.add_medicaidEver reads as not dual; 0.2%
+#of them have the state buy-in, test_dual_values reports it
+castLossAllowedValues = {"mbsf": {f"DUAL_{m:02d}": {"NA"} for m in range(1, 13)}}
+
+#(claimTypePart, year) of the files that store PROVIDER as a number (test_files.py), whose leading 0 cms.utilities.pad_zeros
+#restores, which test_provider_keeps_leading_zero checks
+providerStoredAsNumber = {("hhaBase", 2018), ("hhaBase", 2019)}
 
 #claimTypePart -> added columns allowed to be all null in a year (test_pipeline.py)
 nullableAddedColumns = {}

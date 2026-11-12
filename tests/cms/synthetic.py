@@ -6,6 +6,8 @@ import random
 import re
 from pathlib import Path
 
+import pyspark.sql.functions as F
+
 import cms.utilities as cmsUtilitiesF
 import utilities as utilitiesF
 from cms.longToShortXW import longToShortXW
@@ -171,6 +173,9 @@ def get_cohort():
 
 #stored with the long CMS names, as some files are, see cms.utilities.enforce_short_names
 longNameFiles = {"hhaBase"}
+#stored with their dates as dates, as the snf files of 2019 are, see cms.utilities.get_typed_column
+dateTypedFiles = {("snfBase", 2019), ("snfRevenue", 2019)}
+dateColumns = re.compile(r"^(THRU_DT|ADMSN_DT|DSCHRGDT|QLFYTHRU|NCOVFROM|NCOVTHRU|EXHST_DT|PRCDR_DT\d+)$")
 
 def write_cms_files(spark, pathCMS, seed=None):
     '''One parquet per claim part and year, at the paths and on the schemas the library reads, empty where the cohort has no rows.
@@ -185,6 +190,9 @@ def write_cms_files(spark, pathCMS, seed=None):
             else:
                 random.Random(seed).shuffle(rows)
                 df = spark.createDataFrame(spark.sparkContext.parallelize(rows, 3), schema=schema)
+            if (claimTypePart, file_year(path)) in dateTypedFiles:
+                df = df.select([F.to_date(F.col(c).cast("string"), "yyyyMMdd").alias(c) if dateColumns.match(c) else F.col(c)
+                                for c in df.columns])
             if claimTypePart in longNameFiles:
                 longNames = {short: long for long, short in longToShortXW[claimTypePart].items()}
                 df = df.toDF(*[longNames[c] for c in df.columns])

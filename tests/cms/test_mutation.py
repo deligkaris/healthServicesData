@@ -1,6 +1,8 @@
 '''tests/mutation.py, the mutation testing of tests/data/run.py --mutation: the mutants it makes of a source, and the run
 of a module's tests on each, on a toy repo with no Spark.'''
 import re
+import subprocess
+import sys
 import textwrap
 
 import pytest
@@ -113,6 +115,18 @@ def test_subprocesses_do_not_inherit_the_cluster_spark(monkeypatch):
     env = mutation.local_spark_environment()
     assert not {"PYSPARK_GATEWAY_PORT", "PYSPARK_GATEWAY_SECRET", "PYSPARK_SUBMIT_ARGS"} & set(env)
     assert env["SPARK_HOME"] == "/spark" and mutation._environment()["PYTHONDONTWRITEBYTECODE"] == "1"
+
+def test_the_workers_jvms_size_themselves_for_their_2_cores(monkeypatch):
+    monkeypatch.delenv("JDK_JAVA_OPTIONS", raising=False)
+    assert mutation._environment()["JDK_JAVA_OPTIONS"] == "-XX:ActiveProcessorCount=2"
+    monkeypatch.setenv("JDK_JAVA_OPTIONS", "-Xss4m")
+    env = mutation._environment()
+    assert env["JDK_JAVA_OPTIONS"] == "-Xss4m -XX:ActiveProcessorCount=2"
+    #the spark JVM a worker's tests start reads it
+    code = ("from pyspark.sql import SparkSession; s = SparkSession.builder.master('local[1]').getOrCreate(); "
+            "print('cores', s.sparkContext._jvm.java.lang.Runtime.getRuntime().availableProcessors()); s.stop()")
+    run = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=300)
+    assert "cores 2" in run.stdout, run.stderr[-2000:]
 
 def test_a_jvm_that_died_is_an_error_not_a_kill(tmp_path):
     #pytest fails, but on a dead spark JVM, which says nothing of the mutant

@@ -661,3 +661,107 @@ class TestDropUnusedColumns:
         # These should remain
         assert "DSYSRTKY" in result.columns
         assert "RFRNC_YR" in result.columns
+
+
+# ============================================================
+# The codes, cut-offs, windows and joins the mutation run found untested
+# ============================================================
+
+#mbsf.add_medicaidEver: the CCW dual codes, 01-06 and 08, in any month, January included
+@pytest.mark.parametrize("code, month, expected", [(1, 5, 1), (2, 5, 1), (3, 5, 1), (4, 5, 1), (5, 5, 1), (6, 5, 1), (8, 5, 1),
+                                                   (7, 5, 0), (9, 5, 0), (99, 5, 0), (1, 1, 1), (8, 12, 1)])
+def test_medicaidEver_takes_each_dual_code(spark, code, month, expected):
+    from cms.mbsf import add_medicaidEver
+    row = make_mbsf_row(**{f"DUAL_{month:02d}": code})
+    assert add_medicaidEver(make_mbsf_df(spark, [row])).first()["medicaidEver"] == expected
+
+@pytest.mark.parametrize("orec, crec, expected", [(2, 0, 1), (3, 0, 1), (0, 2, 1), (0, 3, 1), (1, 1, 0), (4, 4, 0)])
+def test_anyEsrd_takes_each_esrd_entitlement_code(spark, orec, crec, expected):
+    from cms.mbsf import add_anyEsrd
+    row = make_mbsf_row(OREC=orec, CREC=crec)
+    assert add_anyEsrd(make_mbsf_df(spark, [row])).first()["anyEsrd"] == expected
+
+@pytest.mark.parametrize("state, expected", [("18", 1), ("34", 1), ("36", 1), ("44", 1), ("49", 1), ("51", 1), ("52", 0), ("17", 0)])
+def test_cAppalachiaResident_takes_each_state(spark, state, expected):
+    from cms.mbsf import add_cAppalachiaResident
+    assert add_cAppalachiaResident(make_mbsf_df(spark, [make_mbsf_row(STATE_CD=state)])).first()["cAppalachiaResident"] == expected
+
+@pytest.mark.parametrize("buyin, expected", [("3", 1), ("C", 1), ("A", 0)])
+def test_ffsSinceJanuary_takes_both_part_ab_codes(spark, buyin, expected):
+    from cms.mbsf import add_ffsSinceJanuary
+    df = spark.createDataFrame([(1, buyin)], "ffs int, BUYIN1 string")
+    assert add_ffsSinceJanuary(df).first()["ffsSinceJanuary"] == expected
+
+def test_death_date_day_in_a_leap_year(spark):
+    #March 1 2020 is day 61, and February 29 day 60
+    from cms.mbsf import add_death_date_info
+    from utilities import daysInYearsPriorDict
+    rows = [make_mbsf_row(DSYSRTKY=1, V_DOD_SW="V", DEATH_DT=20200301), make_mbsf_row(DSYSRTKY=2, V_DOD_SW="V", DEATH_DT=20200229)]
+    days = {r["DSYSRTKY"]: r["DEATH_DT_DAY"] for r in add_death_date_info(make_mbsf_df(spark, rows)).collect()}
+    assert days == {1: daysInYearsPriorDict[2020] + 61, 2: daysInYearsPriorDict[2020] + 60}
+
+def test_filter_continuous_coverage_keeps_a_gap_of_at_most_one_year(spark):
+    from cms.mbsf import filter_continuous_coverage
+    df = spark.createDataFrame([(1, 2018, 0), (1, 2019, 1), (1, 2021, 2)], "DSYSRTKY int, RFRNC_YR int, rfrncYrDifference int")
+    assert sorted(r["RFRNC_YR"] for r in filter_continuous_coverage(df).collect()) == [2018, 2019]
+
+def test_filter_probably_dead_drops_the_probably_dead(spark):
+    from cms.mbsf import filter_probably_dead
+    df = spark.createDataFrame([(1, 0), (2, 1)], "DSYSRTKY int, probablyDead int")
+    assert [r["DSYSRTKY"] for r in filter_probably_dead(df).collect()] == [1]
+
+def _claims_years(spark, rows):
+    return spark.createDataFrame(rows, "DSYSRTKY int, THRU_DT_YEAR int")
+
+#(AGE, RFRNC_YR, the beneficiary's last claim year or None, willDie) -> probablyDead: over 90, no claim that year or later,
+#and no death in the mbsf
+@pytest.mark.parametrize("age, year, lastClaim, willDie, expected", [
+    (91, 2019, 2018, 0, 1), (90, 2019, 2018, 0, 0), (91, 2019, 2019, 0, 0), (91, 2019, 2018, 1, 0), (91, 2019, None, 0, 1),
+    (70, 2019, None, 0, 0)])
+def test_probablyDead(spark, age, year, lastClaim, willDie, expected):
+    from cms.mbsf import add_probablyDead
+    mbsf = spark.createDataFrame([(1, age, year, willDie)], "DSYSRTKY int, AGE int, RFRNC_YR int, willDie int")
+    claims = _claims_years(spark, [(1, lastClaim)] if lastClaim else [])
+    empty = _claims_years(spark, [])
+    rows = add_probablyDead(mbsf, claims, empty, empty, empty, empty).collect()
+    assert [r["probablyDead"] for r in rows] == [expected]
+
+def test_prep_mbsf_keeps_one_row_per_beneficiary_year(spark):
+    from cms.mbsf import prep_mbsf
+    df = spark.createDataFrame([(1, 2019, "a"), (1, 2019, "b"), (2, 2019, "c"), (1, 2020, "d")], "DSYSRTKY int, RFRNC_YR int, x string")
+    assert sorted((r["DSYSRTKY"], r["RFRNC_YR"]) for r in prep_mbsf(df).collect()) == [(1, 2019), (1, 2020), (2, 2019)]
+
+def test_residentsInCounty_counts_each_year_apart(spark):
+    from cms.mbsf import add_residentsInCounty
+    df = spark.createDataFrame([(1, "36061", 2019), (2, "36061", 2019), (1, "36061", 2020)], "DSYSRTKY int, ssaCounty string, RFRNC_YR int")
+    assert sorted((r["RFRNC_YR"], r["residentsInCounty"]) for r in add_residentsInCounty(df).collect()) == [(2019, 2), (2019, 2), (2020, 1)]
+
+def test_meanContinuousFfsAndRfrncYrForCountyYear_is_per_county_and_year(spark):
+    from cms.mbsf import add_meanContinuousFfsAndRfrncYrForCountyYear
+    df = spark.createDataFrame([(1, "39049", 2019, 1), (2, "39049", 2019, 0), (3, "39041", 2019, 1), (4, "39049", 2020, 1)],
+                               "DSYSRTKY int, fipsCounty string, RFRNC_YR int, continuousFfsAndRfrncYr int")
+    got = {r["DSYSRTKY"]: r["meanContinuousFfsAndRfrncYrForCountyYear"] for r in add_meanContinuousFfsAndRfrncYrForCountyYear(df).collect()}
+    assert got == {1: 0.5, 2: 0.5, 3: 1.0, 4: 1.0}
+
+#a county the lookup lacks keeps its beneficiaries, with nulls: an inner join would drop them from every analysis
+def _county_lookups(spark):
+    return {
+        "add_countyName": (spark.createDataFrame([("36061", "Franklin")], "ssaCounty string, countyName string"), "countyName"),
+        "add_sdoh_info": (spark.createDataFrame([(50000.0, 51000.0, "39049", 1.0, 2.0, 3.0, 2019)],
+                                                "ACS_MEDIAN_HH_INC double, medianHhIncomeAdjusted double, COUNTYFIPS string, "
+                                                "POS_MEDIAN_DIST_ED double, POS_MEDIAN_DIST_MEDSURG_ICU double, "
+                                                "POS_MEDIAN_DIST_TRAUMA double, YEAR int"), "medianHhIncome"),
+        "add_maPenetration": (spark.createDataFrame([("39049", 35.0, 2019)], "FIPS string, Penetration double, Year int"), "maPenetration"),
+        "add_rucc_info": (spark.createDataFrame([("39049", 1, 1)], "FIPS string, RUCC_2013 int, ruccGroup int"), "rucc"),
+        "add_census_info": (spark.createDataFrame([("39049", 2019, 1000, 50000.0)],
+                                                  "fipsCounty string, year int, totalPopulation int, medianHouseholdIncome double"),
+                            "totalPopulation")}
+
+@pytest.mark.parametrize("function", ["add_countyName", "add_sdoh_info", "add_maPenetration", "add_rucc_info", "add_census_info"])
+def test_county_joins_keep_a_beneficiary_with_no_match(spark, function):
+    import cms.mbsf as mbsfF
+    (lookup, column) = _county_lookups(spark)[function]
+    mbsf = spark.createDataFrame([(1, "36061", "39049", 2019), (2, "99999", "99999", 2019)],
+                                 "DSYSRTKY int, ssaCounty string, fipsCounty string, RFRNC_YR int")
+    got = {r["DSYSRTKY"]: r[column] for r in getattr(mbsfF, function)(mbsf, lookup).collect()}
+    assert set(got) == {1, 2} and got[1] is not None and got[2] is None

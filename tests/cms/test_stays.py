@@ -3512,3 +3512,78 @@ class TestAddComorbidityInfo:
         stays_df = stays_df.withColumnRenamed("ADMSN_DT_MONTH", "THRU_DT_MONTH")
         with pytest.raises(ValueError, match="principalFromDay"):
             add_comorbidity_info(stays_df, ip_df, op_df, claimType="op", principalFromDay="principalFrom")
+
+
+# ============================================================
+# The cut-offs, filters, windows and day offsets the mutation run found untested
+# ============================================================
+
+def test_volume_groups_cut_the_hospitals_with_volume_at_their_terciles(spark):
+    #the terciles of the hospitals above 0, 2 4 6 8, are 4 and 6, which fall on a hospital each; the hospitals with 0
+    #stay out of the cut-offs
+    rows = [(1, 100, 2020, 0), (2, 101, 2020, 0), (3, 102, 2020, 2), (4, 103, 2020, 4), (5, 104, 2020, 6), (6, 105, 2020, 8)]
+    assert _volume_groups(spark, rows) == {1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 3}
+
+@pytest.mark.parametrize("function, flag", [("get_transferFromDifferentFacilityStays", "transferFromDifferentFacility"),
+                                            ("get_transferToInStays", "transferToIn")])
+def test_transfer_stays_keep_the_flagged_stays(spark, function, flag):
+    import cms.stays as staysF
+    df = spark.createDataFrame([(1, 1), (2, 0), (3, None)], f"CLAIMNO int, {flag} int")
+    out = getattr(staysF, function)(df)
+    assert [r["CLAIMNO"] for r in out.collect()] == [1] and flag not in out.columns
+
+def test_age65PlusStays_keeps_65_and_over(spark):
+    from cms.stays import get_age65PlusStays
+    df = spark.createDataFrame([(1, 64), (2, 65), (3, 66), (4, None)], "CLAIMNO int, mbsfAge int")
+    assert sorted(r["CLAIMNO"] for r in get_age65PlusStays(df).collect()) == [2, 3]
+
+def test_first_stay_counts_the_one_day_stays_of_that_beneficiary_and_day(spark):
+    #beneficiary 1 has a one-day and a longer stay on their first day, and a one-day stay later; beneficiary 2 a one-day
+    #stay on the same first day: neither of the others makes beneficiary 1's one-day stay ambiguous
+    from cms.stays import add_first_stay_info
+    rows = [_admsn_row(1, dsysrtky=1, admsn_dt=20200115, thru_dt=20200115),
+            _admsn_row(2, dsysrtky=1, admsn_dt=20200115, thru_dt=20200118),
+            _admsn_row(3, dsysrtky=2, admsn_dt=20200115, thru_dt=20200115),
+            _admsn_row(4, dsysrtky=1, admsn_dt=20200301, thru_dt=20200301)]
+    df = add_first_stay_info(_run_first_stay_pipeline(spark, rows))
+    assert {r["CLAIMNO"]: r["firstStay"] for r in df.collect()} == {1: 1, 2: 0, 3: 1, 4: 0}
+
+def test_other_stays_index_an_ip_claim_under_one_label(spark):
+    from cms.stays import get_otherStays
+    rows = [_ip_src_dest_row(10, dsysrtky=1, orgnpinm=100, admsn_dt=20200101, thru_dt=20200105, rehab_taxonomy=1),
+            _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200, admsn_dt=20200201, thru_dt=20200205, ltc=1),
+            _ip_src_dest_row(30, dsysrtky=1, orgnpinm=300, admsn_dt=20200301, thru_dt=20200305)]
+    index = get_otherStays(_build_cmsDFS(spark, ip_rows=rows)).first()["otherStays"]
+    assert sorted(s["claimType"] for s in index) == ["ipLtc", "ipOther", "ipRehab"]
+
+def _source_and_destination(spark, probe, others, claimType="ip"):
+    '''(admissionSource, admissionSourceLag, thruDestination, thruDestinationLag) of the probe stay.'''
+    from cms.stays import add_source_and_destination_info
+    if claimType == "op":
+        (staysDF, cmsDFS) = (_op_staysDF_from(spark, [probe]), _build_cmsDFS(spark, ip_rows=others))
+    else:
+        (staysDF, cmsDFS) = (_ip_staysDF_from(spark, [probe]), _build_cmsDFS(spark, ip_rows=[probe] + others))
+    r = add_source_and_destination_info(staysDF, cmsDFS, claimType=claimType).first()
+    return (r["admissionSource"], r["admissionSourceLag"], r["thruDestination"], r["thruDestinationLag"])
+
+#neighbouring stays of 2 or 3 days, so the day 2 away from the boundary is outside them: each tests one offset of 1
+_oneDay = _ip_src_dest_row(10, dsysrtky=1, orgnpinm=100, admsn_dt=20200115, thru_dt=20200115)
+_opVisit = _op_src_dest_row(10, dsysrtky=1, orgnpinm=100, thru_dt=20200115)
+def _neighbour(admission, through):
+    return _ip_src_dest_row(20, dsysrtky=1, orgnpinm=200, admsn_dt=admission, thru_dt=through)
+
+@pytest.mark.parametrize("probe, neighbour, claimType, expected", [
+    #a one-day stay inside a stay running from the day before to the day after: both its source and destination
+    (_oneDay, (20200114, 20200116), "ip", ("ipOther", 0, "ipOther", 0)),
+    #a stay starting that day and ending the next is where the patient went, not where they came from
+    (_oneDay, (20200115, 20200116), "ip", ("home", None, "ipOther", 0)),
+    #a stay from the day before ending that day is where the patient came from, not where they went
+    (_oneDay, (20200114, 20200115), "ip", ("ipOther", 0, "home", None)),
+    #an op visit: a stay from the day before to the visit is its source only, one from the day before to the day after
+    #both, at lag 0, and one of a day starting the day after its destination at lag 1
+    (_opVisit, (20200114, 20200115), "op", ("ipOther", 0, "home", None)),
+    (_opVisit, (20200114, 20200116), "op", ("ipOther", 0, "ipOther", 0)),
+    (_opVisit, (20200116, 20200116), "op", ("home", None, "ipOther", 1))],
+    ids=["oneDayInside", "oneDayWentThere", "oneDayCameFrom", "opCameFrom", "opInside", "opNextDay"])
+def test_source_and_destination_look_one_day_out(spark, probe, neighbour, claimType, expected):
+    assert _source_and_destination(spark, probe, [_neighbour(*neighbour)], claimType) == expected

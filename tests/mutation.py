@@ -224,7 +224,18 @@ def _environment():
     env = local_spark_environment()
     #no bytecode: a mutant of the same size written within the second of the last one could reuse its stale .pyc
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    return env
+    #48 workers, each JVM sized for the node's 120 cores, made thousands of GC threads, and the run took 4 times as long
+    #as estimated
+    return java_cpus_environment(env, javaCpus)
+
+#the cores each worker's JVM sizes itself for, the 2 of the tests' local[2]
+javaCpus = 2
+
+def java_cpus_environment(env, cpus):
+    '''env with JDK_JAVA_OPTIONS making every JVM started under it size itself for cpus cores.'''
+    #a JVM sizes its garbage collector, compiler and other thread pools from the cores it sees, all of the node's (120 at
+    #OSC), though the tests' spark uses 2 (local[2], tests/conftest.py); the java launcher of every JVM reads the variable
+    return {**env, "JDK_JAVA_OPTIONS": " ".join(filter(None, [env.get("JDK_JAVA_OPTIONS"), f"-XX:ActiveProcessorCount={cpus}"]))}
 
 #a test that fails because spark's JVM died (killed for memory, eg on a laptop with other spark runs) did not catch the
 #mutant, so such a run is an error, not a kill

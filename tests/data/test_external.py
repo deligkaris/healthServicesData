@@ -7,7 +7,7 @@ import pyspark.sql.functions as F
 from pyspark.sql.types import StringType
 
 from tests.data.checks import get_duplicate_keys, get_counts, get_examples, get_null_rates
-from tests.data.thresholds import keyFormatExceptions
+from tests.data.thresholds import keyFormatExceptions, quoteWrappedAllowed
 
 ccn = r"^[0-9A-Z]{6}$"
 county = r"^\d{5}$"
@@ -45,7 +45,8 @@ yearColumns = {"aha": "year", "cmi": "year", "chspHosp": "year", "sdoh": "year",
 #(source, key, rows kept before the check): the join key of each source, which must not fan the claims out
 uniqueKeys = {"npi": ("npi", ["NPI"], None),
               "pos": ("pos", ["PRVDR_NUM"], None),
-              "aha": ("aha", ["MCRNUM", "year"], None),
+              #an MCRNUM that is no CCN (the AHA writes 'Y' for some) matches no claim, so it cannot multiply them
+              "aha": ("aha", ["MCRNUM", "year"], lambda df: df.filter(F.col("MCRNUM").rlike(ccn))),
               "chspHosp": ("chspHosp", ["ccn", "year"], None),
               "cmi": ("cmi", ["provider", "year"], None),
               "zipToHrr": ("zipToHrr", ["zip", "year"], None),
@@ -102,7 +103,8 @@ def test_no_quote_wrapped_values(externalData, externalSource):
         return
     wrapped = reduce(lambda x, y: x | y, [F.col(f"`{c}`").rlike(r"^(['\"]).*\1$") for c in strCols])
     number = df.filter(wrapped).count()
-    assert number == 0, f"{externalSource}: {number} rows with a value wrapped in quotes"
+    allowed = quoteWrappedAllowed.get(externalSource, 0)
+    assert number <= allowed, f"{externalSource}: {number} rows with a value wrapped in quotes, {allowed} allowed"
 
 @pytest.mark.parametrize("source", list(expectedColumns))
 def test_expected_columns(externalData, source):
@@ -127,11 +129,11 @@ def test_join_key_unique(externalData, keyName):
     assert number == 0, f"{source}: {number} {keys} on more than one row, each would multiply its claims, eg {examples}"
 
 @pytest.mark.parametrize("source, column, pattern", keyFormats, ids=[f"{s}-{c}" for s, c, _ in keyFormats])
-def test_key_format(externalData, source, column, pattern):
+def test_key_format(externalData, yearList, source, column, pattern):
     df = externalData[source]
     value = F.col(f"`{column}`").cast("string")
     counts = get_counts(df, {"bad": value.isNotNull() & ~value.rlike(pattern)})
-    allowed = keyFormatExceptions.get((source, column), 0)
+    allowed = keyFormatExceptions.get((source, column), 0) * len(yearList)
     examples = [r[0] for r in df.filter(value.isNotNull() & ~value.rlike(pattern)).select(value).limit(5).collect()] \
                if counts["bad"] > allowed else []
     assert counts["bad"] <= allowed, f"{source}.{column}: {counts['bad']} values not {pattern}, eg {examples}"
