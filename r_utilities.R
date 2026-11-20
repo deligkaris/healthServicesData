@@ -322,7 +322,7 @@ get_data_dictionary <- function() {
     "nihssGroup",      "nihss in bands: 0 (0-9), 1 (10-19), 2 (20-29), 3 (30-39), 4 (40-42); NULL when nihss is",
 
     # ---- procedures / outcomes (receiving claim only) ----
-    "ecmo",            "ECMO performed (0/1)",
+    "ecmo",            "ECMO performed (0/1); intraoperative ECMO (codes from FY2020) counted only with add_ecmo(intraoperative=True)",
     "imv",             "Invasive mechanical ventilation performed (ICD-10-PCS 5A1935Z, 5A1945Z or 5A1955Z) (0/1)",
     "rrt",             "RRT performed (0/1)",
     "endoscopy",       "Endoscopy performed (0/1)",

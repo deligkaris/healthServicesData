@@ -1181,6 +1181,19 @@ class TestAddEcmo:
         assert rows[0]["ecmoPrcdr"] == 1 and rows[0]["ecmo"] == 1
         assert rows[1]["ecmoPrcdr"] == 0 and rows[1]["ecmo"] == 0
 
+    @pytest.mark.parametrize("code", ["5A15A2F", "5A15A2G", "5A15A2H"])
+    def test_intraoperative_code_counts_only_when_asked(self, spark, code):
+        from cms.base import add_ecmo
+        df = make_dgns_prcdr_df(spark, [([], [code])])
+        assert add_ecmo(df).first()["ecmo"] == 0
+        assert add_ecmo(df, intraoperative=True).first()["ecmo"] == 1
+
+    @pytest.mark.parametrize("code", ECMO_PRCDR_CODES)
+    def test_other_codes_still_count_with_intraoperative(self, spark, code):
+        from cms.base import add_ecmo
+        df = make_dgns_prcdr_df(spark, [([], [code])])
+        assert add_ecmo(df, intraoperative=True).first()["ecmo"] == 1
+
 
 # ============================================================
 # End-to-end tests for add_endoscopy (add_endoscopyPrcdr + add_endoscopy)

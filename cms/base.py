@@ -526,19 +526,24 @@ def add_imv(baseDF):
     baseDF = baseDF.withColumn("imv", F.when( F.col("imvPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
-def add_ecmoPrcdr(baseDF):
+def add_ecmoPrcdr(baseDF, intraoperative=False):
     '''Extracorporeal membrane oxygenation.'''
     #5A15223 (membrane) is the one ECMO code of ICD-10-PCS FY2016-FY2018, discharges to Sep 30 2018; from FY2019 it
     #is split into 5A1522F, 5A1522G, 5A1522H (VA, VA and VV), see the CMS ICD-10-PCS order files
     ecmoPrcdrCodes = ("5A15223", "5A1522F", "5A1522G", "5A1522H")
+    #the intraoperative codes exist from FY2020 (discharges from Oct 1 2019); before that intraoperative ECMO has no code
+    #of its own, so leaving them out drops it from FY2020 on only
+    if intraoperative:
+        ecmoPrcdrCodes += ("5A15A2F", "5A15A2G", "5A15A2H")
     baseDF = baseDF.withColumn("ecmoPrcdr", F.when( F.size( F.expr( f"filter(prcdrCodeAll, x -> x in {ecmoPrcdrCodes})") )>0, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
-def add_ecmo(baseDF):
+def add_ecmo(baseDF, intraoperative=False):
     '''Extracorporeal membrane oxygenation.
-    Flags rows that contain any ICD10 procedure code in {5A15223, 5A1522F, 5A1522G, 5A1522H} in prcdrCodeAll.
+    Flags rows that contain any ICD10 procedure code in {5A15223, 5A1522F, 5A1522G, 5A1522H} in prcdrCodeAll, and
+    with intraoperative=True also {5A15A2F, 5A15A2G, 5A15A2H}.
     Reference: https://doi.org/10.1051/ject/2025043'''
-    baseDF = add_ecmoPrcdr(baseDF)
+    baseDF = add_ecmoPrcdr(baseDF, intraoperative=intraoperative)
     baseDF = baseDF.withColumn("ecmo", F.when( F.col("ecmoPrcdr")==1, F.lit(1) ).otherwise(F.lit(0)))
     return baseDF
 
